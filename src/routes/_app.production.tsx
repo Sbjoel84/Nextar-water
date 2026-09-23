@@ -48,7 +48,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Ban, Printer, FileDown, Loader2, AlertTriangle } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Ban,
+  Printer,
+  FileDown,
+  Loader2,
+  AlertTriangle,
+  Trash2,
+  Clock,
+} from "lucide-react";
 import { money, num } from "@/lib/format";
 import { toast } from "sonner";
 import { generateProductionSlipPdf } from "@/lib/pdf";
@@ -162,7 +172,7 @@ type ProductUnit = { id: string; packaging_unit: string; conversion_factor: numb
 
 const statusBadge = (s: string): "default" | "secondary" | "outline" | "destructive" => {
   if (s === "posted") return "secondary";
-  if (s === "rejected" || s === "cancelled") return "destructive";
+  if (s === "rejected" || s === "cancelled" || s === "reversed") return "destructive";
   if (s === "confirmed") return "default";
   return "outline";
 };
@@ -180,13 +190,22 @@ function ProductionPage() {
   const factoryId = factory.data;
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
-  const { canWrite, canCancel, canPrint, canExport } = usePermissions();
+  const { canWrite, canEdit, canCancel, canDelete, canPrint, canExport } = usePermissions();
   const write = canWrite("production");
   const cancel = canCancel("production");
   const allowPrint = canPrint("production");
   const allowExport = canExport("production");
+  // Posted batches are already in finished-goods stock, so corrections go to
+  // Store for approval (request_production_correction) instead of applying
+  // directly. Server accepts edit|create for edits and delete|cancel for deletes.
+  const requestEdit = write || canEdit("production");
+  const requestDelete = cancel || canDelete("production");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductionRow | null>(null);
+  const [correction, setCorrection] = useState<{
+    row: ProductionRow;
+    kind: "edit" | "delete";
+  } | null>(null);
 
   const products = useQuery({
     queryKey: ["products-for-production", factoryId],
@@ -237,7 +256,26 @@ function ProductionPage() {
     },
   });
 
+  const pendingCorrections = useQuery({
+    queryKey: ["production-corrections-pending", factoryId],
+    enabled: !!factoryId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("production_corrections")
+        .select("production_id,kind")
+        .eq("factory_id", factoryId!)
+        .eq("review_status", "pending");
+      if (error) throw error;
+      const map: Record<string, "edit" | "delete"> = {};
+      ((data ?? []) as { production_id: string; kind: "edit" | "delete" }[]).forEach((c) => {
+        map[c.production_id] = c.kind;
+      });
+      return map;
+    },
+  });
+
   const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["production-corrections-pending"] });
     qc.invalidateQueries({ queryKey: ["production-list"] });
     qc.invalidateQueries({ queryKey: ["products-for-production"] });
     qc.invalidateQueries({ queryKey: ["products-active"] });
@@ -448,6 +486,13 @@ function ProductionPage() {
                     <Badge variant={statusBadge(row.status)} className="capitalize">
                       {row.status.replace(/_/g, " ")}
                     </Badge>
+                    {pendingCorrections.data?.[row.id] && (
+                      <Badge variant="outline" className="mt-1 gap-1 whitespace-nowrap">
+                        <Clock className="h-3 w-3" />
+                        {pendingCorrections.data[row.id] === "delete" ? "Delete" : "Edit"} awaiting
+                        Store
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
@@ -509,6 +554,30 @@ function ProductionPage() {
                           </AlertDialogContent>
                         </AlertDialog>
                       )}
+                      {row.status === "posted" && !pendingCorrections.data?.[row.id] && (
+                        <>
+                          {requestEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Request correction (Store approval)"
+                              onClick={() => setCorrection({ row, kind: "edit" })}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {requestDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Request delete (Store approval)"
+                              onClick={() => setCorrection({ row, kind: "delete" })}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -524,7 +593,172 @@ function ProductionPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!correction} onOpenChange={(v) => !v && setCorrection(null)}>
+        {correction && (
+          <CorrectionDialog
+            row={correction.row}
+            kind={correction.kind}
+            onDone={() => {
+              setCorrection(null);
+              invalidateAll();
+            }}
+          />
+        )}
+      </Dialog>
     </div>
+  );
+}
+
+// Correction request for a batch Store has already posted to stock. Nothing
+// changes until Store approves it on the Finished Goods page; approval then
+// adjusts finished-goods stock by the change in accepted quantity (or removes
+// the whole accepted quantity for a delete).
+function CorrectionDialog({
+  row,
+  kind,
+  onDone,
+}: {
+  row: ProductionRow;
+  kind: "edit" | "delete";
+  onDone: () => void;
+}) {
+  const baseUnit = row.products?.unit ?? row.unit;
+  const rejected = Number(row.rejected_quantity ?? 0);
+  const [quantity, setQuantity] = useState(Number(row.quantity_produced));
+  const [damaged, setDamaged] = useState(Number(row.damaged_quantity ?? 0));
+  const [cost, setCost] = useState(Number(row.production_cost ?? 0));
+  const [date, setDate] = useState(row.production_date);
+  const [remarks, setRemarks] = useState(row.remarks ?? "");
+  const [reason, setReason] = useState("");
+
+  const oldAccepted = Number(row.accepted_quantity ?? 0);
+  const newAccepted = kind === "edit" ? quantity - damaged - rejected : 0;
+  const delta = newAccepted - oldAccepted;
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      if (!reason.trim()) throw new Error("Enter a reason for the correction");
+      if (kind === "edit") {
+        if (quantity <= 0) throw new Error("Quantity must be greater than 0");
+        if (damaged < 0) throw new Error("Damaged quantity cannot be negative");
+        if (newAccepted < 0) throw new Error("Damaged + rejected cannot exceed quantity produced");
+      }
+      const { error } = await supabase.rpc(
+        "request_production_correction" as any,
+        {
+          payload: {
+            production_id: row.id,
+            kind,
+            reason: reason.trim(),
+            ...(kind === "edit"
+              ? {
+                  quantity_produced: quantity,
+                  damaged_quantity: damaged,
+                  production_cost: cost,
+                  production_date: date,
+                  remarks: remarks || null,
+                }
+              : {}),
+          },
+        } as any,
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(
+        kind === "edit"
+          ? "Correction sent to Store for approval"
+          : "Delete request sent to Store for approval",
+      );
+      onDone();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>
+          {kind === "edit" ? "Correct" : "Delete"} Batch — {row.production_number}
+        </DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-3 max-h-[75vh] overflow-y-auto pr-1">
+        <p className="text-sm text-muted-foreground">
+          {row.products?.name} · Posted to stock: {num(oldAccepted)} {baseUnit}. This batch is
+          already in finished goods, so your {kind === "edit" ? "correction" : "delete"} goes to
+          Store for approval before stock changes.
+        </p>
+        {kind === "edit" && (
+          <>
+            <div>
+              <Label>Production date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Quantity produced ({baseUnit})</Label>
+                <MoneyInput min={0.001} step="0.001" value={quantity} onChange={setQuantity} />
+              </div>
+              <div>
+                <Label>Damaged ({baseUnit})</Label>
+                <MoneyInput min={0} step="0.001" value={damaged} onChange={setDamaged} />
+              </div>
+            </div>
+            <div>
+              <Label>Production cost</Label>
+              <MoneyInput value={cost} onChange={setCost} />
+            </div>
+            <div>
+              <Label>Remarks</Label>
+              <Textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+            </div>
+          </>
+        )}
+        <div className="rounded-lg border p-3 text-sm">
+          Stock change once approved:{" "}
+          <span
+            className={
+              delta > 0
+                ? "font-medium text-success"
+                : delta < 0
+                  ? "font-medium text-destructive"
+                  : "font-medium"
+            }
+          >
+            {delta > 0 ? "+" : ""}
+            {num(delta)} {baseUnit}
+          </span>
+          {rejected > 0 && kind === "edit" && (
+            <span className="block text-xs text-muted-foreground">
+              Includes Store's rejected quantity of {num(rejected)} {baseUnit}.
+            </span>
+          )}
+        </div>
+        <div>
+          <Label>Reason</Label>
+          <Textarea
+            rows={2}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={
+              kind === "edit"
+                ? "What was wrong with the original posting?"
+                : "Why should this batch be deleted?"
+            }
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button
+          variant={kind === "delete" ? "destructive" : "default"}
+          disabled={submit.isPending || !reason.trim()}
+          onClick={() => submit.mutate()}
+        >
+          {submit.isPending ? "Sending…" : "Send to Store for approval"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
@@ -765,6 +999,7 @@ function ProductionForm({
             open={addingProduct}
             onOpenChange={setAddingProduct}
             factoryId={factoryId}
+            hideOpeningStock
             onCreated={(id) => {
               setProductId(id);
               setQuantityUnit("__base__");

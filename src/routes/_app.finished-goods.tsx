@@ -159,6 +159,41 @@ function SummaryCard({
   );
 }
 
+type PendingCorrection = {
+  id: string;
+  kind: "edit" | "delete";
+  old_values: {
+    quantity_produced: number | null;
+    damaged_quantity: number | null;
+    rejected_quantity: number | null;
+    accepted_quantity: number | null;
+  };
+  new_quantity_produced: number | null;
+  new_damaged_quantity: number | null;
+  reason: string;
+  requested_by: string;
+  requested_by_name: string | null;
+  requested_at: string;
+  production: {
+    production_number: string;
+    unit: string;
+    products: { name: string; unit: string } | null;
+  } | null;
+};
+
+// Change in finished-goods stock that approving this correction applies —
+// mirrors approve_production_correction().
+const correctionDelta = (c: PendingCorrection) => {
+  const oldAccepted = Number(c.old_values.accepted_quantity ?? 0);
+  if (c.kind === "delete") return -oldAccepted;
+  return (
+    Number(c.new_quantity_produced ?? 0) -
+    Number(c.new_damaged_quantity ?? 0) -
+    Number(c.old_values.rejected_quantity ?? 0) -
+    oldAccepted
+  );
+};
+
 function FinishedGoodsPage() {
   const { data: factoryId } = useFactoryId();
   const settings = useFactorySettings(factoryId);
@@ -183,8 +218,10 @@ function FinishedGoodsPage() {
       "product_price_history",
       "product_units",
       "damage_records",
+      "production_corrections",
     ],
     [
+      ["production-corrections-pending"],
       ["finished-goods"],
       ["product-categories"],
       ["stock-adjustment-requests"],
@@ -213,6 +250,7 @@ function FinishedGoodsPage() {
   const [packagingTarget, setPackagingTarget] = useState<Product | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<PendingBatch | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PendingBatch | null>(null);
+  const [rejectCorrection, setRejectCorrection] = useState<PendingCorrection | null>(null);
 
   const list = useQuery({
     queryKey: ["finished-goods", factoryId],
@@ -289,6 +327,23 @@ function FinishedGoodsPage() {
     },
   });
 
+  const pendingCorrections = useQuery({
+    queryKey: ["production-corrections-pending-store", factoryId],
+    enabled: !!factoryId && confirmBatchPerm,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("production_corrections")
+        .select(
+          "id,kind,old_values,new_quantity_produced,new_damaged_quantity,reason,requested_by,requested_by_name,requested_at,production(production_number,unit,products(name,unit))",
+        )
+        .eq("factory_id", factoryId!)
+        .eq("review_status", "pending")
+        .order("requested_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as PendingCorrection[];
+    },
+  });
+
   const currentUser = useQuery({
     queryKey: ["current-user-id"],
     queryFn: async () => (await supabase.auth.getUser()).data.user?.id ?? null,
@@ -350,7 +405,45 @@ function FinishedGoodsPage() {
     qc.invalidateQueries({ queryKey: ["pending-production-batches"] });
     qc.invalidateQueries({ queryKey: ["damage-records-finished-goods"] });
     qc.invalidateQueries({ queryKey: ["damage-value-finished-goods"] });
+    qc.invalidateQueries({ queryKey: ["production-corrections-pending"] });
+    qc.invalidateQueries({ queryKey: ["production-corrections-pending-store"] });
   };
+
+  const approveCorrection = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc(
+        "approve_production_correction" as any,
+        {
+          p_id: id,
+        } as any,
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Correction approved — stock updated");
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const rejectCorrectionMut = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { error } = await supabase.rpc(
+        "reject_production_correction" as any,
+        {
+          p_id: id,
+          p_reason: reason,
+        } as any,
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Correction rejected");
+      setRejectCorrection(null);
+      invalidateAll();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const rejectBatch = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
@@ -875,6 +968,107 @@ function FinishedGoodsPage() {
         </Card>
       )}
 
+      {(pendingCorrections.data ?? []).length > 0 && (
+        <Card className="rounded-2xl border-dashed">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Production Corrections Awaiting Approval
+              <Badge variant="destructive">{pendingCorrections.data!.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Batch #</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Request</TableHead>
+                  <TableHead>Change</TableHead>
+                  <TableHead className="text-right">Stock Effect</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Requested</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(pendingCorrections.data ?? []).map((c) => {
+                  const isSelf = c.requested_by === currentUser.data;
+                  const unit = c.production?.products?.unit ?? c.production?.unit ?? "";
+                  const delta = correctionDelta(c);
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-mono text-xs">
+                        {c.production?.production_number ?? "—"}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {c.production?.products?.name ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={c.kind === "delete" ? "destructive" : "outline"}>
+                          {c.kind === "delete" ? "Delete" : "Edit"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {c.kind === "edit" ? (
+                          <>
+                            Qty {num(Number(c.old_values.quantity_produced ?? 0))} →{" "}
+                            {num(Number(c.new_quantity_produced ?? 0))}
+                            <br />
+                            Damaged {num(Number(c.old_values.damaged_quantity ?? 0))} →{" "}
+                            {num(Number(c.new_damaged_quantity ?? 0))}
+                          </>
+                        ) : (
+                          "Remove batch from stock"
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right font-medium ${delta < 0 ? "text-destructive" : delta > 0 ? "text-success" : ""}`}
+                      >
+                        {delta > 0 ? "+" : ""}
+                        {num(delta)} {unit}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground max-w-[220px]">
+                        {c.reason}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {c.requested_by_name ?? "—"}
+                        <br />
+                        {new Date(c.requested_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          {!isSelf && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Approve"
+                                disabled={approveCorrection.isPending}
+                                onClick={() => approveCorrection.mutate(c.id)}
+                              >
+                                <Check className="h-4 w-4 text-success" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() => setRejectCorrection(c)}
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       {(recentDamage.data ?? []).length > 0 && (
         <Card className="rounded-2xl">
           <CardHeader>
@@ -948,6 +1142,16 @@ function FinishedGoodsPage() {
                 { onSuccess: () => setRejectTarget(null) },
               )
             }
+          />
+        )}
+      </Dialog>
+
+      <Dialog open={!!rejectCorrection} onOpenChange={(v) => !v && setRejectCorrection(null)}>
+        {rejectCorrection && (
+          <RejectCorrectionDialog
+            correction={rejectCorrection}
+            isPending={rejectCorrectionMut.isPending}
+            onReject={(reason) => rejectCorrectionMut.mutate({ id: rejectCorrection.id, reason })}
           />
         )}
       </Dialog>
@@ -1446,6 +1650,55 @@ function RejectBatchDialog({
           onClick={() => onReject(trimmed)}
         >
           {isPending ? "Rejecting…" : "Reject batch"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function RejectCorrectionDialog({
+  correction,
+  isPending,
+  onReject,
+}: {
+  correction: PendingCorrection;
+  isPending: boolean;
+  onReject: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const trimmed = reason.trim();
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <X className="h-5 w-5 text-destructive" /> Reject{" "}
+          {correction.kind === "delete" ? "Delete" : "Correction"} —{" "}
+          {correction.production?.production_number}
+        </DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <div>
+          <Label>Reason for rejection</Label>
+          <Textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Explain why this correction is being rejected…"
+            autoFocus
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          The batch and stock stay as they are. Production can submit a new correction.
+        </p>
+      </div>
+      <DialogFooter>
+        <Button
+          variant="destructive"
+          disabled={isPending || !trimmed}
+          onClick={() => onReject(trimmed)}
+        >
+          {isPending ? "Rejecting…" : "Reject correction"}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -110,6 +110,9 @@ function LedgerPage() {
   const { canWrite, canConfirm, canReject, canReverse } = usePermissions();
   const writeLedger = canWrite("receipts-payments");
   const writePayments = canWrite("payments");
+  // Cash Out is also open to the payments desk (payments write) — the
+  // create_cash_transaction RPC allows that narrowly for sales_cash_out.
+  const writeCashOut = writeLedger || writePayments;
   const confirmPayments = canConfirm("payments");
   const rejectPayments = canReject("payments");
   const reversePayments = canReverse("payments");
@@ -417,7 +420,7 @@ function LedgerPage() {
             )}
           </Dialog>
         )}
-        {writeLedger && (
+        {writeCashOut && (
           <Dialog open={cashOutOpen} onOpenChange={setCashOutOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2">
@@ -892,8 +895,9 @@ function NewPaymentDialog({
 // cashier, receiving the cash) records it, rather than the salesperson
 // self-serving it — this used to live on the Sales page, gated on sales
 // write, but that meant it couldn't be recorded by the person actually
-// holding the till; 'receipts-payments' write (writeLedger) is the right
-// permission for it now that it lives here.
+// holding the till; 'receipts-payments' write (writeLedger) or 'payments'
+// write (writePayments) gates it now that it lives here. The recorded inflow
+// shows up on the Expenses page as Cash In.
 function CashOutDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");

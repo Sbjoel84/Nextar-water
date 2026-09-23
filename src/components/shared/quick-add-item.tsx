@@ -80,11 +80,15 @@ export function QuickAddProductDialog({
   onOpenChange,
   factoryId,
   onCreated,
+  hideOpeningStock = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   factoryId: string;
   onCreated?: (id: string) => void;
+  // Production: the batch being recorded is what brings stock in, so an
+  // opening stock here would count the same goods twice once Store confirms.
+  hideOpeningStock?: boolean;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
@@ -139,7 +143,7 @@ export function QuickAddProductDialog({
           category_id: categoryId === "none" ? null : categoryId,
           unit_price: unitPrice,
           cost_price: costPrice,
-          current_stock: openingStock,
+          current_stock: hideOpeningStock ? 0 : openingStock,
         },
       } as any);
       if (error) throw error;
@@ -209,11 +213,18 @@ export function QuickAddProductDialog({
               customUnit={customUnit}
               setCustomUnit={setCustomUnit}
             />
-            <div>
-              <Label>Opening stock</Label>
-              <MoneyInput min={0} step="0.001" value={openingStock} onChange={setOpeningStock} />
-            </div>
+            {!hideOpeningStock && (
+              <div>
+                <Label>Opening stock</Label>
+                <MoneyInput min={0} step="0.001" value={openingStock} onChange={setOpeningStock} />
+              </div>
+            )}
           </div>
+          {hideOpeningStock && (
+            <p className="text-xs text-muted-foreground">
+              Starts at zero stock — this production batch adds the stock once Store confirms it.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Cost price</Label>
