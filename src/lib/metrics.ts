@@ -37,8 +37,21 @@ export const isCriticalStock = (stock: unknown, reorder: unknown) =>
 // Expenses and payroll only hit the books once approved; pending, rejected,
 // cancelled and reversed rows never count.
 export const COUNTED_STATUSES = ["approved", "posted"];
-// A payment awaiting confirmation is money in hand; only a rejected one is not.
-export const UNCOUNTED_PAYMENT_STATUS = "rejected";
+// A payment awaiting confirmation is money in hand; a rejected or reversed one
+// is not.
+export const UNCOUNTED_PAYMENT_STATUSES = ["rejected", "reversed"];
+export const paymentCounts = (status: string | null | undefined) =>
+  !UNCOUNTED_PAYMENT_STATUSES.includes(status ?? "");
+// PostgREST filter value for .not("status", "in", ...).
+export const UNCOUNTED_PAYMENT_FILTER = `(${UNCOUNTED_PAYMENT_STATUSES.join(",")})`;
+// Cash Out: sales takings handed over to Expenses. One cash_transactions row
+// (receipt / other_inflow) that is Cash In on the Expenses page and Cash Out
+// on the Payments ledger.
+export const SALES_CASH_OUT = "sales_cash_out";
+// Expenses runs its own cash: every "Other Cash Inflow" receipt is Expenses
+// Cash In (typed on the Expenses page, or moved there by a Cash Out). Other
+// Income and Donations stay with Payments as income.
+export const EXPENSES_CASH_IN_CATEGORY = "other_inflow";
 
 // ---------- payment channels ----------
 export const PAYMENT_CHANNELS = [

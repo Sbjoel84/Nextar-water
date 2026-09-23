@@ -43,6 +43,7 @@ import { money } from "@/lib/format";
 import { toast } from "sonner";
 import { KPI } from "@/lib/dashboard-kit";
 import { AccountAdjustmentsCard } from "@/components/customers/account-adjustments";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/customers")({
   head: () => ({ meta: [{ title: "Customers — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -70,22 +71,23 @@ function CustomersPage() {
   const qc = useQueryClient();
   const { canWrite } = usePermissions();
   const write = canWrite("customers");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [viewing, setViewing] = useState<Customer | null>(null);
 
   const list = useQuery({
-    queryKey: ["customers", factoryId, q],
+    queryKey: ["customers", factoryId],
     enabled: !!factoryId,
     queryFn: async () => {
       let query = supabase.from("customers").select("*").eq("factory_id", factoryId!).order("name");
-      if (q.trim()) query = query.ilike("name", `%${q.trim()}%`);
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Customer[];
     },
   });
+  // Search every field (name, phone, email, address, balances…) as you type.
+  const shown = (list.data ?? []).filter((row) => matchesSearch(q, row));
 
   const save = useMutation({
     mutationFn: async (form: Partial<Customer>) => {
@@ -213,7 +215,7 @@ function CustomersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((c) => {
+              {shown.map((c) => {
                 const paid = Number(c.total_purchases) - Number(c.outstanding_balance);
                 return (
                   <TableRow key={c.id}>
@@ -285,7 +287,7 @@ function CustomersPage() {
                   </TableRow>
                 );
               })}
-              {(list.data ?? []).length === 0 && (
+              {shown.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     No customers yet.

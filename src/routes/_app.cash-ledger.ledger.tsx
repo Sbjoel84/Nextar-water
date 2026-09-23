@@ -48,9 +48,11 @@ import {
   Undo2,
 } from "lucide-react";
 import { money } from "@/lib/format";
+import { EXPENSES_CASH_IN_CATEGORY, SALES_CASH_OUT, fetchAll, paymentCounts } from "@/lib/metrics";
 import { toast } from "sonner";
 import { generateReceiptPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/cash-ledger/ledger")({
   head: () => ({ meta: [{ title: "Cash Ledger — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -78,6 +80,11 @@ type UnifiedRow = {
   paymentId?: string;
   reviewStatus?: string;
   receivedBy?: string | null;
+  // Rejected/reversed customer payments are listed but not counted.
+  counts: boolean;
+  // Sales cash handed over to Expenses (Cash Out). Shown as money leaving the
+  // sales takings, so it comes off Total Receipts instead of adding to it.
+  cashOut?: boolean;
 };
 type Customer = { id: string; name: string };
 type SaleBrief = {
@@ -121,7 +128,7 @@ function LedgerPage() {
   const [cashOutOpen, setCashOutOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<UnifiedRow | null>(null);
   const [reverseTarget, setReverseTarget] = useState<UnifiedRow | null>(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [typeFilter, setTypeFilter] = useState<"all" | TxType>("all");
 
   const currentUser = useQuery({
@@ -173,60 +180,50 @@ function LedgerPage() {
     },
   });
 
+  // Every row, not a capped page: the cards below are sums over these lists.
   const receipts = useQuery({
     queryKey: ["rp-receipts", factoryId],
     enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("payments_received")
-        .select(
-          "id,receipt_number,payment_date,amount,payment_method,remarks,received_by,status,customers(name),sales(invoice_number)",
-        )
-        .eq("factory_id", factoryId!)
-        .order("payment_date", { ascending: false })
-        .limit(300);
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
+    queryFn: () =>
+      fetchAll<any>(
+        (a, b) =>
+          supabase
+            .from("payments_received")
+            .select(
+              "id,receipt_number,payment_date,amount,payment_method,remarks,received_by,status,customers(name),sales(invoice_number)",
+            )
+            .eq("factory_id", factoryId!)
+            .order("payment_date", { ascending: false })
+            .order("id")
+            .range(a, b) as any,
+      ),
   });
 
-  const payments = useQuery({
-    queryKey: ["rp-payments", factoryId],
-    enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("expenses")
-        .select(
-          "id,receipt_number,expense_date,amount,payment_method,description,vendor,requested_by_name,recorded_by,approval_status,expense_categories(name)",
-        )
-        .eq("factory_id", factoryId!)
-        .order("expense_date", { ascending: false })
-        .limit(300);
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
-  });
-
+  // Other income and outflows recorded here, plus each Cash Out that moved
+  // money to Expenses. Cash In typed on the Expenses page is filtered out
+  // below — it's Expenses' own cash, not Payments income.
   const others = useQuery({
     queryKey: ["rp-cash-transactions", factoryId],
     enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("cash_transactions")
-        .select(
-          "id,transaction_number,transaction_date,transaction_type,category,description,amount,payment_method,payer_payee,related_reference,recorded_by_name",
-        )
-        .eq("factory_id", factoryId!)
-        .order("transaction_date", { ascending: false })
-        .limit(300);
-      if (error) throw error;
-      return (data ?? []) as any[];
-    },
+    queryFn: () =>
+      fetchAll<any>(
+        (a, b) =>
+          supabase
+            .from("cash_transactions")
+            .select(
+              "id,transaction_number,transaction_date,transaction_type,category,description,amount,payment_method,payer_payee,related_reference,recorded_by_name",
+            )
+            .eq("factory_id", factoryId!)
+            .order("transaction_date", { ascending: false })
+            .order("id")
+            .range(a, b) as any,
+      ),
   });
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["rp-cash-transactions"] });
     qc.invalidateQueries({ queryKey: ["rp-receipts"] });
+    qc.invalidateQueries({ queryKey: ["expenses-cash-in"] });
     qc.invalidateQueries({ queryKey: ["cf-cash-transactions"] });
     qc.invalidateQueries({ queryKey: ["debts"] });
     qc.invalidateQueries({ queryKey: ["sales-brief-p"] });
@@ -250,59 +247,58 @@ function LedgerPage() {
       paymentId: r.id,
       reviewStatus: r.status,
       receivedBy: r.received_by,
+      counts: paymentCounts(r.status),
     }));
-    const fromPayments: UnifiedRow[] = (payments.data ?? [])
-      .filter((e) => e.approval_status === "approved")
-      .map((e) => ({
-        id: `e-${e.id}`,
-        number: e.receipt_number ?? "—",
-        date: e.expense_date,
-        type: "payment",
-        category: e.expense_categories?.name ?? "Uncategorized",
-        description: e.description,
-        amount: Number(e.amount),
-        payment_method: e.payment_method,
-        payer_payee: e.vendor,
-        related_reference: null,
-        recorded_by:
-          e.requested_by_name ?? (e.recorded_by ? (profiles.data?.[e.recorded_by] ?? null) : null),
-      }));
-    const fromOthers: UnifiedRow[] = (others.data ?? []).map((c) => ({
-      id: `c-${c.id}`,
-      number: c.transaction_number,
-      date: c.transaction_date,
-      type: c.transaction_type,
-      category: CATEGORY_LABELS[c.category] ?? c.category,
-      description: c.description,
-      amount: Number(c.amount),
-      payment_method: c.payment_method,
-      payer_payee: c.payer_payee,
-      related_reference: c.related_reference,
-      recorded_by: c.recorded_by_name,
-    }));
-    return [...fromReceipts, ...fromPayments, ...fromOthers].sort(
+    const fromOthers: UnifiedRow[] = (others.data ?? [])
+      .filter(
+        (c) =>
+          c.related_reference === SALES_CASH_OUT ||
+          !(c.transaction_type === "receipt" && c.category === EXPENSES_CASH_IN_CATEGORY),
+      )
+      .map((c) => {
+        const cashOut = c.related_reference === SALES_CASH_OUT;
+        return {
+          id: `c-${c.id}`,
+          number: c.transaction_number,
+          date: c.transaction_date,
+          type: cashOut ? "payment" : c.transaction_type,
+          category: cashOut ? "Moved to Expenses" : (CATEGORY_LABELS[c.category] ?? c.category),
+          description: c.description,
+          amount: Number(c.amount),
+          payment_method: c.payment_method,
+          payer_payee: c.payer_payee,
+          related_reference: c.related_reference,
+          recorded_by: c.recorded_by_name,
+          counts: true,
+          cashOut,
+        };
+      });
+    return [...fromReceipts, ...fromOthers].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
-  }, [receipts.data, payments.data, others.data, profiles.data]);
+  }, [receipts.data, others.data, profiles.data]);
 
   const filtered = useMemo(() => {
     let r = rows;
     if (typeFilter !== "all") r = r.filter((x) => x.type === typeFilter);
-    const query = q.trim().toLowerCase();
-    if (query) {
-      r = r.filter(
-        (x) =>
-          x.number.toLowerCase().includes(query) ||
-          (x.description ?? "").toLowerCase().includes(query) ||
-          (x.payer_payee ?? "").toLowerCase().includes(query) ||
-          x.category.toLowerCase().includes(query),
-      );
-    }
+    if (q.trim()) r = r.filter((x) => matchesSearch(q, x, x.cashOut ? "cash out" : null));
     return r;
   }, [rows, typeFilter, q]);
 
-  const totalReceipts = rows.filter((r) => r.type === "receipt").reduce((s, r) => s + r.amount, 0);
-  const totalPayments = rows.filter((r) => r.type === "payment").reduce((s, r) => s + r.amount, 0);
+  // Total Revenue = customer payments (not rejected/reversed) + other income.
+  // Cash Out = money moved to Expenses + other outflows paid from here; each
+  // Cash Out is Cash In on the Expenses page, which pays expenses from it, so
+  // expenses are never deducted here as well.
+  const counted = rows.filter((r) => r.counts);
+  const totalRevenue = counted
+    .filter((r) => r.type === "receipt")
+    .reduce((sum, r) => sum + r.amount, 0);
+  const movedToExpenses = counted.filter((r) => r.cashOut).reduce((sum, r) => sum + r.amount, 0);
+  const otherOutflows = counted
+    .filter((r) => r.type === "payment" && !r.cashOut)
+    .reduce((sum, r) => sum + r.amount, 0);
+  const totalCashOut = movedToExpenses + otherOutflows;
+  const net = totalRevenue - totalCashOut;
 
   const recordPayment = useMutation({
     mutationFn: async (input: {
@@ -463,10 +459,13 @@ function LedgerPage() {
           <CardContent className="p-5 flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                Total Receipts
+                Total Revenue
               </div>
               <div className="mt-2 text-2xl font-semibold text-success">
-                {money(totalReceipts, currency)}
+                {money(totalRevenue, currency)}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Sales payments and other income
               </div>
             </div>
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-success/10 text-success">
@@ -477,11 +476,13 @@ function LedgerPage() {
         <Card className="rounded-2xl">
           <CardContent className="p-5 flex items-center justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                Total Payments
-              </div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Cash Out</div>
               <div className="mt-2 text-2xl font-semibold text-destructive">
-                {money(totalPayments, currency)}
+                {money(totalCashOut, currency)}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {money(movedToExpenses, currency)} moved to Expenses
+                {otherOutflows > 0 && <> · {money(otherOutflows, currency)} other</>}
               </div>
             </div>
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-destructive/10 text-destructive">
@@ -494,10 +495,11 @@ function LedgerPage() {
             <div>
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Net</div>
               <div
-                className={`mt-2 text-2xl font-semibold ${totalReceipts - totalPayments >= 0 ? "text-success" : "text-destructive"}`}
+                className={`mt-2 text-2xl font-semibold ${net >= 0 ? "text-success" : "text-destructive"}`}
               >
-                {money(totalReceipts - totalPayments, currency)}
+                {money(net, currency)}
               </div>
+              <div className="mt-1 text-xs text-muted-foreground">Revenue left after Cash Out</div>
             </div>
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
               <Wallet className="h-5 w-5" />
@@ -553,10 +555,12 @@ function LedgerPage() {
                   <TableCell>{r.date}</TableCell>
                   <TableCell>
                     <Badge
-                      variant={r.type === "receipt" ? "secondary" : "destructive"}
+                      variant={
+                        r.cashOut ? "outline" : r.type === "receipt" ? "secondary" : "destructive"
+                      }
                       className="capitalize"
                     >
-                      {r.type}
+                      {r.cashOut ? "cash out" : r.type}
                     </Badge>
                   </TableCell>
                   <TableCell>{r.category}</TableCell>
@@ -575,7 +579,10 @@ function LedgerPage() {
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell
+                    className={`text-right font-medium ${r.counts ? "" : "line-through text-muted-foreground"}`}
+                    title={r.counts ? undefined : "Not counted in the totals"}
+                  >
                     {money(r.amount, currency)}
                   </TableCell>
                   <TableCell>
@@ -658,10 +665,16 @@ function LedgerPage() {
               <div>
                 <span className="text-muted-foreground">Type:</span>{" "}
                 <Badge
-                  variant={detailTarget.type === "receipt" ? "secondary" : "destructive"}
+                  variant={
+                    detailTarget.cashOut
+                      ? "outline"
+                      : detailTarget.type === "receipt"
+                        ? "secondary"
+                        : "destructive"
+                  }
                   className="capitalize"
                 >
-                  {detailTarget.type}
+                  {detailTarget.cashOut ? "cash out" : detailTarget.type}
                 </Badge>
               </div>
               <div>
@@ -897,7 +910,9 @@ function NewPaymentDialog({
 // write, but that meant it couldn't be recorded by the person actually
 // holding the till; 'receipts-payments' write (writeLedger) or 'payments'
 // write (writePayments) gates it now that it lives here. The recorded inflow
-// shows up on the Expenses page as Cash In.
+// shows up on the Expenses page as Cash In, and this ledger deducts it from
+// Total Receipts so the sales takings and the Expenses float always add up.
+// The database refuses a Cash Out larger than the sales cash held.
 function CashOutDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");
@@ -918,7 +933,7 @@ function CashOutDialog({ factoryId, onDone }: { factoryId: string; onDone: () =>
           payment_method: method,
           payer_payee: receivedFrom || null,
           description: notes || "Cash remitted from sales",
-          related_reference: "sales_cash_out",
+          related_reference: SALES_CASH_OUT,
           recorded_by_name: recordedBy.trim(),
         } as any,
       });
@@ -1008,7 +1023,6 @@ function TransactionForm({ factoryId, onDone }: { factoryId: string; onDone: () 
       ? [
           ["other_income", "Other Income"],
           ["donation_endowment", "Donations / Endowments"],
-          ["other_inflow", "Other Cash Inflow"],
         ]
       : [["other_outflow", "Other Cash Outflow"]];
 

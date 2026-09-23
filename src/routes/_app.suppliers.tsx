@@ -40,6 +40,7 @@ import { money, num } from "@/lib/format";
 import { toast } from "sonner";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/suppliers")({
   head: () => ({ meta: [{ title: "Suppliers — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -89,23 +90,24 @@ function SuppliersPage() {
   const qc = useQueryClient();
   const { canWrite } = usePermissions();
   const write = canWrite("suppliers");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [viewing, setViewing] = useState<Supplier | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
 
   const list = useQuery({
-    queryKey: ["suppliers", factoryId, q],
+    queryKey: ["suppliers", factoryId],
     enabled: !!factoryId,
     queryFn: async () => {
       let query = supabase.from("suppliers").select("*").eq("factory_id", factoryId!).order("name");
-      if (q.trim()) query = query.ilike("name", `%${q.trim()}%`);
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Supplier[];
     },
   });
+  // Search every field (name, phone, email, address, balances…) as you type.
+  const shown = (list.data ?? []).filter((row) => matchesSearch(q, row));
 
   const save = useMutation({
     mutationFn: async (form: Partial<Supplier>) => {
@@ -216,7 +218,7 @@ function SuppliersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((s) => (
+              {shown.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell>{s.category ?? "—"}</TableCell>
@@ -273,7 +275,7 @@ function SuppliersPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {(list.data ?? []).length === 0 && (
+              {shown.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No suppliers yet.

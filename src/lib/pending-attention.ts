@@ -61,7 +61,7 @@ export function usePendingAttention() {
     supabase
       .from("expenses")
       .select("id", { count: "exact", head: true })
-      .eq("approval_status", "pending")
+      .eq("status", "pending_approval")
       .neq("submitted_by", uid ?? ""),
   );
   const debts = useCount("debts", canApprove("debts"), uid, () =>

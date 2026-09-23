@@ -28,7 +28,7 @@ import {
   Cell,
 } from "recharts";
 import { money } from "@/lib/format";
-import { COUNTED_STATUSES, fetchAll } from "@/lib/metrics";
+import { COUNTED_STATUSES, UNCOUNTED_PAYMENT_FILTER, fetchAll } from "@/lib/metrics";
 import { TrendingDown, Banknote, CreditCard, Landmark, Coins } from "lucide-react";
 import { startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
 
@@ -46,8 +46,8 @@ export const Route = createFileRoute("/_app/cash-ledger/")({
 type CategoryRow = { key: string; label: string; direction: "in" | "out"; amount: number };
 
 const PRESETS: { key: string; label: string; from: () => Date }[] = [
-  { key: "week", label: "This week", from: () => startOfWeek(new Date()) },
-  { key: "month", label: "This month", from: () => startOfMonth(new Date()) },
+  { key: "week", label: "Current week", from: () => startOfWeek(new Date()) },
+  { key: "month", label: "Current month", from: () => startOfMonth(new Date()) },
   { key: "year", label: "This year", from: () => startOfYear(new Date()) },
 ];
 
@@ -71,7 +71,7 @@ function CashFlowOverview() {
     queryKey: ["cf-sales-income", factoryId, from, to],
     enabled: !!factoryId,
     queryFn: async () => {
-      // Every payment in range (rejected ones excluded), not just the first
+      // Every payment in range (rejected/reversed ones excluded), not just the first
       // page of results.
       const data = await fetchAll<{ amount: number; payment_method: string }>(
         (a, b) =>
@@ -79,7 +79,7 @@ function CashFlowOverview() {
             .from("payments_received")
             .select("amount,payment_method")
             .eq("factory_id", factoryId!)
-            .neq("status", "rejected")
+            .not("status", "in", UNCOUNTED_PAYMENT_FILTER)
             .gte("payment_date", from)
             .lte("payment_date", to)
             .order("id")
@@ -171,6 +171,9 @@ function CashFlowOverview() {
         .from("cash_transactions")
         .select("amount,category")
         .eq("factory_id", factoryId!)
+        // Sales Cash Out just moves sales takings (already in Sales Income)
+        // into the Expenses float — not a new inflow.
+        .or("related_reference.is.null,related_reference.neq.sales_cash_out")
         .gte("transaction_date", from)
         .lte("transaction_date", to);
       if (error) throw error;

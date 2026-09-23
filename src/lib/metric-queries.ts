@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { COUNTED_STATUSES, UNCOUNTED_PAYMENT_STATUS, fetchAll } from "@/lib/metrics";
+import { COUNTED_STATUSES, UNCOUNTED_PAYMENT_FILTER, fetchAll } from "@/lib/metrics";
 
 // Row sources for every money figure on the dashboards. Each one applies the
 // same inclusion rules as the page that owns the data (Sales, Cash Ledger,
@@ -86,7 +86,7 @@ export function paymentRows(factoryId: string, fromDay: string, toDay: string) {
           "id,receipt_number,amount,payment_method,payment_date,status,sale_id,remarks,customers(name)",
         )
         .eq("factory_id", factoryId)
-        .neq("status", UNCOUNTED_PAYMENT_STATUS)
+        .not("status", "in", UNCOUNTED_PAYMENT_FILTER)
         .gte("payment_date", fromDay)
         .lte("payment_date", toDay)
         .order("payment_date", { ascending: false })
@@ -96,7 +96,9 @@ export function paymentRows(factoryId: string, fromDay: string, toDay: string) {
 }
 
 // Receipts and payments that have no home in sales/expenses (donations, other
-// income, other outflows).
+// income, other outflows). Sales Cash Out rows are left out: they only move
+// sales takings (already counted via payments_received) into the Expenses
+// float, so counting them again would double the money in.
 export function cashTxnRows(factoryId: string, fromDay: string, toDay: string) {
   return fetchAll<CashTxnRow>(
     (a, b) =>
@@ -106,6 +108,7 @@ export function cashTxnRows(factoryId: string, fromDay: string, toDay: string) {
           "id,transaction_number,transaction_date,transaction_type,category,description,amount,payment_method,payer_payee",
         )
         .eq("factory_id", factoryId)
+        .or("related_reference.is.null,related_reference.neq.sales_cash_out")
         .gte("transaction_date", fromDay)
         .lte("transaction_date", toDay)
         .order("transaction_date", { ascending: false })

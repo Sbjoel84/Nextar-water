@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { generateReceiptPdf, generateDebtStatementPdf } from "@/lib/pdf";
 import { CustomerProfileDialog, type Customer } from "@/routes/_app.customers";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/cash-ledger/debts")({
   head: () => ({
@@ -146,7 +147,7 @@ function DebtsPage() {
   const [customerViewId, setCustomerViewId] = useState<string | null>(null);
   const [writeoffTarget, setWriteoffTarget] = useState<Debt | null>(null);
   const [reverseTarget, setReverseTarget] = useState<Debt | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useSearchQuery();
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "partial" | "unpaid">("all");
 
   const list = useQuery({
@@ -209,14 +210,7 @@ function DebtsPage() {
   const filtered = useMemo(() => {
     let rows = list.data ?? [];
     if (statusFilter !== "all") rows = rows.filter((d) => d.status === statusFilter);
-    const q = search.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter(
-        (d) =>
-          (d.customers?.name ?? "").toLowerCase().includes(q) ||
-          (d.sales?.invoice_number ?? "").toLowerCase().includes(q),
-      );
-    }
+    if (search.trim()) rows = rows.filter((d) => matchesSearch(search, d));
     return rows;
   }, [list.data, search, statusFilter]);
 

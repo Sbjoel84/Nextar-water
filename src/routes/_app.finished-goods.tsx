@@ -68,6 +68,7 @@ import { generateStockCardPdf } from "@/lib/pdf";
 import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/units";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
 import { PosDialog } from "./_app.sales";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/finished-goods")({
   head: () => ({
@@ -240,7 +241,7 @@ function FinishedGoodsPage() {
   const [posOpen, setPosOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "finished" | "semi_finished">("all");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [adjustTarget, setAdjustTarget] = useState<{
     product: Product;
     type: "adjusted" | "damaged";
@@ -515,15 +516,7 @@ function FinishedGoodsPage() {
   // Search only narrows which rows are shown in the table below — it
   // deliberately doesn't affect the summary cards above (those reflect the
   // type filter's overall totals, not "what happens to match this search").
-  const searchedList = filteredList.filter((p) => {
-    const query = q.trim().toLowerCase();
-    if (!query) return true;
-    return (
-      p.name.toLowerCase().includes(query) ||
-      (p.sku ?? "").toLowerCase().includes(query) ||
-      (p.product_categories?.name ?? "").toLowerCase().includes(query)
-    );
-  });
+  const searchedList = filteredList.filter((p) => matchesSearch(q, p));
 
   const summary = {
     totalSkus: filteredList.length,

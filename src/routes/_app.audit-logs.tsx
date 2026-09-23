@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Search, Eye, ScrollText } from "lucide-react";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 // Everything that touches a customer's advance / debt account. The quick
 // filter below narrows the trail to exactly these, server-side, so it isn't
@@ -99,7 +100,7 @@ const actionTone: Record<string, "default" | "secondary" | "outline" | "destruct
 };
 
 export function AuditLogsPage() {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [actionFilter, setActionFilter] = useState("all");
   const [detail, setDetail] = useState<LogRow | null>(null);
   const [scope, setScope] = useState<"all" | "customers">("all");
@@ -175,15 +176,16 @@ export function AuditLogsPage() {
   const filtered = useMemo(() => {
     let rows = logs.data ?? [];
     if (actionFilter !== "all") rows = rows.filter((r) => r.action === actionFilter);
-    const query = q.trim().toLowerCase();
-    if (query) {
-      rows = rows.filter(
-        (r) =>
-          (r.entity ?? "").toLowerCase().includes(query) ||
-          (r.entity_id ?? "").toLowerCase().includes(query) ||
-          (customerNames.data?.[r.entity_id ?? ""] ?? "").toLowerCase().includes(query) ||
-          actionLabel(r.action).toLowerCase().includes(query) ||
-          (profiles.data?.[r.user_id ?? ""] ?? "").toLowerCase().includes(query),
+    if (q.trim()) {
+      rows = rows.filter((r) =>
+        matchesSearch(
+          q,
+          r,
+          r.entity_id,
+          customerNames.data?.[r.entity_id ?? ""],
+          actionLabel(r.action),
+          profiles.data?.[r.user_id ?? ""],
+        ),
       );
     }
     return rows;

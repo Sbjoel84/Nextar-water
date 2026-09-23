@@ -63,8 +63,8 @@ import { startOfMonth, startOfWeek, startOfYear } from "date-fns";
 
 const PRESETS: { key: string; label: string; from: () => Date }[] = [
   { key: "today", label: "Today", from: () => new Date() },
-  { key: "week", label: "This week", from: () => startOfWeek(new Date()) },
-  { key: "month", label: "This month", from: () => startOfMonth(new Date()) },
+  { key: "week", label: "Current week", from: () => startOfWeek(new Date()) },
+  { key: "month", label: "Current month", from: () => startOfMonth(new Date()) },
   { key: "year", label: "This year", from: () => startOfYear(new Date()) },
 ];
 

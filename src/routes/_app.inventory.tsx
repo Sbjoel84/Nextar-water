@@ -33,6 +33,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { matchesSearch } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/inventory")({
   head: () => ({
@@ -162,19 +163,13 @@ function InventoryOverviewPage() {
   });
 
   const filteredMaterials = useMemo(() => {
-    const q = materialSearch.trim().toLowerCase();
     const rows = materials.data ?? [];
-    return q ? rows.filter((m) => m.name.toLowerCase().includes(q)) : rows;
+    return rows.filter((m) => matchesSearch(materialSearch, m));
   }, [materials.data, materialSearch]);
 
   const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase();
     const rows = products.data ?? [];
-    return q
-      ? rows.filter(
-          (p) => p.name.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q),
-        )
-      : rows;
+    return rows.filter((p) => matchesSearch(productSearch, p));
   }, [products.data, productSearch]);
 
   const summary = useMemo(() => {
@@ -230,7 +225,9 @@ function InventoryOverviewPage() {
             </PopoverTrigger>
             <PopoverContent align="start" className="max-h-72 w-72 overflow-y-auto p-1">
               {(products.data ?? []).length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">No finished products yet.</div>
+                <div className="px-2 py-3 text-sm text-muted-foreground">
+                  No finished products yet.
+                </div>
               ) : (
                 (products.data ?? []).map((p) => (
                   <div

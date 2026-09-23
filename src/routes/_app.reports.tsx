@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RequireAccess } from "@/components/layout/require-access";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
@@ -11,7 +11,10 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -95,8 +98,8 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "yesterday", label: "Yesterday" },
   { key: "daily", label: "Last 24h" },
-  { key: "weekly", label: "This Week" },
-  { key: "monthly", label: "This Month" },
+  { key: "weekly", label: "Current Week" },
+  { key: "monthly", label: "Current Month" },
   { key: "yearly", label: "This Year" },
   { key: "custom", label: "Custom Date" },
 ];
@@ -125,8 +128,96 @@ function rangeBounds(
   return { start: null, end: null };
 }
 
+// Production types for the report filter, grouped by line. Production type
+// is optional when production is recorded, so a record's type is worked out
+// from what was produced — product name, its category and the production type
+// name — matched against these keywords (first match wins, in order).
+type ProductionLine = "water" | "nylon";
+const PRODUCTION_TYPE_GROUPS: {
+  line: ProductionLine;
+  label: string;
+  types: { key: string; label: string; match: RegExp }[];
+}[] = [
+  {
+    line: "water",
+    label: "Water Production",
+    types: [
+      {
+        key: "dispenser_water",
+        label: "Dispenser Water",
+        match: /dispenser|gallon|keg|(18\.9|19|20)\s*(l|lt|ltr|litre|liter)s?\b/i,
+      },
+      { key: "bottle_water", label: "Bottle Water", match: /bottle|\d+\s*cl\b|\bpet\b/i },
+      { key: "sachet_water", label: "Sachet Water", match: /sachet|pure\s*water/i },
+    ],
+  },
+  {
+    line: "nylon",
+    label: "Nylon Production",
+    types: [
+      { key: "nylon_bag", label: "Nylon Bag", match: /bag|carrier|shopping/i },
+      { key: "nylon_film", label: "Nylon Film / Roll", match: /film|roll|sheet|wrap/i },
+    ],
+  },
+];
+const PRODUCTION_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  PRODUCTION_TYPE_GROUPS.flatMap((g) => g.types.map((t) => [t.key, t.label])),
+);
+
+type ProductForType = {
+  name?: string | null;
+  product_categories?: { name?: string | null; product_line?: string | null } | null;
+};
+
+function productionLineOf(
+  product: ProductForType | null | undefined,
+  scope?: string | null,
+): ProductionLine | null {
+  const line = product?.product_categories?.product_line;
+  if (line === "water" || line === "nylon") return line;
+  if (scope === "WATER") return "water";
+  if (scope === "NYLON") return "nylon";
+  return null;
+}
+
+function productionTypeOf(
+  product: ProductForType | null | undefined,
+  scope?: string | null,
+  typeName?: string | null,
+): string | null {
+  const text = [product?.name, product?.product_categories?.name, typeName]
+    .filter(Boolean)
+    .join(" ");
+  if (!text) return null;
+  const line = productionLineOf(product, scope);
+  for (const g of PRODUCTION_TYPE_GROUPS) {
+    if (line && g.line !== line) continue;
+    for (const t of g.types) if (t.match.test(text)) return t.key;
+  }
+  return null;
+}
+
+// "all" | "line:water" | "line:nylon" | a type key
+function matchesProductionType(
+  filter: string | undefined,
+  product: ProductForType | null | undefined,
+  scope?: string | null,
+  typeName?: string | null,
+) {
+  if (!filter || filter === "all") return true;
+  if (filter.startsWith("line:")) {
+    const line =
+      productionLineOf(product, scope) ??
+      PRODUCTION_TYPE_GROUPS.find((g) =>
+        g.types.some((t) => t.key === productionTypeOf(product, scope, typeName)),
+      )?.line;
+    return line === filter.slice(5);
+  }
+  return productionTypeOf(product, scope, typeName) === filter;
+}
+
 type ProductionReportFilters = {
-  productionTypeId?: string;
+  productionType?: string;
   department?: string;
   supervisor?: string;
   status?: string;
@@ -181,11 +272,9 @@ async function fetchReport(
       let q = supabase
         .from("production")
         .select(
-          "production_number,production_date,created_at,quantity_produced,unit,production_cost,supervisor,batch_number,department,production_scope,status,product_id,production_type_id,products(name),production_types(name)",
+          "production_number,production_date,created_at,quantity_produced,unit,production_cost,supervisor,batch_number,department,production_scope,status,product_id,production_type_id,products(name,product_categories(name,product_line)),production_types(name)",
         )
         .eq("factory_id", factoryId);
-      if (productionFilters?.productionTypeId)
-        q = q.eq("production_type_id", productionFilters.productionTypeId) as any;
       if (productionFilters?.department)
         q = q.ilike("department", `%${productionFilters.department}%`) as any;
       if (productionFilters?.supervisor)
@@ -196,6 +285,14 @@ async function fetchReport(
         q = q.ilike("batch_number", `%${productionFilters.batchNumber}%`) as any;
       const { data, error } = await applyRange(q.order("production_date", { ascending: false }));
       if (error) throw error;
+      const typed = (data ?? []).filter((r: any) =>
+        matchesProductionType(
+          productionFilters?.productionType,
+          r.products,
+          r.production_scope,
+          r.production_types?.name,
+        ),
+      );
       return {
         columns: [
           { key: "production_number", label: "Reference" },
@@ -211,10 +308,15 @@ async function fetchReport(
           { key: "batch_number", label: "Batch/Ref" },
           { key: "production_cost", label: "Cost" },
         ],
-        rows: (data ?? []).map((r: any) => ({
+        rows: typed.map((r: any) => ({
           ...r,
           product: r.products?.name ?? "—",
-          production_type: r.production_types?.name ?? "—",
+          production_type:
+            PRODUCTION_TYPE_LABEL[
+              productionTypeOf(r.products, r.production_scope, r.production_types?.name) ?? ""
+            ] ??
+            r.production_types?.name ??
+            "—",
           created_at: new Date(r.created_at).toLocaleString(),
           status: String(r.status ?? "").replace(/_/g, " "),
         })),
@@ -576,6 +678,37 @@ function ReportsPage() {
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-01"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [prodType, setProdType] = useState("all");
+  // Water and Nylon are separate factories: each factory's report only offers
+  // its own production types.
+  const factoryLine = useQuery({
+    queryKey: ["report-factory-line", factoryId],
+    enabled: !!factoryId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("factories")
+        .select("code")
+        .eq("id", factoryId!)
+        .maybeSingle();
+      if (error) throw error;
+      const code = (data?.code ?? "").toLowerCase();
+      return code === "water" || code === "nylon" ? (code as ProductionLine) : null;
+    },
+  });
+  const typeGroups = useMemo(
+    () =>
+      factoryLine.data
+        ? PRODUCTION_TYPE_GROUPS.filter((g) => g.line === factoryLine.data)
+        : PRODUCTION_TYPE_GROUPS,
+    [factoryLine.data],
+  );
+  // Switching factory drops a type that belongs to the other line.
+  useEffect(() => {
+    if (prodType === "all") return;
+    const visible = typeGroups.some(
+      (g) => prodType === `line:${g.line}` || g.types.some((t) => t.key === prodType),
+    );
+    if (!visible) setProdType("all");
+  }, [typeGroups, prodType]);
   const [prodDepartment, setProdDepartment] = useState("");
   const [prodUser, setProdUser] = useState("");
   const [prodStatus, setProdStatus] = useState("all");
@@ -588,7 +721,7 @@ function ReportsPage() {
   );
   const productionFilters: ProductionReportFilters = useMemo(
     () => ({
-      productionTypeId: prodType === "all" ? undefined : prodType,
+      productionType: prodType === "all" ? undefined : prodType,
       department: prodDepartment || undefined,
       supervisor: prodUser || undefined,
       status: prodStatus === "all" ? undefined : prodStatus,
@@ -598,32 +731,36 @@ function ReportsPage() {
     [prodType, prodDepartment, prodUser, prodStatus, prodProduct, prodBatch],
   );
 
-  const productionTypes = useQuery({
-    queryKey: ["report-production-types", factoryId],
-    enabled: !!factoryId && reportKey === "production",
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("production_types")
-        .select("id,name")
-        .eq("active", true)
-        .order("name");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
   const productsForFilter = useQuery({
     queryKey: ["report-products", factoryId],
     enabled: !!factoryId && reportKey === "production",
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id,name")
+        .select("id,name,product_categories(name,product_line)")
         .eq("factory_id", factoryId!)
         .order("name");
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as unknown as ({ id: string; name: string } & ProductForType)[];
     },
   });
+  // The Product list only offers products of the chosen production type.
+  const productOptions = useMemo(
+    () =>
+      (productsForFilter.data ?? []).filter((p) => matchesProductionType(prodType, p, null, null)),
+    [productsForFilter.data, prodType],
+  );
+  const onProdTypeChange = (v: string) => {
+    setProdType(v);
+    if (
+      prodProduct !== "all" &&
+      !(productsForFilter.data ?? []).some(
+        (p) => p.id === prodProduct && matchesProductionType(v, p, null, null),
+      )
+    ) {
+      setProdProduct("all");
+    }
+  };
 
   const report = useQuery({
     queryKey: [
@@ -756,16 +893,27 @@ function ReportsPage() {
           <CardContent className="p-4 pt-0 flex flex-wrap items-end gap-3 border-t">
             <div>
               <Label className="mb-1 block text-xs">Production Type</Label>
-              <Select value={prodType} onValueChange={setProdType}>
-                <SelectTrigger className="w-[160px]">
+              <Select value={prodType} onValueChange={onProdTypeChange}>
+                <SelectTrigger className="w-[190px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All types</SelectItem>
-                  {(productionTypes.data ?? []).map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
+                  {typeGroups.map((g) => (
+                    <SelectGroup key={g.line}>
+                      <SelectSeparator />
+                      <SelectLabel>{g.label}</SelectLabel>
+                      {typeGroups.length > 1 && (
+                        <SelectItem value={`line:${g.line}`}>
+                          All {g.label.toLowerCase()}
+                        </SelectItem>
+                      )}
+                      {g.types.map((t) => (
+                        <SelectItem key={t.key} value={t.key} className="pl-10">
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
@@ -778,7 +926,7 @@ function ReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All products</SelectItem>
-                  {(productsForFilter.data ?? []).map((p) => (
+                  {productOptions.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>

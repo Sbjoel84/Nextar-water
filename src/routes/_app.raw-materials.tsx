@@ -66,6 +66,7 @@ import {
 } from "@/lib/units";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/raw-materials")({
   head: () => ({
@@ -220,7 +221,7 @@ function RawMaterialsPage() {
   const [transferTarget, setTransferTarget] = useState<Material | null>(null);
   const [historyTarget, setHistoryTarget] = useState<Material | null>(null);
   const [purchaseTarget, setPurchaseTarget] = useState<Material | null>(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
 
   const suppliers = useQuery({
     queryKey: ["suppliers-brief", factoryId],
@@ -510,15 +511,7 @@ function RawMaterialsPage() {
 
   // Narrows which rows the Materials table shows — doesn't touch the summary
   // cards above, which stay scoped to all active materials.
-  const searchedMaterials = (list.data ?? []).filter((m) => {
-    const query = q.trim().toLowerCase();
-    if (!query) return true;
-    return (
-      m.name.toLowerCase().includes(query) ||
-      (m.material_categories?.name ?? m.category ?? "").toLowerCase().includes(query) ||
-      (m.suppliers?.name ?? "").toLowerCase().includes(query)
-    );
-  });
+  const searchedMaterials = (list.data ?? []).filter((m) => matchesSearch(q, m));
 
   const printCard = async (m: Material) => {
     const { data, error } = await supabase

@@ -65,6 +65,7 @@ import {
   Ban,
   Loader2,
 } from "lucide-react";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/employees")({
   head: () => ({ meta: [{ title: "Employees — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -136,7 +137,7 @@ function EmployeesPage() {
   const qc = useQueryClient();
   const { canWrite } = usePermissions();
   const write = canWrite("employees");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [docsTarget, setDocsTarget] = useState<Employee | null>(null);
@@ -144,7 +145,7 @@ function EmployeesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
 
   const list = useQuery({
-    queryKey: ["employees-list", factoryId, q],
+    queryKey: ["employees-list", factoryId],
     enabled: !!factoryId,
     queryFn: async () => {
       let query = supabase
@@ -152,12 +153,13 @@ function EmployeesPage() {
         .select("*")
         .eq("factory_id", factoryId!)
         .order("full_name");
-      if (q.trim()) query = query.ilike("full_name", `%${q.trim()}%`);
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Employee[];
     },
   });
+  // Search every field (name, phone, email, address, balances…) as you type.
+  const shown = (list.data ?? []).filter((row) => matchesSearch(q, row));
 
   const invalidateAll = () => qc.invalidateQueries({ queryKey: ["employees-list"] });
 
@@ -237,7 +239,7 @@ function EmployeesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((e) => (
+              {shown.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell>
                     <EmployeePhoto path={e.photo_url} name={e.full_name} />
@@ -298,7 +300,7 @@ function EmployeesPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {(list.data ?? []).length === 0 && (
+              {shown.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     No employees yet.
@@ -1052,11 +1054,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
                   ) : (
                     <>
                       <Label className="text-xs">Number of months</Label>
-                      <MoneyInput
-                        min={1}
-                        value={instMonths}
-                        onChange={setInstMonths}
-                      />
+                      <MoneyInput min={1} value={instMonths} onChange={setInstMonths} />
                     </>
                   )}
                 </div>
@@ -1205,11 +1203,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
                 </div>
                 <div>
                   <Label className="text-xs">Year</Label>
-                  <MoneyInput
-                    groupThousands={false}
-                    value={pYear}
-                    onChange={setPYear}
-                  />
+                  <MoneyInput groupThousands={false} value={pYear} onChange={setPYear} />
                 </div>
               </div>
               <div>

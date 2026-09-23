@@ -36,7 +36,12 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { money } from "@/lib/format";
-import { COUNTED_STATUSES, fetchAll } from "@/lib/metrics";
+import {
+  COUNTED_STATUSES,
+  EXPENSES_CASH_IN_CATEGORY,
+  SALES_CASH_OUT,
+  fetchAll,
+} from "@/lib/metrics";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { toast } from "sonner";
@@ -64,6 +69,7 @@ import { generateExpenseVoucherPdf, generateReportPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { ApprovalHistory } from "@/components/workflow/approval-history";
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/expenses")({
   head: () => ({ meta: [{ title: "Expenses — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -109,6 +115,7 @@ type CashIn = {
   payer_payee: string | null;
   recorded_by_name: string;
   recorded_by: string | null;
+  related_reference: string | null;
   created_at: string;
 };
 
@@ -197,7 +204,7 @@ function ExpensesPage() {
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<Expense | null>(null);
   const [deleteCashInTarget, setDeleteCashInTarget] = useState<CashIn | null>(null);
   const [range, setRange] = useState<RangeKey>("month");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchQuery();
   const [typeFilter, setTypeFilter] = useState<LedgerTypeFilter>("all");
   const [approveTarget, setApproveTarget] = useState<Expense | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Expense | null>(null);
@@ -248,10 +255,14 @@ function ExpensesPage() {
           supabase
             .from("cash_transactions")
             .select(
-              "id,transaction_number,transaction_date,category,description,amount,payment_method,payer_payee,recorded_by_name,recorded_by,created_at",
+              "id,transaction_number,transaction_date,category,description,amount,payment_method,payer_payee,recorded_by_name,recorded_by,related_reference,created_at",
             )
             .eq("factory_id", factoryId!)
+            // Expenses runs on its own cash: every Cash In typed here plus every
+            // Cash Out moved from the Payments ledger. Other Income/Donations
+            // recorded on the ledger are Payments income, not Expenses cash.
             .eq("transaction_type", "receipt")
+            .eq("category", EXPENSES_CASH_IN_CATEGORY)
             .order("transaction_date", { ascending: false })
             .order("id")
             .range(a, b) as any,
@@ -282,11 +293,12 @@ function ExpensesPage() {
   // Chronological (oldest→newest) so cumulative Balance/Total Expenses read
   // naturally; the table then displays this reversed (newest first) while
   // keeping each row's already-computed running totals.
-  const rangeFiltered = useMemo(() => {
-    const since = rangeStart(range);
+  // The running Balance is carried from the very first entry, so a Daily/
+  // Weekly/Monthly view still shows the real cash left rather than restarting
+  // at zero; Total Expenses and Cash In are for the chosen range only.
+  const allRows = useMemo(() => {
     const rows: LedgerRow[] = [];
     (list.data ?? []).forEach((e) => {
-      if (since && new Date(e.expense_date) < since) return;
       rows.push({
         key: `e-${e.id}`,
         date: e.expense_date,
@@ -303,7 +315,7 @@ function ExpensesPage() {
       });
     });
     (cashIns.data ?? []).forEach((c) => {
-      if (since && new Date(c.transaction_date) < since) return;
+      const fromSales = c.related_reference === SALES_CASH_OUT;
       rows.push({
         key: `c-${c.id}`,
         date: c.transaction_date,
@@ -311,7 +323,7 @@ function ExpensesPage() {
         kind: "cash_in",
         details: c.description ?? "Cash in",
         sub: c.payer_payee ? `From: ${c.payer_payee}` : null,
-        category: "Cash In",
+        category: fromSales ? "Cash In · from sales" : "Cash In",
         amount: Number(c.amount),
         counts: true,
         statusLabel: null,
@@ -339,16 +351,34 @@ function ExpensesPage() {
       row.totalExpensesAfter = runningExpenses;
     }
     return rows;
-  }, [list.data, cashIns.data, range]);
+  }, [list.data, cashIns.data]);
 
-  const totalExpenses = rangeFiltered.length
-    ? (rangeFiltered[rangeFiltered.length - 1].totalExpensesAfter ?? 0)
-    : 0;
-  const totalCashIn = useMemo(
-    () => rangeFiltered.filter((r) => r.kind === "cash_in").reduce((s, r) => s + r.amount, 0),
-    [rangeFiltered],
-  );
-  const balance = totalCashIn - totalExpenses;
+  const since = rangeStart(range);
+  const sinceKey = since ? format(since, "yyyy-MM-dd") : null;
+  const rangeFiltered = useMemo(() => {
+    if (!sinceKey) return allRows;
+    const idx = allRows.findIndex((r) => r.date.slice(0, 10) >= sinceKey);
+    if (idx < 0) return [];
+    // The Total Expenses column counts from the start of the range.
+    const spentBefore = idx > 0 ? (allRows[idx - 1].totalExpensesAfter ?? 0) : 0;
+    return allRows.slice(idx).map((r) => ({
+      ...r,
+      totalExpensesAfter: (r.totalExpensesAfter ?? 0) - spentBefore,
+    }));
+  }, [allRows, sinceKey]);
+  // Cash available now: every counted Cash In minus every counted expense.
+  const balance = allRows.length ? (allRows[allRows.length - 1].balanceAfter ?? 0) : 0;
+  const openingBalance = useMemo(() => {
+    if (!sinceKey) return 0;
+    const before = allRows.filter((r) => r.date.slice(0, 10) < sinceKey);
+    return before.length ? (before[before.length - 1].balanceAfter ?? 0) : 0;
+  }, [allRows, sinceKey]);
+  const totalExpenses = rangeFiltered
+    .filter((r) => r.kind === "cash_out" && r.counts)
+    .reduce((s, r) => s + r.amount, 0);
+  const totalCashIn = rangeFiltered
+    .filter((r) => r.kind === "cash_in")
+    .reduce((s, r) => s + r.amount, 0);
   const expenseCount = rangeFiltered.filter((r) => r.kind === "cash_out" && r.counts).length;
   const cashInCount = rangeFiltered.filter((r) => r.kind === "cash_in").length;
 
@@ -356,13 +386,17 @@ function ExpensesPage() {
     let rows = [...rangeFiltered].reverse();
     if (typeFilter === "cash_in") rows = rows.filter((r) => r.kind === "cash_in");
     else if (typeFilter === "cash_out") rows = rows.filter((r) => r.kind === "cash_out");
-    const query = q.trim().toLowerCase();
-    if (query) {
-      rows = rows.filter(
-        (r) =>
-          r.details.toLowerCase().includes(query) ||
-          (r.sub ?? "").toLowerCase().includes(query) ||
-          r.category.toLowerCase().includes(query),
+    if (q.trim()) {
+      rows = rows.filter((r) =>
+        matchesSearch(
+          q,
+          r.expense ?? r.cashIn,
+          r.details,
+          r.sub,
+          r.category,
+          r.statusLabel,
+          r.kind === "cash_in" ? "cash in" : "expense cash out",
+        ),
       );
     }
     return rows;
@@ -507,6 +541,7 @@ function ExpensesPage() {
                   defaultType={defaultEntryType}
                   canCashOut={write}
                   canCashIn={writeCashIn}
+                  availableCash={balance}
                   currentUserName={currentUserName}
                   onDone={() => {
                     setFormOpen(false);
@@ -579,6 +614,11 @@ function ExpensesPage() {
               >
                 {money(balance, currency)}
               </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {sinceKey
+                  ? `Opening ${money(openingBalance, currency)} · cash available now`
+                  : "Cash available now"}
+              </div>
             </div>
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
               <Wallet className="h-5 w-5" />
@@ -600,10 +640,7 @@ function ExpensesPage() {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
-            <Select
-              value={typeFilter}
-              onValueChange={(v) => setTypeFilter(v as LedgerTypeFilter)}
-            >
+            <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as LedgerTypeFilter)}>
               <SelectTrigger className="h-9 w-[190px]">
                 <SelectValue />
               </SelectTrigger>
@@ -1144,6 +1181,7 @@ function EntryForm({
   defaultType,
   canCashOut,
   canCashIn,
+  availableCash,
   currentUserName,
   onDone,
 }: {
@@ -1154,6 +1192,7 @@ function EntryForm({
   defaultType: EntryType;
   canCashOut: boolean;
   canCashIn: boolean;
+  availableCash: number;
   currentUserName: string;
   onDone: () => void;
 }) {
@@ -1217,7 +1256,7 @@ function EntryForm({
           payload: {
             factory_id: factoryId,
             transaction_type: "receipt",
-            category: "other_inflow",
+            category: EXPENSES_CASH_IN_CATEGORY,
             transaction_date: date,
             description: description || null,
             amount,
@@ -1228,6 +1267,19 @@ function EntryForm({
         });
         if (error) throw error;
         return;
+      }
+
+      // Expenses are paid out of Cash In only. An approved expense being edited
+      // already has its amount taken out of the available cash.
+      const alreadyCounted =
+        editingExpense && COUNTED_STATUSES.includes(editingExpense.status)
+          ? Number(editingExpense.amount)
+          : 0;
+      const available = availableCash + alreadyCounted;
+      if (amount > available) {
+        throw new Error(
+          `Not enough Expenses cash: ${money(available)} available. Record a Cash In (or a Cash Out from sales) first.`,
+        );
       }
 
       let finalCategoryId = categoryId === "none" ? null : categoryId;

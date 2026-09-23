@@ -128,7 +128,7 @@ function ApprovalsPage() {
       const { data, error } = await supabase
         .from("expenses")
         .select("id,description,amount,expense_date,submitted_by")
-        .eq("approval_status", "pending")
+        .eq("status", "pending_approval")
         .order("expense_date", { ascending: false })
         .limit(50);
       if (error) throw error;

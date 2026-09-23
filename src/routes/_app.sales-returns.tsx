@@ -108,8 +108,8 @@ type RangeKey = "today" | "yesterday" | "weekly" | "monthly" | "yearly" | "custo
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "yesterday", label: "Yesterday" },
-  { key: "weekly", label: "This Week" },
-  { key: "monthly", label: "This Month" },
+  { key: "weekly", label: "Current Week" },
+  { key: "monthly", label: "Current Month" },
   { key: "yearly", label: "This Year" },
   { key: "custom", label: "Custom Date" },
 ];

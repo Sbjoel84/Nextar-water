@@ -66,6 +66,8 @@ import { ApprovalHistory } from "@/components/workflow/approval-history";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fetchAll } from "@/lib/metrics";
 
 export const Route = createFileRoute("/_app/sales")({
   head: () => ({ meta: [{ title: "Sales & POS — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -189,30 +191,23 @@ function SalesPage() {
   const sales = useQuery({
     queryKey: ["sales-list", factoryId],
     enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sales")
-        .select(
-          "id,invoice_number,sale_date,customer_id,customer_name,grand_total,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,created_by,rejected_reason,sales_person,sale_items(products(name))",
-        )
-        .eq("factory_id", factoryId!)
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      return (data ?? []) as unknown as SaleRow[];
-    },
+    // Every sale, not the latest 200, so search can find older invoices.
+    queryFn: () =>
+      fetchAll<SaleRow>(
+        (a, b) =>
+          supabase
+            .from("sales")
+            .select(
+              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,created_by,rejected_reason,sales_person,sale_items(products(name))",
+            )
+            .eq("factory_id", factoryId!)
+            .order("created_at", { ascending: false })
+            .order("id")
+            .range(a, b) as any,
+      ),
   });
-  const [q, setQ] = useState("");
-  const filteredSales = (sales.data ?? []).filter((s) => {
-    const query = q.trim().toLowerCase();
-    if (!query) return true;
-    return (
-      s.invoice_number.toLowerCase().includes(query) ||
-      (s.customer_name ?? "").toLowerCase().includes(query) ||
-      (s.sales_person ?? "").toLowerCase().includes(query) ||
-      (s.sale_items ?? []).some((it) => (it.products?.name ?? "").toLowerCase().includes(query))
-    );
-  });
+  const [q, setQ] = useSearchQuery();
+  const filteredSales = (sales.data ?? []).filter((s) => matchesSearch(q, s));
 
   const openInvoice = async (saleId: string, action: "download" | "print") => {
     const { data, error } = await supabase
