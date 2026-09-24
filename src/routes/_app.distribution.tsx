@@ -208,7 +208,7 @@ function DistributionPage() {
         <p className="text-sm text-muted-foreground">
           Every product leaves the store on a dispatch to a sales rep. The rep sells from van stock,
           returns what's unsold for inspection, and remits cash — their account nets it all against
-          the value of goods they took.
+          the value of products they took.
         </p>
       </div>
 
@@ -1371,7 +1371,7 @@ function CancelReturnDialog({ row, onDone }: { row: ReturnRow; onDone: () => voi
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Return cancelled — goods returned to van stock");
+      toast.success("Return cancelled — products returned to van stock");
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1645,7 +1645,7 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
   const s = summary.data;
   const rows: { label: string; value: number; strong?: boolean }[] = s
     ? [
-        { label: "Goods out (dispatched value)", value: s.goods_out_value },
+        { label: "Products out (dispatched value)", value: s.goods_out_value },
         { label: "Less: accepted returns", value: -s.accepted_only_value },
         { label: "Less: damage/rejects written off", value: -s.written_off_value },
         { label: "Less: cash remitted", value: -s.cash_remitted },

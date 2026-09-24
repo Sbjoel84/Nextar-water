@@ -718,7 +718,7 @@ function RawMaterialsPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              title="Submit Goods Receipt"
+                              title="Submit Item Receipt"
                               onClick={() => setReceiveTarget(m)}
                             >
                               <PackagePlus className="h-4 w-4 text-success" />
@@ -815,7 +815,7 @@ function RawMaterialsPage() {
         <Card className="rounded-2xl border-dashed">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              Pending Goods Receipts
+              Pending Item Receipts
               <Badge variant="destructive">{pendingReceipts.data!.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -1433,7 +1433,7 @@ function ReceiveDialog({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Submit Goods Receipt — {material.name}</DialogTitle>
+        <DialogTitle>Submit Item Receipt — {material.name}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-xs text-muted-foreground">

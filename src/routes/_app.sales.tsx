@@ -638,7 +638,7 @@ function SalesPage() {
                       {s.is_pr && (
                         <div
                           className="text-xs text-warning"
-                          title="Value of goods given out — not counted in revenue"
+                          title="Value of products given out — not counted in revenue"
                         >
                           PR value {money(Number(s.subtotal ?? 0))}
                         </div>
@@ -1215,7 +1215,7 @@ function AdvancePaymentDialog({ factoryId, onDone }: { factoryId: string; onDone
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
-          For a customer paying ahead of picking up goods. If they owe money, the oldest debts are
+          For a customer paying ahead of picking up products. If they owe money, the oldest debts are
           settled first and only the excess becomes advance to draw on in New Sale.
         </p>
         <div>
@@ -2097,7 +2097,7 @@ export function PosDialog({
               </div>
             )}
             <div className="flex justify-between">
-              <span>{isPr ? "Value of goods issued" : "Subtotal"}</span>
+              <span>{isPr ? "Value of products issued" : "Subtotal"}</span>
               <span>{money(totals.subtotal)}</span>
             </div>
             {!isPr && (

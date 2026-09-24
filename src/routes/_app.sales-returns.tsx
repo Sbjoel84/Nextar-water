@@ -247,7 +247,7 @@ function SalesReturnsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales Returns</h1>
           <p className="text-sm text-muted-foreground">
-            Returned goods must be inspected before any of it goes back into sellable stock — only
+            Returned products must be inspected before any of it goes back into sellable stock — only
             the accepted portion posts, and only after someone other than the receiver inspects it.
           </p>
         </div>
@@ -763,7 +763,7 @@ function InspectDialog({ row, onDone }: { row: ReturnRow; onDone: () => void }) 
           <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <p className="text-xs text-muted-foreground">
-          Only the accepted quantity posts to finished-goods stock. Damaged goes to the Damage
+          Only the accepted quantity posts to finished-products stock. Damaged goes to the Damage
           register; rejected is logged with no stock effect.
         </p>
       </div>

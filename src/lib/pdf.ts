@@ -214,7 +214,7 @@ export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = 
       y += bold ? 16 : 12;
     };
     if (data.is_pr) {
-      row("Value of goods issued", cur(data.subtotal));
+      row("Value of products issued", cur(data.subtotal));
       row("NOT BILLED — no payment due", "N/A", true, 10);
     } else {
       row("Subtotal", cur(data.subtotal));
@@ -1166,7 +1166,7 @@ export async function generateCustomerStatementPdf(
     ["Advance brought forward", cur(st.opening.credit)],
     ["Debt brought forward", cur(st.opening.debt)],
     ["Advance received", cur(st.totals.advanceReceived)],
-    ["Goods collected", cur(st.totals.goodsCollected)],
+    ["Products collected", cur(st.totals.goodsCollected)],
     ["Advance used", cur(st.totals.advanceUsed)],
     ["Debt paid off", cur(st.totals.debtSettled)],
     ["Closing advance", cur(st.closing.credit)],
@@ -1265,7 +1265,7 @@ export async function generateCustomerStatementPdf(
   }
   doc.setFontSize(8);
   doc.text(
-    "Advance is money the customer has paid that has not yet been used against goods. Debt is the value of goods collected that has not yet been paid for. The two are shown separately.",
+    "Advance is money the customer has paid that has not yet been used against products. Debt is the value of products collected that has not yet been paid for. The two are shown separately.",
     40,
     after,
     { maxWidth: pageW - 80 },

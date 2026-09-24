@@ -248,14 +248,14 @@ export function usePendingAttention() {
     },
     {
       key: "stock-finished",
-      label: "Finished goods write-offs pending",
+      label: "Finished products write-offs pending",
       to: "/finished-goods",
       query: stockFinished,
     },
     { key: "role-grants", label: "Role changes pending", to: "/admin", query: roleGrants },
     {
       key: "goods-receipts",
-      label: "Goods receipts awaiting confirmation",
+      label: "Item receipts awaiting confirmation",
       to: "/raw-materials",
       query: goodsReceipts,
     },

@@ -581,9 +581,9 @@ function ApprovalsPage() {
           {canConfirm("goods-receiving") && (
             <QueueCard
               icon={PackagePlus}
-              title="Goods Receiving"
+              title="Items Receiving"
               to="/raw-materials"
-              empty="No goods receipts awaiting confirmation."
+              empty="No item receipts awaiting confirmation."
               rows={(goodsReceipts.data ?? []).map((r: any) => ({
                 key: r.id,
                 cells: [

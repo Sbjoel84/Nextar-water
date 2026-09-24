@@ -77,7 +77,7 @@ export const nav: { section: string; items: NavItem[] }[] = [
         modules: ["raw-materials", "finished-goods"],
         tabs: [
           { label: "Raw Materials", module: "raw-materials" },
-          { label: "Finished Goods", module: "finished-goods" },
+          { label: "Finished Products", module: "finished-goods" },
         ],
       },
       { title: "Inventory", url: "/raw-materials", icon: Boxes, module: "raw-materials" },

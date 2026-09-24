@@ -21,7 +21,7 @@ const FEATURES = [
   {
     icon: Boxes,
     title: "Inventory & production",
-    desc: "Raw materials to finished goods, tracked end to end.",
+    desc: "Raw materials to finished products, tracked end to end.",
   },
   {
     icon: BarChart3,

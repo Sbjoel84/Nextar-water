@@ -350,7 +350,7 @@ function ProductionPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Production</h1>
           <p className="text-sm text-muted-foreground">
-            Batch runs recorded here — Store must confirm each one before it enters finished goods
+            Batch runs recorded here — Store must confirm each one before it enters finished products
             inventory.
           </p>
         </div>
@@ -540,7 +540,7 @@ function ProductionPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Cancel this batch?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Nothing has posted to finished-goods stock yet, so this simply
+                                Nothing has posted to finished-products stock yet, so this simply
                                 removes the pending batch. Its linked production request (if any)
                                 becomes available for a new batch.
                               </AlertDialogDescription>
@@ -686,7 +686,7 @@ function CorrectionDialog({
       <div className="grid gap-3 max-h-[75vh] overflow-y-auto pr-1">
         <p className="text-sm text-muted-foreground">
           {row.products?.name} · Posted to stock: {num(oldAccepted)} {baseUnit}. This batch is
-          already in finished goods, so your {kind === "edit" ? "correction" : "delete"} goes to
+          already in finished products, so your {kind === "edit" ? "correction" : "delete"} goes to
           Store for approval before stock changes.
         </p>
         {kind === "edit" && (

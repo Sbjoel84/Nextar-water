@@ -164,7 +164,7 @@ function CustomersPage() {
         <KPI icon={Users} label="Total Customers" value={String(list.data?.length ?? 0)} />
         <KPI
           icon={Wallet}
-          label="Total Goods Value"
+          label="Total Products Value"
           value={money((list.data ?? []).reduce((s, c) => s + Number(c.total_purchases), 0))}
         />
         <KPI
@@ -208,7 +208,7 @@ function CustomersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Transactions</TableHead>
-                <TableHead className="text-right">Total Goods</TableHead>
+                <TableHead className="text-right">Total Products</TableHead>
                 <TableHead className="text-right">Paid</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead className="w-24"></TableHead>

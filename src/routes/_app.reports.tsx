@@ -76,7 +76,7 @@ type ReportKey =
 const REPORTS: { key: ReportKey; label: string }[] = [
   { key: "sales", label: "Sales" },
   { key: "production", label: "Production" },
-  { key: "inventory", label: "Inventory (Finished Goods Movements)" },
+  { key: "inventory", label: "Inventory (Finished Products Movements)" },
   { key: "raw_materials", label: "Raw Materials Movements" },
   { key: "purchase_orders", label: "Purchase Orders" },
   { key: "damage", label: "Damage Records" },

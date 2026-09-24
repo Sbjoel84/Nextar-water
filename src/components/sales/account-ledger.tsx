@@ -47,7 +47,7 @@ export function AccountSummaryCards({ summary }: { summary: AccountSummary }) {
       tone: summary.outstanding_debt > 0 ? "destructive" : undefined,
     },
     { label: "Total Advance Paid", value: money(summary.total_advance_paid) },
-    { label: "Goods Collected", value: money(summary.goods_collected) },
+    { label: "Products Collected", value: money(summary.goods_collected) },
     { label: "Advance Used", value: money(summary.advance_used) },
     { label: "Total Payments", value: money(summary.total_payments) },
   ];

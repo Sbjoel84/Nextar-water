@@ -371,7 +371,7 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
           tone="success"
         />
         <KPI icon={Boxes} label="Raw Material Stock" value={money(rawStockValue.data)} />
-        <KPI icon={Package} label="Finished Goods (units)" value={num(finishedGoods.data)} />
+        <KPI icon={Package} label="Finished Products (units)" value={num(finishedGoods.data)} />
         <KPI
           icon={AlertTriangle}
           label="Low Stock"
@@ -1100,12 +1100,12 @@ function StoreDashboard({ factoryId }: { factoryId: string }) {
     <div className="space-y-6">
       <PageHeader
         title="Store Dashboard"
-        hint="Finished-goods stock, what just arrived, and what's waiting to go out."
+        hint="Finished-products stock, what just arrived, and what's waiting to go out."
       />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <KPI
           icon={Package}
-          label="Finished Goods (SKUs)"
+          label="Finished Products (SKUs)"
           value={String((products.data ?? []).length)}
           hint="Active products"
         />

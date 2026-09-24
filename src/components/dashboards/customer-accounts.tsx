@@ -102,7 +102,7 @@ export function CustomerAccountsCard({ factoryId }: { factoryId: string }) {
         { key: "advance", label: "Available advance" },
         { key: "debt", label: "Outstanding debt" },
         { key: "status", label: "Status" },
-        { key: "goods", label: "Goods collected" },
+        { key: "goods", label: "Products collected" },
         { key: "advance_paid", label: "Total advance paid" },
         { key: "last", label: "Last transaction" },
       ],

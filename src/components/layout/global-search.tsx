@@ -46,7 +46,7 @@ const SOURCES: Source[] = [
     extra: (q) => q.is("deleted_at", null),
   },
   {
-    group: "Finished goods",
+    group: "Finished products",
     module: "finished-goods",
     table: "products",
     columns: ["name", "sku", "barcode"],

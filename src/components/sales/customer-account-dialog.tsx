@@ -322,7 +322,7 @@ export function CustomerAccountDialog({
                     <span className="font-medium">{money(statement.totals.advanceReceived)}</span>
                   </div>
                   <div>
-                    <span className="block text-xs text-muted-foreground">Goods collected</span>
+                    <span className="block text-xs text-muted-foreground">Products collected</span>
                     <span className="font-medium">{money(statement.totals.goodsCollected)}</span>
                   </div>
                   <div>

@@ -128,7 +128,7 @@ export async function fetchCustomerReport(
           { key: "status", label: "Status" },
           { key: "total_advance_paid", label: "Total Advance Paid" },
           { key: "advance_used", label: "Advance Used" },
-          { key: "goods_collected", label: "Goods Collected" },
+          { key: "goods_collected", label: "Products Collected" },
           { key: "total_payments", label: "Total Payments" },
           { key: "last_advance", label: "Last Advance" },
           { key: "last_activity", label: "Last Activity" },

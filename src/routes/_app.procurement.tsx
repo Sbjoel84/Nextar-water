@@ -162,7 +162,7 @@ function ProcurementPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Procurement</h1>
         <p className="text-sm text-muted-foreground">
-          Every purchase request lands here, gets approved, and turns into a purchase order — Goods
+          Every purchase request lands here, gets approved, and turns into a purchase order — Items
           Receiving matches deliveries against those orders. Requests can also appear automatically
           when a material's stock drops to its reorder level.
         </p>
@@ -984,7 +984,7 @@ function OrdersSection({
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Receive goods"
+                            title="Receive items"
                             onClick={() => setReceiveTarget(row)}
                           >
                             <PackagePlus className="h-4 w-4 text-success" />
@@ -1257,7 +1257,7 @@ function ReceiveDialog({ row, onDone }: { row: PoRow; onDone: () => void }) {
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Receive Goods — {row.po_number}</DialogTitle>
+        <DialogTitle>Receive Items — {row.po_number}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-xs text-muted-foreground">

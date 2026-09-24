@@ -919,7 +919,7 @@ function UnitsOfMeasureCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Every unit picker in Raw Materials, Finished Goods, and Production reads from this list —
+          Every unit picker in Raw Materials, Finished Products, and Production reads from this list —
           add a unit here instead of changing code.
         </p>
         <div className="flex flex-wrap gap-2">

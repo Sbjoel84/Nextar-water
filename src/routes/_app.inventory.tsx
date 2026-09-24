@@ -256,7 +256,7 @@ function InventoryOverviewPage() {
       <Tabs defaultValue="materials">
         <TabsList>
           <TabsTrigger value="materials">Raw Materials</TabsTrigger>
-          {canSeeFinishedGoods && <TabsTrigger value="products">Finished Goods</TabsTrigger>}
+          {canSeeFinishedGoods && <TabsTrigger value="products">Finished Products</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="materials">
@@ -338,7 +338,7 @@ function InventoryOverviewPage() {
           <TabsContent value="products">
             <Card className="rounded-2xl">
               <CardHeader className="flex-row items-center justify-between gap-3">
-                <CardTitle>Finished Goods — {factoryLabel.name}</CardTitle>
+                <CardTitle>Finished Products — {factoryLabel.name}</CardTitle>
                 <div className="relative w-full max-w-xs">
                   <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -412,7 +412,7 @@ function InventoryOverviewPage() {
                     {filteredProducts.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                          No finished goods for {factoryLabel.name}.
+                          No finished products for {factoryLabel.name}.
                         </TableCell>
                       </TableRow>
                     )}

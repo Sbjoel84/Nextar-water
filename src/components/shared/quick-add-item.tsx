@@ -237,7 +237,7 @@ export function QuickAddProductDialog({
           </div>
           <p className="text-xs text-muted-foreground">
             The cost is saved with the product and stays until someone changes it on the Finished
-            Goods page. The Sales picker only lists products that have a category.
+            Products page. The Sales picker only lists products that have a category.
           </p>
         </div>
         <DialogFooter>
