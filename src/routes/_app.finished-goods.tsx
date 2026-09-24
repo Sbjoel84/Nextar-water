@@ -120,6 +120,7 @@ type PendingAdjustment = {
 type PendingBatch = {
   id: string;
   production_number: string;
+  product_id: string;
   quantity_produced: number;
   damaged_quantity: number | null;
   unit: string;
@@ -178,9 +179,15 @@ type PendingCorrection = {
   production: {
     production_number: string;
     unit: string;
+    product_id: string;
     products: { name: string; unit: string } | null;
   } | null;
 };
+
+// A product whose confirmed batches skip finished-goods stock and are
+// received straight into another factory's raw material (e.g. Nylon's Malula
+// pure water rolls -> Water's raw materials). See confirm_production_batch().
+type SupplyLink = { materialName: string; unit: string; factoryName: string };
 
 // Change in finished-goods stock that approving this correction applies —
 // mirrors approve_production_correction().
@@ -318,13 +325,39 @@ function FinishedGoodsPage() {
       const { data, error } = await supabase
         .from("production")
         .select(
-          "id,production_number,quantity_produced,damaged_quantity,unit,batch_number,created_by,created_at,products(name,unit)",
+          "id,production_number,product_id,quantity_produced,damaged_quantity,unit,batch_number,created_by,created_at,products(name,unit)",
         )
         .eq("factory_id", factoryId!)
         .eq("status", "pending_confirmation")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as unknown as PendingBatch[];
+    },
+  });
+
+  // Keyed by product id. Resolves to {} if the internal-supply migration
+  // hasn't been applied yet, so the page keeps working without it.
+  const supplyLinks = useQuery({
+    queryKey: ["product-supply-links", factoryId],
+    enabled: !!factoryId,
+    queryFn: async () => {
+      const links: Record<string, SupplyLink> = {};
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id,raw_materials!products_transfer_to_material_id_fkey(name,unit,factories(name))")
+        .eq("factory_id", factoryId!)
+        .not("transfer_to_material_id", "is", null);
+      if (error) return links;
+      for (const row of data ?? []) {
+        const m = row.raw_materials;
+        if (!m) continue;
+        links[row.id] = {
+          materialName: m.name,
+          unit: m.unit,
+          factoryName: m.factories?.name ?? "other factory",
+        };
+      }
+      return links;
     },
   });
 
@@ -335,7 +368,7 @@ function FinishedGoodsPage() {
       const { data, error } = await (supabase as any)
         .from("production_corrections")
         .select(
-          "id,kind,old_values,new_quantity_produced,new_damaged_quantity,reason,requested_by,requested_by_name,requested_at,production(production_number,unit,products(name,unit))",
+          "id,kind,old_values,new_quantity_produced,new_damaged_quantity,reason,requested_by,requested_by_name,requested_at,production(production_number,unit,product_id,products(name,unit))",
         )
         .eq("factory_id", factoryId!)
         .eq("review_status", "pending")
@@ -921,7 +954,14 @@ function FinishedGoodsPage() {
                         {b.production_number}
                         {b.batch_number ? ` · ${b.batch_number}` : ""}
                       </TableCell>
-                      <TableCell className="font-medium">{b.products?.name ?? "—"}</TableCell>
+                      <TableCell className="font-medium">
+                        {b.products?.name ?? "—"}
+                        {supplyLinks.data?.[b.product_id] && (
+                          <div className="text-xs font-normal text-muted-foreground">
+                            → {supplyLinks.data[b.product_id].factoryName} raw materials
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         {num(Number(b.quantity_produced))} {b.products?.unit ?? b.unit}
                       </TableCell>
@@ -995,6 +1035,12 @@ function FinishedGoodsPage() {
                       </TableCell>
                       <TableCell className="font-medium">
                         {c.production?.products?.name ?? "—"}
+                        {c.production && supplyLinks.data?.[c.production.product_id] && (
+                          <div className="text-xs font-normal text-muted-foreground">
+                            Adjusts {supplyLinks.data[c.production.product_id].factoryName} raw
+                            material
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={c.kind === "delete" ? "destructive" : "outline"}>
@@ -1116,6 +1162,7 @@ function FinishedGoodsPage() {
         {confirmTarget && (
           <ConfirmBatchDialog
             batch={confirmTarget}
+            supplyTo={supplyLinks.data?.[confirmTarget.product_id]}
             onDone={() => {
               setConfirmTarget(null);
               invalidateAll();
@@ -1518,7 +1565,15 @@ function AdjustDialog({
   );
 }
 
-function ConfirmBatchDialog({ batch, onDone }: { batch: PendingBatch; onDone: () => void }) {
+function ConfirmBatchDialog({
+  batch,
+  supplyTo,
+  onDone,
+}: {
+  batch: PendingBatch;
+  supplyTo?: SupplyLink;
+  onDone: () => void;
+}) {
   const [actualReceived, setActualReceived] = useState(Number(batch.quantity_produced));
   // Seeded from what Production already reported at batch creation, not 0 —
   // otherwise confirming here would silently overwrite their figure.
@@ -1543,7 +1598,11 @@ function ConfirmBatchDialog({ batch, onDone }: { batch: PendingBatch; onDone: ()
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(`Confirmed — ${num(accepted)} ${unit} posted to stock`);
+      toast.success(
+        supplyTo
+          ? `Confirmed — ${num(accepted)} ${unit} sent to ${supplyTo.factoryName} raw materials (${supplyTo.materialName})`
+          : `Confirmed — ${num(accepted)} ${unit} posted to stock`,
+      );
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1581,12 +1640,22 @@ function ConfirmBatchDialog({ batch, onDone }: { batch: PendingBatch; onDone: ()
         </div>
         <div className="rounded-md border bg-muted/30 p-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            Accepted Quantity (enters stock)
+            {supplyTo
+              ? `Accepted Quantity (goes to ${supplyTo.factoryName} raw materials)`
+              : "Accepted Quantity (enters stock)"}
           </div>
           <div className="mt-1 text-xl font-semibold">
             {num(accepted)} {unit}
           </div>
         </div>
+        {supplyTo && (
+          <p className="text-xs text-muted-foreground">
+            This product supplies another factory, so it bypasses finished-goods stock here. On
+            confirmation the accepted quantity is received into{" "}
+            <span className="font-medium text-foreground">{supplyTo.materialName}</span> for{" "}
+            {supplyTo.factoryName} production.
+          </p>
+        )}
       </div>
       <DialogFooter>
         <Button disabled={confirm.isPending} onClick={() => confirm.mutate()}>
