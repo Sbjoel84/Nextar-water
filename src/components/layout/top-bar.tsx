@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId } from "@/lib/use-factory";
 import { usePendingAttention } from "@/lib/pending-attention";
+import { useRealtimeInvalidate } from "@/lib/realtime";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,19 +46,55 @@ function NotificationsBell() {
     },
   });
 
-  const unreadCount = (notifications.data ?? []).filter((n) => !n.read).length;
+  // A factory-wide notification (user_id NULL) has one shared `read` flag
+  // nobody can set, so each user's read state for those lives in
+  // notification_reads. Resolves to an empty set if that migration isn't
+  // applied yet.
+  const broadcastReads = useQuery({
+    queryKey: ["notifications", "reads"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("notification_reads")
+        .select("notification_id");
+      if (error) return new Set<string>();
+      return new Set<string>(
+        (data ?? []).map((r: { notification_id: string }) => r.notification_id),
+      );
+    },
+  });
+
+  // Approving/rejecting elsewhere resolves the matching approval notification
+  // server-side. A resolved row is hidden by RLS, so its own change event never
+  // reaches the other approvers — listen on the request tables as well.
+  useRealtimeInvalidate(
+    ["notifications", "stock_adjustment_requests", "delete_requests"],
+    [["notifications"]],
+  );
+
+  const isRead = (n: { id: string; read: boolean }) =>
+    n.read || (broadcastReads.data?.has(n.id) ?? false);
+  const unreadCount = (notifications.data ?? []).filter((n) => !isRead(n)).length;
   const badgeCount = unreadCount + pendingTotal;
 
   const markAllRead = async () => {
-    const unreadIds = (notifications.data ?? []).filter((n) => !n.read).map((n) => n.id);
+    const unreadIds = (notifications.data ?? []).filter((n) => !isRead(n)).map((n) => n.id);
     if (unreadIds.length === 0) return;
-    const { error } = await supabase
-      .from("notifications")
-      .update({ read: true })
-      .in("id", unreadIds);
+    const { error } = await supabase.rpc(
+      "mark_notifications_read" as any,
+      {
+        p_ids: unreadIds,
+      } as any,
+    );
     if (error) {
-      toast.error(error.message);
-      return;
+      // Migration not applied yet: fall back to marking the user's own rows.
+      const { error: updateError } = await supabase
+        .from("notifications")
+        .update({ read: true })
+        .in("id", unreadIds);
+      if (updateError) {
+        toast.error(updateError.message);
+        return;
+      }
     }
     qc.invalidateQueries({ queryKey: ["notifications"] });
   };
@@ -110,7 +147,7 @@ function NotificationsBell() {
               {notifications.data!.map((n) => (
                 <div
                   key={n.id}
-                  className={`rounded-md p-2 text-sm ${n.read ? "" : "bg-accent/50"}`}
+                  className={`rounded-md p-2 text-sm ${isRead(n) ? "" : "bg-accent/50"}`}
                 >
                   <div className="font-medium">{n.title}</div>
                   {n.body && <div className="text-xs text-muted-foreground">{n.body}</div>}
