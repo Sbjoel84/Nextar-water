@@ -184,10 +184,29 @@ type PendingCorrection = {
   } | null;
 };
 
-// A product whose confirmed batches skip finished-goods stock and are
-// received straight into another factory's raw material (e.g. Nylon's Malula
-// pure water rolls -> Water's raw materials). See confirm_production_batch().
-type SupplyLink = { materialName: string; unit: string; factoryName: string };
+// A product linked to a raw material it supplies (e.g. Nylon's Malula pure
+// water rolls -> Water's raw materials). mode "auto": confirmed batches skip
+// finished-goods stock and go straight into the material (see
+// confirm_production_batch()). mode "on_demand": the product is also sold, so
+// batches enter finished goods and Store moves stock across with Transfer
+// (transfer_product_to_material()).
+type SupplyMode = "auto" | "on_demand";
+type SupplyLink = {
+  materialId: string;
+  materialName: string;
+  unit: string;
+  factoryName: string;
+  mode: SupplyMode;
+};
+type MaterialOption = {
+  id: string;
+  name: string;
+  unit: string;
+  factories: { name: string } | null;
+};
+
+// Only "auto" links reroute a confirmed batch away from finished goods.
+const autoSupply = (link: SupplyLink | undefined) => (link?.mode === "auto" ? link : undefined);
 
 // Change in finished-goods stock that approving this correction applies —
 // mirrors approve_production_correction().
@@ -342,19 +361,27 @@ function FinishedGoodsPage() {
     enabled: !!factoryId,
     queryFn: async () => {
       const links: Record<string, SupplyLink> = {};
-      const { data, error } = await (supabase as any)
-        .from("products")
-        .select("id,raw_materials!products_transfer_to_material_id_fkey(name,unit,factories(name))")
-        .eq("factory_id", factoryId!)
-        .not("transfer_to_material_id", "is", null);
+      const query = (cols: string) =>
+        (supabase as any)
+          .from("products")
+          .select(cols)
+          .eq("factory_id", factoryId!)
+          .not("transfer_to_material_id", "is", null);
+      const material =
+        "raw_materials!products_transfer_to_material_id_fkey(id,name,unit,factories(name))";
+      // supply_mode arrives with a later migration than the link itself.
+      let { data, error } = await query(`id,supply_mode,${material}`);
+      if (error) ({ data, error } = await query(`id,${material}`));
       if (error) return links;
       for (const row of data ?? []) {
         const m = row.raw_materials;
         if (!m) continue;
         links[row.id] = {
+          materialId: m.id,
           materialName: m.name,
           unit: m.unit,
           factoryName: m.factories?.name ?? "other factory",
+          mode: row.supply_mode === "on_demand" ? "on_demand" : "auto",
         };
       }
       return links;
@@ -441,6 +468,8 @@ function FinishedGoodsPage() {
     qc.invalidateQueries({ queryKey: ["damage-value-finished-goods"] });
     qc.invalidateQueries({ queryKey: ["production-corrections-pending"] });
     qc.invalidateQueries({ queryKey: ["production-corrections-pending-store"] });
+    qc.invalidateQueries({ queryKey: ["product-supply-links"] });
+    qc.invalidateQueries({ queryKey: ["raw-materials-list"] });
   };
 
   const approveCorrection = useMutation({
@@ -647,6 +676,7 @@ function FinishedGoodsPage() {
                   factoryId={factoryId}
                   categories={categories.data ?? []}
                   editing={editing}
+                  supplyLink={editing ? supplyLinks.data?.[editing.id] : undefined}
                   onDone={() => {
                     setFormOpen(false);
                     setEditing(null);
@@ -956,9 +986,9 @@ function FinishedGoodsPage() {
                       </TableCell>
                       <TableCell className="font-medium">
                         {b.products?.name ?? "—"}
-                        {supplyLinks.data?.[b.product_id] && (
+                        {autoSupply(supplyLinks.data?.[b.product_id]) && (
                           <div className="text-xs font-normal text-muted-foreground">
-                            → {supplyLinks.data[b.product_id].factoryName} raw materials
+                            → {supplyLinks.data?.[b.product_id]?.factoryName} raw materials
                           </div>
                         )}
                       </TableCell>
@@ -1035,12 +1065,13 @@ function FinishedGoodsPage() {
                       </TableCell>
                       <TableCell className="font-medium">
                         {c.production?.products?.name ?? "—"}
-                        {c.production && supplyLinks.data?.[c.production.product_id] && (
-                          <div className="text-xs font-normal text-muted-foreground">
-                            Adjusts {supplyLinks.data[c.production.product_id].factoryName} raw
-                            material
-                          </div>
-                        )}
+                        {c.production &&
+                          autoSupply(supplyLinks.data?.[c.production.product_id]) && (
+                            <div className="text-xs font-normal text-muted-foreground">
+                              Adjusts {supplyLinks.data?.[c.production.product_id]?.factoryName} raw
+                              material
+                            </div>
+                          )}
                       </TableCell>
                       <TableCell>
                         <Badge variant={c.kind === "delete" ? "destructive" : "outline"}>
@@ -1162,7 +1193,7 @@ function FinishedGoodsPage() {
         {confirmTarget && (
           <ConfirmBatchDialog
             batch={confirmTarget}
-            supplyTo={supplyLinks.data?.[confirmTarget.product_id]}
+            supplyTo={autoSupply(supplyLinks.data?.[confirmTarget.product_id])}
             onDone={() => {
               setConfirmTarget(null);
               invalidateAll();
@@ -1212,6 +1243,7 @@ function FinishedGoodsPage() {
         {transferTarget && (
           <TransferDialog
             product={transferTarget}
+            supplyTo={supplyLinks.data?.[transferTarget.id]}
             factories={(factories.data ?? []).filter((f) => f.id !== factoryId)}
             onDone={() => {
               setTransferTarget(null);
@@ -1240,13 +1272,30 @@ function ProductForm({
   factoryId,
   categories,
   editing,
+  supplyLink,
   onDone,
 }: {
   factoryId: string;
   categories: Category[];
   editing: Product | null;
+  supplyLink?: SupplyLink;
   onDone: () => void;
 }) {
+  const [supplyMaterial, setSupplyMaterial] = useState(supplyLink?.materialId ?? "none");
+  const [supplyMode, setSupplyMode] = useState<SupplyMode>(supplyLink?.mode ?? "auto");
+  const materials = useQuery({
+    queryKey: ["raw-materials-supply-options"],
+    enabled: !!editing,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("raw_materials")
+        .select("id,name,unit,factories(name)")
+        .eq("active", true)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as unknown as MaterialOption[];
+    },
+  });
   const unitsOfMeasure = useUnitsOfMeasure();
   const unitOptions = unitsOfMeasure.data ?? UNIT_OPTIONS_FALLBACK;
   const [name, setName] = useState(editing?.name ?? "");
@@ -1294,6 +1343,18 @@ function ProductForm({
             p_cost: costPrice,
           });
           if (costErr) throw costErr;
+        }
+        const newMaterial = supplyMaterial === "none" ? null : supplyMaterial;
+        if (
+          newMaterial !== (supplyLink?.materialId ?? null) ||
+          (newMaterial && supplyMode !== supplyLink?.mode)
+        ) {
+          const { error: linkErr } = await (supabase as any).rpc("set_product_supply_link", {
+            p_product_id: editing.id,
+            p_material_id: newMaterial,
+            p_mode: supplyMode,
+          });
+          if (linkErr) throw linkErr;
         }
       } else {
         const { error } = await supabase.from("products").insert({
@@ -1419,6 +1480,45 @@ function ProductForm({
             <MoneyInput min={0} step="0.001" value={reorderLevel} onChange={setReorderLevel} />
           </div>
         </div>
+        {editing && (
+          <div className="grid gap-3 rounded-md border p-3">
+            <div>
+              <Label>Supplies raw material</Label>
+              <Select value={supplyMaterial} onValueChange={setSupplyMaterial}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— Not used as a raw material —</SelectItem>
+                  {(materials.data ?? []).map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} ({m.unit}) · {m.factories?.name ?? "—"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {supplyMaterial !== "none" && (
+              <div>
+                <Label>How it's used</Label>
+                <Select value={supplyMode} onValueChange={(v) => setSupplyMode(v as SupplyMode)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Produced to use only</SelectItem>
+                    <SelectItem value="on_demand">Produced to sell and use</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {supplyMode === "auto"
+                    ? "Every batch Store confirms goes straight into this raw material, not finished goods."
+                    : "Confirmed batches enter finished goods so they can be sold. Move what's needed with Transfer."}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button disabled={save.isPending} onClick={() => save.mutate()}>
@@ -1767,23 +1867,39 @@ function RejectCorrectionDialog({
   );
 }
 
+// Destination value for "the raw material this product supplies" — factory
+// ids are uuids, so this can't collide.
+const TO_RAW_MATERIAL = "__raw_material__";
+
 function TransferDialog({
   product,
   factories,
+  supplyTo,
   onDone,
 }: {
   product: Product;
   factories: Factory[];
+  supplyTo?: SupplyLink;
   onDone: () => void;
 }) {
-  const [toFactory, setToFactory] = useState(factories[0]?.id ?? "");
+  const [toFactory, setToFactory] = useState(supplyTo ? TO_RAW_MATERIAL : (factories[0]?.id ?? ""));
   const [quantity, setQuantity] = useState(0);
   const [reason, setReason] = useState("");
+  const toMaterial = toFactory === TO_RAW_MATERIAL && !!supplyTo;
 
   const submit = useMutation({
     mutationFn: async () => {
       if (!toFactory) throw new Error("Select a destination factory");
       if (quantity <= 0) throw new Error("Quantity must be > 0");
+      if (toMaterial) {
+        const { error } = await (supabase as any).rpc("transfer_product_to_material", {
+          p_product_id: product.id,
+          p_quantity: quantity,
+          p_reason: reason || null,
+        });
+        if (error) throw error;
+        return;
+      }
       const { error } = await supabase.rpc("transfer_finished_stock", {
         payload: {
           product_id: product.id,
@@ -1795,7 +1911,11 @@ function TransferDialog({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Stock transferred");
+      toast.success(
+        toMaterial
+          ? `${num(quantity)} ${product.unit} moved to ${supplyTo!.factoryName} raw materials (${supplyTo!.materialName})`
+          : "Stock transferred",
+      );
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1811,12 +1931,17 @@ function TransferDialog({
           Available: {num(Number(product.current_stock))} {product.unit}
         </p>
         <div>
-          <Label>Destination factory</Label>
+          <Label>Destination</Label>
           <Select value={toFactory} onValueChange={setToFactory}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              {supplyTo && (
+                <SelectItem value={TO_RAW_MATERIAL}>
+                  {supplyTo.factoryName} raw materials — {supplyTo.materialName}
+                </SelectItem>
+              )}
               {factories.map((f) => (
                 <SelectItem key={f.id} value={f.id}>
                   {f.name}
@@ -1824,6 +1949,13 @@ function TransferDialog({
               ))}
             </SelectContent>
           </Select>
+          {toMaterial && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Leaves finished goods here and is received into{" "}
+              <span className="font-medium text-foreground">{supplyTo!.materialName}</span> for{" "}
+              {supplyTo!.factoryName} production.
+            </p>
+          )}
         </div>
         <div>
           <Label>Quantity</Label>

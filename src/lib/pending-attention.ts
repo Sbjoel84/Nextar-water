@@ -43,7 +43,7 @@ function useCount(
 }
 
 export function usePendingAttention() {
-  const { canApprove, canConfirm } = usePermissions();
+  const { canApprove, canConfirm, canPost } = usePermissions();
   const { data: uid } = useCurrentUserId();
   // approve_sale()/reject_sale() exempt an admin (super_admin) from the
   // self-approval block every other approver role is still under -- mirror
@@ -64,11 +64,17 @@ export function usePendingAttention() {
       .eq("status", "pending_approval")
       .neq("submitted_by", uid ?? ""),
   );
-  const debts = useCount("debts", canApprove("debts"), uid, () =>
+  // Write-offs waiting on this user's step: approve (pending_approval) and/or
+  // post (approved).
+  const debtStatuses = [
+    ...(canApprove("debts") ? ["pending_approval"] : []),
+    ...(canPost("debts") ? ["approved"] : []),
+  ];
+  const debts = useCount(`debts-${debtStatuses.join(",")}`, debtStatuses.length > 0, uid, () =>
     supabase
       .from("debts")
       .select("id", { count: "exact", head: true })
-      .eq("writeoff_status", "requested")
+      .in("writeoff_status", debtStatuses)
       .neq("writeoff_requested_by", uid ?? ""),
   );
   const payments = useCount("payments", canApprove("payments"), uid, () =>
@@ -205,7 +211,7 @@ export function usePendingAttention() {
     },
     { key: "sales", label: "Sales awaiting approval", to: "/sales", query: sales },
     { key: "expenses", label: "Expenses awaiting approval", to: "/expenses", query: expenses },
-    { key: "debts", label: "Debt write-offs pending", to: "/cash-ledger", query: debts },
+    { key: "debts", label: "Debt write-offs pending", to: "/cash-ledger/debts", query: debts },
     {
       key: "payments",
       label: "Payments awaiting confirmation",

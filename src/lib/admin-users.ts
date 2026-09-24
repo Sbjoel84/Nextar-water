@@ -192,6 +192,28 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
     const newPassword = data.password?.trim() || undefined;
 
     if (newEmail || newPassword) {
+      // Changing a login is account takeover if misused: only a top-level
+      // account (admin/chairman) may reset another top-level account's
+      // email or password, whoever else is later granted users:edit.
+      const isTop = async (uid: string) => {
+        const [sa, ch] = await Promise.all([
+          supabase.rpc("has_role", { _user_id: uid, _role: "super_admin" }),
+          supabase.rpc("has_role", { _user_id: uid, _role: "chairman" }),
+        ]);
+        if (sa.error || ch.error) throw new Error((sa.error ?? ch.error)!.message);
+        return !!sa.data || !!ch.data;
+      };
+      try {
+        if ((await isTop(data.target_id)) && !(await isTop(context.userId))) {
+          return {
+            ok: false,
+            error: "Only an Admin or Chairman can change an Admin or Chairman's email or password",
+          };
+        }
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : "Could not verify roles" };
+      }
+
       let admin: ReturnType<typeof createAdminClient>;
       try {
         admin = createAdminClient();

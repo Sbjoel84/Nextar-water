@@ -98,7 +98,7 @@ function QueueCard({
 }
 
 function ApprovalsPage() {
-  const { canApprove, canConfirm } = usePermissions();
+  const { canApprove, canConfirm, canPost } = usePermissions();
   const currentUser = useCurrentUser();
   const uid = currentUser.data;
   // approve_sale()/reject_sale() exempt an admin (super_admin) from the
@@ -136,14 +136,23 @@ function ApprovalsPage() {
     },
   });
 
+  // A write-off needs approving (pending_approval) and then posting
+  // (approved) before the debt actually closes -- queue whichever step(s)
+  // this user can do.
+  const debtStatuses = [
+    ...(canApprove("debts") ? ["pending_approval"] : []),
+    ...(canPost("debts") ? ["approved"] : []),
+  ];
   const debts = useQuery({
-    queryKey: ["approvals-debts"],
-    enabled: canApprove("debts"),
+    queryKey: ["approvals-debts", debtStatuses],
+    enabled: debtStatuses.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("debts")
-        .select("id,outstanding,writeoff_requested_by,writeoff_reason,customers(name)")
-        .eq("writeoff_status", "requested")
+        .select(
+          "id,outstanding,writeoff_status,writeoff_requested_by,writeoff_reason,customers(name)",
+        )
+        .in("writeoff_status", debtStatuses)
         .limit(50);
       if (error) throw error;
       return (data ?? []).filter((d: any) => d.writeoff_requested_by !== uid) as any[];
@@ -404,7 +413,7 @@ function ApprovalsPage() {
               }))}
             />
           )}
-          {canApprove("debts") && (
+          {debtStatuses.length > 0 && (
             <QueueCard
               icon={Wallet}
               title="Debt Write-offs"
@@ -416,6 +425,11 @@ function ApprovalsPage() {
                   d.customers?.name ?? "—",
                   money(Number(d.outstanding)),
                   d.writeoff_reason ?? "—",
+                  d.writeoff_status === "approved" ? (
+                    <Badge variant="outline">Approved — post it</Badge>
+                  ) : (
+                    <Badge variant="secondary">Awaiting approval</Badge>
+                  ),
                 ],
               }))}
             />

@@ -53,6 +53,7 @@ import {
   PiggyBank,
   Pencil,
   Search,
+  Gift,
 } from "lucide-react";
 import { money, num } from "@/lib/format";
 import { toast } from "sonner";
@@ -99,12 +100,17 @@ type SaleRow = {
   customer_id: string | null;
   customer_name: string | null;
   grand_total: number;
+  // Value of the goods at their line prices. For a PR sale grand_total is
+  // forced to 0, so this is the only record of what the giveaway was worth.
+  subtotal: number;
   amount_paid: number;
   balance: number;
   credit_applied: number;
   payment_method: string;
   is_pr: boolean;
   status: string;
+  // Only visible to super_admin (see the "deleted sales" RLS policy).
+  deleted_at: string | null;
   created_by: string | null;
   rejected_reason: string | null;
   sales_person: string | null;
@@ -198,7 +204,7 @@ function SalesPage() {
           supabase
             .from("sales")
             .select(
-              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,created_by,rejected_reason,sales_person,sale_items(products(name))",
+              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,subtotal,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,deleted_at,created_by,rejected_reason,sales_person,sale_items(products(name))",
             )
             .eq("factory_id", factoryId!)
             .order("created_at", { ascending: false })
@@ -208,6 +214,29 @@ function SalesPage() {
   });
   const [q, setQ] = useSearchQuery();
   const filteredSales = (sales.data ?? []).filter((s) => matchesSearch(q, s));
+
+  // End-of-day figures: revenue and PR (complimentary) giveaways are kept
+  // apart, so what went out free is visible without inflating revenue. Same
+  // rule as postedSalesRows(): only approved (posted), non-deleted sales count.
+  const [summaryDay, setSummaryDay] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const daySummary = useMemo(() => {
+    const out = { revenue: 0, salesCount: 0, prValue: 0, prCount: 0, prPendingValue: 0 };
+    for (const s of sales.data ?? []) {
+      if (s.deleted_at || s.sale_date !== summaryDay) continue;
+      if (s.is_pr) {
+        if (s.status === "posted") {
+          out.prValue += Number(s.subtotal ?? 0);
+          out.prCount += 1;
+        } else if (s.status === "pending_approval") {
+          out.prPendingValue += Number(s.subtotal ?? 0);
+        }
+      } else if (s.status === "posted") {
+        out.revenue += Number(s.grand_total ?? 0);
+        out.salesCount += 1;
+      }
+    }
+    return out;
+  }, [sales.data, summaryDay]);
 
   const openInvoice = async (saleId: string, action: "download" | "print") => {
     const { data, error } = await supabase
@@ -478,6 +507,58 @@ function SalesPage() {
         </div>
       </div>
 
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">Day summary</h2>
+          <Input
+            type="date"
+            className="h-9 w-auto"
+            value={summaryDay}
+            onChange={(e) => e.target.value && setSummaryDay(e.target.value)}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Card className="rounded-2xl">
+            <CardContent className="flex items-center justify-between p-5">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Revenue Generated
+                </div>
+                <div className="mt-2 text-2xl font-semibold">{money(daySummary.revenue)}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {daySummary.salesCount} approved sale{daySummary.salesCount === 1 ? "" : "s"} ·
+                  excludes PR
+                </div>
+              </div>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+                <ShoppingCart className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-2xl border-warning/40">
+            <CardContent className="flex items-center justify-between p-5">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  PR Value Given Out
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-warning">
+                  {money(daySummary.prValue)}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {daySummary.prCount} approved PR{daySummary.prCount === 1 ? "" : "s"} · not
+                  counted in revenue
+                  {daySummary.prPendingValue > 0 &&
+                    ` · ${money(daySummary.prPendingValue)} awaiting approval`}
+                </div>
+              </div>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-warning/15 text-warning">
+                <Gift className="h-5 w-5" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       <Card className="rounded-2xl">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Recent Sales</CardTitle>
@@ -552,7 +633,17 @@ function SalesPage() {
                         (s.customer_name ?? "Walk-in")
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{money(Number(s.grand_total))}</TableCell>
+                    <TableCell className="text-right">
+                      {money(Number(s.grand_total))}
+                      {s.is_pr && (
+                        <div
+                          className="text-xs text-warning"
+                          title="Value of goods given out — not counted in revenue"
+                        >
+                          PR value {money(Number(s.subtotal ?? 0))}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{money(Number(s.amount_paid))}</TableCell>
                     <TableCell className="text-right">
                       <span className={Number(s.balance) > 0 ? "text-destructive font-medium" : ""}>

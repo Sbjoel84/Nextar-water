@@ -20,7 +20,7 @@ AS $function$
 DECLARE
   v_row production_requests%ROWTYPE; v_uid uuid := auth.uid();
 BEGIN
-  IF NOT public.has_permission(v_uid, 'production-requests', 'approve'::action_key) THEN RAISE EXCEPTION 'Insufficient permissions'; END IF;
+  IF NOT public.has_permission(v_uid, 'production-requests'::public.module_key, 'approve'::action_key) THEN RAISE EXCEPTION 'Insufficient permissions'; END IF;
   IF p_approver_name IS NULL OR btrim(p_approver_name) = '' THEN RAISE EXCEPTION 'Approver name is required'; END IF;
   SELECT * INTO v_row FROM production_requests WHERE id = p_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Production request not found'; END IF;
@@ -53,7 +53,7 @@ DECLARE
   v_material raw_materials%ROWTYPE;
   v_move_cost numeric;
 BEGIN
-  IF NOT public.has_permission(v_uid, 'production-requests', 'confirm'::action_key) THEN RAISE EXCEPTION 'Insufficient permissions'; END IF;
+  IF NOT public.has_permission(v_uid, 'production-requests'::public.module_key, 'confirm'::action_key) THEN RAISE EXCEPTION 'Insufficient permissions'; END IF;
   IF p_confirmer_name IS NULL OR btrim(p_confirmer_name) = '' THEN RAISE EXCEPTION 'Confirmer name is required'; END IF;
   SELECT * INTO v_row FROM production_requests WHERE id = p_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Production request not found'; END IF;
