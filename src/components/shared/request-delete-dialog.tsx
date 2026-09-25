@@ -20,12 +20,14 @@ export function RequestDeleteDialog({
   onConfirm,
   isPending,
   title = "Request deletion",
+  description,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (reason: string) => void;
   isPending?: boolean;
   title?: string;
+  description?: string;
 }) {
   const [reason, setReason] = useState("");
 
@@ -43,8 +45,10 @@ export function RequestDeleteDialog({
         </DialogHeader>
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">
-            This won't delete the record right away — an admin has to approve it first.
+            This won't delete the record right away — an admin has to approve it first. Approved
+            deletions stay in the Recycle Bin for 30 days before they're removed for good.
           </p>
+          {description && <p className="text-sm text-destructive">{description}</p>}
           <Label>Reason for deletion *</Label>
           <Textarea
             rows={3}

@@ -36,8 +36,9 @@ type DeleteRequestRow = {
 // Keep in sync with the CHECK constraint on delete_requests.table_name
 // (supabase/migrations/20260920090000_delete_request_approval.sql,
 // 20260922220000_supplier_delete_request_approval.sql,
-// 20260923130000_sales_customer_credit_and_soft_delete.sql).
-const TABLE_LABELS: Record<string, string> = {
+// 20260923130000_sales_customer_credit_and_soft_delete.sql,
+// 20260930090000_recycle_bin_and_customer_delete.sql).
+export const TABLE_LABELS: Record<string, string> = {
   employees: "Employee",
   employee_documents: "Employee Document",
   sales_reps: "Sales Rep",
@@ -48,14 +49,7 @@ const TABLE_LABELS: Record<string, string> = {
   product_units: "Packaging Rule",
   suppliers: "Supplier",
   sales: "Sale",
-};
-
-// Storage bucket to best-effort clean up after an approved delete, keyed by
-// the storage-path field request_delete() captured into delete_requests.payload.
-const STORAGE_BUCKET: Record<string, string> = {
-  employees: "employee-files",
-  employee_documents: "employee-files",
-  expenses: "expense-attachments",
+  customers: "Customer (with all linked transactions)",
 };
 
 function useRequesterNames(userIds: string[]) {
@@ -103,24 +97,13 @@ export function DeleteRequestsTab() {
     mutationFn: async (row: DeleteRequestRow) => {
       const { data, error } = await supabase.rpc("approve_delete", { p_id: row.id });
       if (error) throw error;
-      return data as { approved: boolean; payload: Record<string, string> | null };
     },
-    onSuccess: async (data, row) => {
-      toast.success("Deletion approved");
-      // Best-effort storage cleanup — SQL can't reach into Storage, so this
-      // mirrors the cleanup the old direct-delete mutations used to do,
-      // just deferred until an admin actually approves the request.
-      const bucket = STORAGE_BUCKET[row.table_name];
-      const path =
-        data?.payload?.photo_url || data?.payload?.file_path || data?.payload?.attachment_url;
-      if (bucket && path) {
-        try {
-          await supabase.storage.from(bucket).remove([path]);
-        } catch {
-          // Non-fatal — the record is already deleted either way.
-        }
-      }
+    onSuccess: () => {
+      // Attached files are kept until the Recycle Bin purge, so a restore
+      // brings them back too.
+      toast.success("Deletion approved — moved to the Recycle Bin for 30 days");
       invalidate();
+      qc.invalidateQueries({ queryKey: ["recycle-bin"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

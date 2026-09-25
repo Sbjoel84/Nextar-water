@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { TopBar } from "@/components/layout/top-bar";
+import { useIsAdmin } from "@/lib/permissions";
+import { purgeRecycleBin } from "@/lib/recycle-bin";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -60,6 +62,7 @@ function AppLayout() {
 
   return (
     <SidebarProvider>
+      <RecycleBinAutoPurge />
       <AppSidebar />
       <SidebarInset>
         <TopBar />
@@ -69,4 +72,20 @@ function AppLayout() {
       </SidebarInset>
     </SidebarProvider>
   );
+}
+
+// Removes Recycle Bin entries past their 30 days once per session when an
+// admin opens the app. There's no scheduler in this project, so this (plus the
+// Recycle Bin tab itself) is what makes the 30-day purge actually happen.
+function RecycleBinAutoPurge() {
+  const isAdmin = useIsAdmin();
+  const done = useRef(false);
+  useEffect(() => {
+    if (!isAdmin.data || done.current) return;
+    done.current = true;
+    purgeRecycleBin().catch(() => {
+      // Retried on the next visit; nothing for the user to do.
+    });
+  }, [isAdmin.data]);
+  return null;
 }

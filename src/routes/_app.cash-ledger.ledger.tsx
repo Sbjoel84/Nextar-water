@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { usePermissions } from "@/lib/permissions";
+import { ADD_NEW_CUSTOMER, QuickAddCustomerDialog } from "@/components/shared/quick-add-customer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -408,6 +409,7 @@ function LedgerPage() {
             </DialogTrigger>
             {payOpen && (
               <NewPaymentDialog
+                factoryId={factoryId!}
                 customers={customers.data ?? []}
                 sales={sales.data ?? []}
                 saving={recordPayment.isPending}
@@ -764,11 +766,13 @@ function ReversePaymentDialog({
 }
 
 function NewPaymentDialog({
+  factoryId,
   customers,
   sales,
   onSubmit,
   saving,
 }: {
+  factoryId: string;
   customers: Customer[];
   sales: SaleBrief[];
   onSubmit: (v: {
@@ -789,8 +793,16 @@ function NewPaymentDialog({
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [remarks, setRemarks] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  // Customers added from this dialog, shown until the list refetches.
+  const [added, setAdded] = useState<Customer[]>([]);
+  const customerOptions = [
+    ...customers,
+    ...added.filter((a) => !customers.some((c) => c.id === a.id)),
+  ];
 
   const selectedSale = sales.find((s) => s.id === saleId);
+  const isAdvance = customerId !== "none" && saleId === "none";
 
   return (
     <DialogContent>
@@ -827,19 +839,42 @@ function NewPaymentDialog({
         </div>
         <div>
           <Label>Customer</Label>
-          <Select value={customerId} onValueChange={setCustomerId}>
+          <Select
+            value={customerId}
+            onValueChange={(v) =>
+              v === ADD_NEW_CUSTOMER ? setAddingCustomer(true) : setCustomerId(v)
+            }
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select customer…" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">— None —</SelectItem>
-              {customers.map((c) => (
+              {customerOptions.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.name}
                 </SelectItem>
               ))}
+              <SelectItem value={ADD_NEW_CUSTOMER} className="text-primary">
+                + Add new customer
+              </SelectItem>
             </SelectContent>
           </Select>
+          {isAdvance && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              No invoice selected: this settles any debt the customer has first, and the rest is
+              kept as their credit, used automatically on their next purchase.
+            </p>
+          )}
+          <QuickAddCustomerDialog
+            open={addingCustomer}
+            onOpenChange={setAddingCustomer}
+            factoryId={factoryId}
+            onCreated={(c) => {
+              setAdded((prev) => [...prev, c]);
+              setCustomerId(c.id);
+            }}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -882,7 +917,7 @@ function NewPaymentDialog({
               customer_id: customerId === "none" ? null : customerId,
               sale_id: saleId === "none" ? null : saleId,
               customer_name:
-                customers.find((c) => c.id === customerId)?.name ??
+                customerOptions.find((c) => c.id === customerId)?.name ??
                 selectedSale?.customer_name ??
                 "",
               invoice_number: selectedSale?.invoice_number ?? "",

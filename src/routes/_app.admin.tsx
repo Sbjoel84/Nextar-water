@@ -8,9 +8,9 @@ import { PermissionsTab } from "@/components/admin/permissions-tab";
 import { FactoryTab } from "@/components/admin/factory-tab";
 import { AuthUsersTab } from "@/components/admin/auth-users-tab";
 import { DeleteRequestsTab } from "@/components/admin/delete-requests-tab";
-import { DeletedSalesTab } from "@/components/admin/deleted-sales-tab";
+import { RecycleBinTab } from "@/components/admin/recycle-bin-tab";
 import { AuditLogsPage } from "./_app.audit-logs";
-import { useIsSuperAdmin } from "@/lib/permissions";
+import { useIsAdmin, useIsSuperAdmin } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -26,6 +26,8 @@ export const Route = createFileRoute("/_app/admin")({
 function AdminPanelPage() {
   const [tab, setTab] = useState("users");
   const isSuperAdmin = useIsSuperAdmin();
+  // Super admins and chairmen.
+  const isAdmin = useIsAdmin();
 
   return (
     <div className="space-y-6">
@@ -42,9 +44,7 @@ function AdminPanelPage() {
             {isSuperAdmin.data && (
               <TabsTrigger value="delete-requests">Delete Requests</TabsTrigger>
             )}
-            {isSuperAdmin.data && (
-              <TabsTrigger value="deleted-sales">Deleted Sales</TabsTrigger>
-            )}
+            {isAdmin.data && <TabsTrigger value="recycle-bin">Recycle Bin</TabsTrigger>}
             <TabsTrigger value="permissions">Permissions</TabsTrigger>
             <TabsTrigger value="audit-log">Audit Log</TabsTrigger>
             <TabsTrigger value="factory">Factory</TabsTrigger>
@@ -63,9 +63,9 @@ function AdminPanelPage() {
             <DeleteRequestsTab />
           </TabsContent>
         )}
-        {isSuperAdmin.data && (
-          <TabsContent value="deleted-sales">
-            <DeletedSalesTab />
+        {isAdmin.data && (
+          <TabsContent value="recycle-bin">
+            <RecycleBinTab />
           </TabsContent>
         )}
         <TabsContent value="permissions">

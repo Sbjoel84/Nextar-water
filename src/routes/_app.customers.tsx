@@ -38,12 +38,15 @@ import {
   Wallet,
   HandCoins,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { money } from "@/lib/format";
 import { toast } from "sonner";
 import { KPI } from "@/lib/dashboard-kit";
 import { AccountAdjustmentsCard } from "@/components/customers/account-adjustments";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { requestDelete } from "@/lib/request-delete";
+import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 
 export const Route = createFileRoute("/_app/customers")({
   head: () => ({ meta: [{ title: "Customers — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -69,8 +72,20 @@ export type Customer = {
 function CustomersPage() {
   const { data: factoryId } = useFactoryId();
   const qc = useQueryClient();
-  const { canWrite } = usePermissions();
+  const { canWrite, canDelete } = usePermissions();
   const write = canWrite("customers");
+  const canRequestDelete = canDelete("customers");
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+
+  const deleteCustomer = useMutation({
+    mutationFn: async ({ customer, reason }: { customer: Customer; reason: string }) =>
+      requestDelete("customers", customer.id, reason),
+    onSuccess: () => {
+      toast.success("Deletion request sent to Admin for approval");
+      setDeleteTarget(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const [q, setQ] = useSearchQuery();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -282,6 +297,16 @@ function CustomersPage() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {canRequestDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Delete"
+                            onClick={() => setDeleteTarget(c)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -302,6 +327,17 @@ function CustomersPage() {
       <Dialog open={!!viewing} onOpenChange={(v) => !v && setViewing(null)}>
         {viewing && <CustomerProfileDialog customer={viewing} />}
       </Dialog>
+
+      <RequestDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Delete customer — ${deleteTarget?.name ?? ""}`}
+        description="Everything linked to this customer (sales, payments, debts, sales returns and deliveries) goes to the Recycle Bin with them, and stock from their sales is put back."
+        isPending={deleteCustomer.isPending}
+        onConfirm={(reason) =>
+          deleteTarget && deleteCustomer.mutate({ customer: deleteTarget, reason })
+        }
+      />
     </div>
   );
 }
