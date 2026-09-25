@@ -738,6 +738,7 @@ export async function generatePayslipPdf(
     transport_allowance: number;
     meal_allowance: number;
     medical_allowance: number;
+    utilities_allowance: number;
     other_allowances: number;
     overtime: number;
     gross_salary: number;
@@ -801,17 +802,18 @@ export async function generatePayslipPdf(
         money(opts.loans, currency),
       ],
       [
-        "Meal allowance",
+        "Productivity allowance",
         money(opts.meal_allowance, currency),
         "Advance",
         money(opts.advance, currency),
       ],
       [
-        "Medical allowance",
+        "Inconvenience allowance",
         money(opts.medical_allowance, currency),
         "Other deductions",
         money(opts.other_deductions, currency),
       ],
+      ["Utilities allowance", money(opts.utilities_allowance, currency), "", ""],
       ["Other allowances", money(opts.other_allowances, currency), "", ""],
       ["Overtime", money(opts.overtime, currency), "", ""],
     ],

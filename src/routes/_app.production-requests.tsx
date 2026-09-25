@@ -842,14 +842,19 @@ function ApproveDialog({ row, onDone }: { row: RequestRow; onDone: () => void })
   const submit = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error("Enter the approver's name");
-      const { error } = await supabase.rpc("approve_production_request", {
+      const { data, error } = await supabase.rpc("approve_production_request", {
         p_id: row.id,
         p_approver_name: name.trim(),
       });
       if (error) throw error;
+      return data as { approved: boolean; materials_issued?: boolean } | null;
     },
-    onSuccess: () => {
-      toast.success("Request approved — awaiting inventory officer confirmation");
+    onSuccess: (result) => {
+      toast.success(
+        result?.materials_issued
+          ? "Request approved — materials issued"
+          : "Request approved — awaiting inventory officer confirmation",
+      );
       logAudit({
         action: "update",
         entity: "production_requests",

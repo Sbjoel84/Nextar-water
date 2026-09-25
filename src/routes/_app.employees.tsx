@@ -91,6 +91,7 @@ type Employee = {
   transport_allowance: number | null;
   meal_allowance: number | null;
   medical_allowance: number | null;
+  utilities_allowance: number | null;
   other_allowances: number | null;
   employment_date: string | null;
   status: string | null;
@@ -359,6 +360,9 @@ function EmployeeForm({
   );
   const [meal, setMeal] = useState(editing ? Number(editing.meal_allowance ?? 0) : 0);
   const [medical, setMedical] = useState(editing ? Number(editing.medical_allowance ?? 0) : 0);
+  const [utilities, setUtilities] = useState(
+    editing ? Number(editing.utilities_allowance ?? 0) : 0,
+  );
   const [otherAllow, setOtherAllow] = useState(editing ? Number(editing.other_allowances ?? 0) : 0);
   const [employmentDate, setEmploymentDate] = useState(editing?.employment_date ?? "");
   const [status, setStatus] = useState(editing?.status ?? "active");
@@ -393,6 +397,7 @@ function EmployeeForm({
         transport_allowance: transport,
         meal_allowance: meal,
         medical_allowance: medical,
+        utilities_allowance: utilities,
         other_allowances: otherAllow,
         employment_date: employmentDate || null,
         status,
@@ -501,13 +506,19 @@ function EmployeeForm({
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label>Meal</Label>
+            <Label>Productivity</Label>
             <MoneyInput value={meal} onChange={setMeal} />
           </div>
           <div>
-            <Label>Medical</Label>
+            <Label>Inconvenience</Label>
             <MoneyInput value={medical} onChange={setMedical} />
           </div>
+          <div>
+            <Label>Utilities</Label>
+            <MoneyInput value={utilities} onChange={setUtilities} />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <Label>Other</Label>
             <MoneyInput value={otherAllow} onChange={setOtherAllow} />

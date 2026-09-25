@@ -239,6 +239,8 @@ function SalesReturnsPage() {
     qc.invalidateQueries({ queryKey: ["finished-goods"] });
     qc.invalidateQueries({ queryKey: ["products-for-returns"] });
     qc.invalidateQueries({ queryKey: ["stock-movement-summary"] });
+    qc.invalidateQueries({ queryKey: ["customers"] });
+    qc.invalidateQueries({ queryKey: ["debts"] });
   };
 
   return (
@@ -707,7 +709,7 @@ function InspectDialog({ row, onDone }: { row: ReturnRow; onDone: () => void }) 
         throw new Error(
           `Accepted + damaged + rejected must equal ${num(Number(row.quantity_returned))}`,
         );
-      const { error } = await supabase.rpc("inspect_sales_return", {
+      const { data, error } = await supabase.rpc("inspect_sales_return", {
         p_id: row.id,
         p_accepted: accepted,
         p_damaged: damaged,
@@ -715,9 +717,18 @@ function InspectDialog({ row, onDone }: { row: ReturnRow; onDone: () => void }) 
         p_notes: notes || undefined,
       });
       if (error) throw error;
+      return data as { debt_reduced?: number; credit_added?: number } | null;
     },
-    onSuccess: () => {
-      toast.success("Return inspected — accepted quantity posted to stock");
+    onSuccess: (result) => {
+      const debtReduced = Number(result?.debt_reduced ?? 0);
+      const creditAdded = Number(result?.credit_added ?? 0);
+      const account = [
+        debtReduced > 0 && `debt reduced by ${num(debtReduced)}`,
+        creditAdded > 0 && `${num(creditAdded)} added to customer credit`,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      toast.success(`Return inspected — stock updated${account ? `, ${account}` : ""}`);
       logAudit({
         action: "update",
         entity: "sales_returns",
@@ -764,7 +775,8 @@ function InspectDialog({ row, onDone }: { row: ReturnRow; onDone: () => void }) 
         </div>
         <p className="text-xs text-muted-foreground">
           Only the accepted quantity posts to finished-products stock. Damaged goes to the Damage
-          register; rejected is logged with no stock effect.
+          register; rejected is logged with no stock effect. The customer is credited for accepted +
+          damaged at the sale price — their debt is reduced first, any excess becomes credit.
         </p>
       </div>
       <DialogFooter>

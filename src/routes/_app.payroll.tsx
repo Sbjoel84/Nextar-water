@@ -61,6 +61,7 @@ type Employee = {
   transport_allowance: number | null;
   meal_allowance: number | null;
   medical_allowance: number | null;
+  utilities_allowance?: number | null;
   other_allowances: number | null;
   bank_name: string | null;
   account_number: string | null;
@@ -75,6 +76,7 @@ type PayrollRow = {
   transport_allowance: number;
   meal_allowance: number;
   medical_allowance: number;
+  utilities_allowance?: number | null;
   other_allowances: number;
   overtime: number;
   gross_salary: number;
@@ -209,6 +211,7 @@ function PayrollPage() {
         transport_allowance: Number(r.transport_allowance),
         meal_allowance: Number(r.meal_allowance),
         medical_allowance: Number(r.medical_allowance),
+        utilities_allowance: Number(r.utilities_allowance ?? 0),
         other_allowances: Number(r.other_allowances),
         overtime: Number(r.overtime),
         gross_salary: Number(r.gross_salary),
@@ -781,11 +784,12 @@ function PayrollForm({
   const transport = Number(selected?.transport_allowance ?? 0);
   const meal = Number(selected?.meal_allowance ?? 0);
   const medical = Number(selected?.medical_allowance ?? 0);
+  const utilities = Number(selected?.utilities_allowance ?? 0);
   const otherAllow = Number(selected?.other_allowances ?? 0);
 
   const gross = useMemo(
-    () => basic + housing + transport + meal + medical + otherAllow + overtime,
-    [basic, housing, transport, meal, medical, otherAllow, overtime],
+    () => basic + housing + transport + meal + medical + utilities + otherAllow + overtime,
+    [basic, housing, transport, meal, medical, utilities, otherAllow, overtime],
   );
   const net = useMemo(
     () => Math.max(gross - paye - pension - loanTotal - advance - otherDed - adjTotal, 0),
@@ -865,13 +869,19 @@ function PayrollForm({
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label>Meal</Label>
+            <Label>Productivity</Label>
             <Input value={money(meal)} disabled />
           </div>
           <div>
-            <Label>Medical</Label>
+            <Label>Inconvenience</Label>
             <Input value={money(medical)} disabled />
           </div>
+          <div>
+            <Label>Utilities</Label>
+            <Input value={money(utilities)} disabled />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <Label>Other allowances</Label>
             <Input value={money(otherAllow)} disabled />

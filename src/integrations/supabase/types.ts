@@ -878,6 +878,7 @@ export type Database = {
           id: string
           meal_allowance: number | null
           medical_allowance: number | null
+          utilities_allowance: number | null
           other_allowances: number | null
           phone: string | null
           photo_url: string | null
@@ -904,6 +905,7 @@ export type Database = {
           id?: string
           meal_allowance?: number | null
           medical_allowance?: number | null
+          utilities_allowance?: number | null
           other_allowances?: number | null
           phone?: string | null
           photo_url?: string | null
@@ -930,6 +932,7 @@ export type Database = {
           id?: string
           meal_allowance?: number | null
           medical_allowance?: number | null
+          utilities_allowance?: number | null
           other_allowances?: number | null
           phone?: string | null
           photo_url?: string | null
@@ -1414,6 +1417,7 @@ export type Database = {
           loans: number
           meal_allowance: number
           medical_allowance: number
+          utilities_allowance: number
           net_salary: number
           other_allowances: number
           other_deductions: number
@@ -1446,6 +1450,7 @@ export type Database = {
           loans?: number
           meal_allowance?: number
           medical_allowance?: number
+          utilities_allowance?: number
           net_salary?: number
           other_allowances?: number
           other_deductions?: number
@@ -1478,6 +1483,7 @@ export type Database = {
           loans?: number
           meal_allowance?: number
           medical_allowance?: number
+          utilities_allowance?: number
           net_salary?: number
           other_allowances?: number
           other_deductions?: number
