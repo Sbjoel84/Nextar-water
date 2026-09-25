@@ -171,6 +171,8 @@ function SalesPage() {
   // the sale looks like at that point, which is the "approval" an edit is
   // subject to; there's no separate edit-approval step.
   const canEditSale = canEdit("sales");
+  // record_payment() needs payments or debts write, not sales.
+  const canReceivePayment = canWrite("payments") || canWrite("debts");
   // Mirrors approve_sale()/reject_sale()'s own self-approval exception --
   // an admin (super_admin) can approve/reject a sale even if they're the
   // one who recorded it; every other approver role still can't.
@@ -703,7 +705,7 @@ function SalesPage() {
                             <Ban className="h-4 w-4 text-muted-foreground" />
                           </Button>
                         )}
-                        {s.status === "posted" && Number(s.balance) > 0 && (
+                        {canReceivePayment && s.status === "posted" && Number(s.balance) > 0 && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -1215,8 +1217,8 @@ function AdvancePaymentDialog({ factoryId, onDone }: { factoryId: string; onDone
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
-          For a customer paying ahead of picking up products. If they owe money, the oldest debts are
-          settled first and only the excess becomes advance to draw on in New Sale.
+          For a customer paying ahead of picking up products. If they owe money, the oldest debts
+          are settled first and only the excess becomes advance to draw on in New Sale.
         </p>
         <div>
           <Label>Customer</Label>

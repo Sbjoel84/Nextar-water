@@ -21,13 +21,13 @@
 -- holding it (store_officer) has no users, so returns sat at "received".
 --
 -- 2) Approving a production-material request issues the materials straight
---    away when the approver can also confirm
+--    away again
 -- ----------------------------------------------------------------------------
--- 20260925120000 split approval and issue into two clicks, but the inventory
--- officer holds both permissions, so requests were being approved and then
--- left un-issued. When the approver has production-requests:confirm, approval
--- now also issues. An approver without it (e.g. accountant) still leaves the
--- request awaiting the inventory officer's "Confirm & issue".
+-- 20260925120000 split approval and issue into two clicks, and requests were
+-- being approved and then left un-issued. Approval now releases the stock and
+-- marks the request "materials issued" in one step, whoever approves.
+-- confirm_production_request() stays for any request still approved-but-not-
+-- issued, and the ones stranded since 20260925120000 are issued below.
 -- ============================================================================
 
 -- ============ 1a. ledger: allow SALES_RETURN rows ============
@@ -264,8 +264,7 @@ BEGIN
     production_status = 'approved'
   WHERE id = p_id;
 
-  IF v_row.request_type = 'production_material'
-     AND public.has_permission(v_uid, 'production-requests'::public.module_key, 'confirm'::action_key) THEN
+  IF v_row.request_type = 'production_material' THEN
     PERFORM public._issue_production_request(p_id, btrim(p_approver_name), v_uid);
     v_issued := true;
   END IF;
@@ -273,3 +272,34 @@ BEGIN
   RETURN jsonb_build_object('approved', true, 'materials_issued', v_issued);
 END;
 $function$;
+
+-- ============ 2c. issue the requests stranded by the two-step flow ============
+-- Approved on/after 2026-09-25 (when 20260925120000 stopped approval from
+-- issuing) but never confirmed. Issued under the approver's name, with the
+-- approver's user id taken from the audit log. A request whose stock has since
+-- run short is skipped with a NOTICE rather than failing the migration; it
+-- keeps its "Confirm & issue" button.
+DO $$
+DECLARE
+  r record;
+  v_uid uuid;
+BEGIN
+  FOR r IN
+    SELECT id, request_number, approved_by_name FROM production_requests
+     WHERE request_type = 'production_material'
+       AND approval_status = 'approved'
+       AND NOT materials_issued
+       AND approval_date >= '2026-09-25'
+     ORDER BY approval_date
+  LOOP
+    SELECT user_id INTO v_uid FROM audit_logs
+     WHERE entity = 'production_requests' AND entity_id = r.id::text
+       AND new_value->>'approval_status' = 'approved'
+     ORDER BY created_at DESC LIMIT 1;
+    BEGIN
+      PERFORM public._issue_production_request(r.id, COALESCE(r.approved_by_name, 'Approver'), v_uid);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'Request % not issued: %', r.request_number, SQLERRM;
+    END;
+  END LOOP;
+END $$;

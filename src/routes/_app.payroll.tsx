@@ -126,8 +126,9 @@ function PayrollPage() {
   const { data: factoryId } = useFactoryId();
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
-  const { canWrite, canApprove, canReject, canPost, canCancel, canReverse } = usePermissions();
-  const write = canWrite("payroll");
+  const { canSubmit, canApprove, canReject, canPost, canCancel, canReverse } = usePermissions();
+  // process_payroll() checks payroll:submit.
+  const write = canSubmit("payroll");
   const approve = canApprove("payroll");
   const reject = canReject("payroll");
   const post = canPost("payroll");

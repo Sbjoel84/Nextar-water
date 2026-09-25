@@ -187,6 +187,7 @@ function RawMaterialsPage() {
   const cancel = canCancel("raw-materials");
   const canSubmitPurchase = canSubmit("production-requests");
   const submitMaterial = canSubmit("raw-materials");
+  const canSubmitReceipt = canSubmit("goods-receiving");
   const confirmReceipt_ = canConfirm("goods-receiving");
   const rejectReceipt_ = canReject("goods-receiving");
   const cancelReceipt_ = canCancel("goods-receiving");
@@ -701,36 +702,42 @@ function RawMaterialsPage() {
                                 </Button>
                               </>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Edit"
-                              onClick={() => {
-                                setEditing(m);
-                                setFormOpen(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
+                            {write && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit"
+                                onClick={() => {
+                                  setEditing(m);
+                                  setFormOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
                           </>
                         ) : (
                           <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Submit Item Receipt"
-                              onClick={() => setReceiveTarget(m)}
-                            >
-                              <PackagePlus className="h-4 w-4 text-success" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Issue Stock"
-                              onClick={() => setIssueTarget(m)}
-                            >
-                              <PackageMinus className="h-4 w-4 text-warning" />
-                            </Button>
+                            {canSubmitReceipt && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Submit Item Receipt"
+                                onClick={() => setReceiveTarget(m)}
+                              >
+                                <PackagePlus className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {write && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Issue Stock"
+                                onClick={() => setIssueTarget(m)}
+                              >
+                                <PackageMinus className="h-4 w-4 text-warning" />
+                              </Button>
+                            )}
                             {low && canSubmitPurchase && (
                               <Button
                                 variant="ghost"
@@ -741,22 +748,26 @@ function RawMaterialsPage() {
                                 <ShoppingCart className="h-4 w-4 text-destructive" />
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Adjust Stock"
-                              onClick={() => setAdjustTarget(m)}
-                            >
-                              <SlidersHorizontal className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Transfer"
-                              onClick={() => setTransferTarget(m)}
-                            >
-                              <ArrowLeftRight className="h-4 w-4" />
-                            </Button>
+                            {submitMaterial && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Adjust Stock"
+                                onClick={() => setAdjustTarget(m)}
+                              >
+                                <SlidersHorizontal className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {write && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Transfer"
+                                onClick={() => setTransferTarget(m)}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -773,25 +784,29 @@ function RawMaterialsPage() {
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Edit"
-                              onClick={() => {
-                                setEditing(m);
-                                setFormOpen(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title={m.active ? "Deactivate" : "Activate"}
-                              onClick={() => toggleActive.mutate(m)}
-                            >
-                              {m.active ? "Deactivate" : "Activate"}
-                            </Button>
+                            {write && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit"
+                                onClick={() => {
+                                  setEditing(m);
+                                  setFormOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {write && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title={m.active ? "Deactivate" : "Activate"}
+                                onClick={() => toggleActive.mutate(m)}
+                              >
+                                {m.active ? "Deactivate" : "Activate"}
+                              </Button>
+                            )}
                           </>
                         )}
                       </div>

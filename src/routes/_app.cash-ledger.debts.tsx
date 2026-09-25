@@ -138,7 +138,11 @@ function DebtsPage() {
   const { data: factoryId } = useFactoryId();
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
-  const { canApprove, canPost, canCancel, canReverse } = usePermissions();
+  const { canApprove, canPost, canCancel, canReverse, canSubmit, canWrite } = usePermissions();
+  // Server-side gates: request_debt_writeoff() needs debts:submit,
+  // record_payment() needs payments or debts write.
+  const canRequestWriteoff = canSubmit("debts");
+  const receivePayment = canWrite("payments") || canWrite("debts");
   const approve = canApprove("debts");
   const post = canPost("debts");
   const cancel = canCancel("debts");
@@ -571,18 +575,19 @@ function DebtsPage() {
                             <Undo2 className="h-4 w-4" /> Reverse
                           </Button>
                         )}
-                      {(!d.writeoff_status ||
-                        ["rejected", "cancelled", "reversed"].includes(d.writeoff_status)) && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1 text-destructive"
-                          disabled={d.status === "paid"}
-                          onClick={() => setWriteoffTarget(d)}
-                        >
-                          <Ban className="h-4 w-4" /> Request write-off
-                        </Button>
-                      )}
+                      {canRequestWriteoff &&
+                        (!d.writeoff_status ||
+                          ["rejected", "cancelled", "reversed"].includes(d.writeoff_status)) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1 text-destructive"
+                            disabled={d.status === "paid"}
+                            onClick={() => setWriteoffTarget(d)}
+                          >
+                            <Ban className="h-4 w-4" /> Request write-off
+                          </Button>
+                        )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -612,6 +617,7 @@ function DebtsPage() {
                 }
                 saving={pay.isPending}
                 onPrintStatement={() => printStatement(debt)}
+                canAddPayment={receivePayment}
               />
             );
           })()}
@@ -653,8 +659,10 @@ function DebtDetailDialog({
   onAddPayment,
   saving,
   onPrintStatement,
+  canAddPayment,
 }: {
   debt: Debt;
+  canAddPayment: boolean;
   onAddPayment: (amount: number, method: PaymentMethod, remarks: string) => void;
   saving: boolean;
   onPrintStatement: () => void;
@@ -793,7 +801,7 @@ function DebtDetailDialog({
         ) : (
           <Button
             className="w-full gap-1.5 bg-success text-success-foreground hover:bg-success/90"
-            disabled={outstanding <= 0}
+            disabled={outstanding <= 0 || !canAddPayment}
             onClick={startAdd}
           >
             <Plus className="h-4 w-4" />

@@ -853,7 +853,7 @@ function ApproveDialog({ row, onDone }: { row: RequestRow; onDone: () => void })
       toast.success(
         result?.materials_issued
           ? "Request approved — materials issued"
-          : "Request approved — awaiting inventory officer confirmation",
+          : "Request approved",
       );
       logAudit({
         action: "update",
