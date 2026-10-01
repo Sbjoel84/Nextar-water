@@ -10,7 +10,7 @@ import { AuthUsersTab } from "@/components/admin/auth-users-tab";
 import { DeleteRequestsTab } from "@/components/admin/delete-requests-tab";
 import { RecycleBinTab } from "@/components/admin/recycle-bin-tab";
 import { AuditLogsPage } from "./_app.audit-logs";
-import { useIsAdmin, useIsSuperAdmin } from "@/lib/permissions";
+import { useIsAdmin } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -25,8 +25,8 @@ export const Route = createFileRoute("/_app/admin")({
 
 function AdminPanelPage() {
   const [tab, setTab] = useState("users");
-  const isSuperAdmin = useIsSuperAdmin();
-  // Super admins and chairmen.
+  // Super admins and chairmen — approve_delete()/reject_delete() and the
+  // delete_requests read policy accept both.
   const isAdmin = useIsAdmin();
 
   return (
@@ -41,7 +41,7 @@ function AdminPanelPage() {
           <TabsList className="w-max">
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="pending">Pending</TabsTrigger>
-            {isSuperAdmin.data && (
+            {isAdmin.data && (
               <TabsTrigger value="delete-requests">Delete Requests</TabsTrigger>
             )}
             {isAdmin.data && <TabsTrigger value="recycle-bin">Recycle Bin</TabsTrigger>}
@@ -58,7 +58,7 @@ function AdminPanelPage() {
         <TabsContent value="pending">
           <PendingTab />
         </TabsContent>
-        {isSuperAdmin.data && (
+        {isAdmin.data && (
           <TabsContent value="delete-requests">
             <DeleteRequestsTab />
           </TabsContent>

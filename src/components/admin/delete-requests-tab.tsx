@@ -182,8 +182,19 @@ export function DeleteRequestsTab() {
               ))}
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                    No deletion requests waiting for review.
+                  <TableCell
+                    colSpan={6}
+                    className={
+                      requests.error
+                        ? "py-8 text-center text-destructive"
+                        : "py-8 text-center text-muted-foreground"
+                    }
+                  >
+                    {requests.isLoading
+                      ? "Loading…"
+                      : requests.error
+                        ? `Couldn't load deletion requests: ${(requests.error as Error).message}`
+                        : "No deletion requests waiting for review."}
                   </TableCell>
                 </TableRow>
               )}
