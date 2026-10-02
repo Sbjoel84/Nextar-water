@@ -100,6 +100,19 @@ type Employee = {
   emergency_contact: string | null;
   photo_url: string | null;
 };
+// Gross salary = basic + every allowance — what the employee actually earns per month.
+function grossSalary(e: Employee) {
+  return (
+    Number(e.basic_salary ?? 0) +
+    Number(e.housing_allowance ?? 0) +
+    Number(e.transport_allowance ?? 0) +
+    Number(e.meal_allowance ?? 0) +
+    Number(e.medical_allowance ?? 0) +
+    Number(e.utilities_allowance ?? 0) +
+    Number(e.other_allowances ?? 0)
+  );
+}
+
 type EmployeeDoc = { id: string; file_name: string; file_path: string; created_at: string };
 
 function useSignedUrl(path: string | null | undefined) {
@@ -161,6 +174,7 @@ function EmployeesPage() {
   });
   // Search every field (name, phone, email, address, balances…) as you type.
   const shown = (list.data ?? []).filter((row) => matchesSearch(q, row));
+  const totalGross = (list.data ?? []).reduce((sum, e) => sum + grossSalary(e), 0);
 
   const invalidateAll = () => qc.invalidateQueries({ queryKey: ["employees-list"] });
 
@@ -184,6 +198,12 @@ function EmployeesPage() {
           <p className="text-sm text-muted-foreground">
             Records, documents, and compensation profile.
           </p>
+        </div>
+        <div className="rounded-2xl border bg-card px-5 py-3 text-center">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Total Gross Salary ({list.data?.length ?? 0} employees)
+          </div>
+          <div className="text-2xl font-semibold tabular-nums">{money(totalGross)}</div>
         </div>
         {write && (
           <Dialog
@@ -234,7 +254,7 @@ function EmployeesPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Position</TableHead>
-                <TableHead className="text-right">Basic Salary</TableHead>
+                <TableHead className="text-right">Gross Salary</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -251,7 +271,7 @@ function EmployeesPage() {
                   </TableCell>
                   <TableCell>{e.department ?? "—"}</TableCell>
                   <TableCell>{e.position ?? "—"}</TableCell>
-                  <TableCell className="text-right">{money(Number(e.basic_salary))}</TableCell>
+                  <TableCell className="text-right">{money(grossSalary(e))}</TableCell>
                   <TableCell>
                     <Badge
                       variant={e.status === "active" ? "secondary" : "outline"}
@@ -522,6 +542,14 @@ function EmployeeForm({
           <div>
             <Label>Other</Label>
             <MoneyInput value={otherAllow} onChange={setOtherAllow} />
+          </div>
+          <div className="col-span-2">
+            <Label>Gross salary (total)</Label>
+            <div className="flex h-9 items-center rounded-md border bg-muted px-3 font-semibold tabular-nums">
+              {money(
+                basicSalary + housing + transport + meal + medical + utilities + otherAllow,
+              )}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">

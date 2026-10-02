@@ -8,7 +8,7 @@ import {
   MODULE_LABELS,
   ALL_ACTIONS,
   useAllRoles,
-  useIsSuperAdmin,
+  useIsAdmin,
   type ModuleKey,
   type Action,
   type Role,
@@ -49,7 +49,8 @@ export const Route = createFileRoute("/_app/permissions")({
 });
 
 export function PermissionsPage() {
-  const isSuperAdmin = useIsSuperAdmin();
+  // Super admin or chairman — the same roles the RLS on these tables allows.
+  const isSuperAdmin = useIsAdmin();
   const roles = useAllRoles();
   const [module, setModule] = useState<ModuleKey>("expenses");
   const qc = useQueryClient();

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAccess } from "@/components/layout/require-access";
-import { useAllRoles, useIsSuperAdmin, type Role } from "@/lib/permissions";
+import { useAllRoles, useIsAdmin, type Role } from "@/lib/permissions";
 import { UserPermissionOverridesEditor } from "@/components/permissions/user-permission-overrides";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -102,7 +102,8 @@ const statusVariant = (status: string): "default" | "secondary" | "outline" | "d
 
 export function AccountApprovalsPage() {
   const qc = useQueryClient();
-  const isSuperAdmin = useIsSuperAdmin();
+  // Super admin or chairman — the same roles the RLS on these tables allows.
+  const isSuperAdmin = useIsAdmin();
   const roles = useAllRoles();
   const roleLabel = (slug: string | null) =>
     slug ? (roles.data?.find((r) => r.slug === slug)?.label ?? slug) : "—";

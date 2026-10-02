@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAccess } from "@/components/layout/require-access";
-import { MODULE_LABELS, useIsSuperAdmin, type ModuleKey } from "@/lib/permissions";
+import { MODULE_LABELS, useIsAdmin, type ModuleKey } from "@/lib/permissions";
 import {
   WORKFLOW_ACTION_LABELS,
   WORKFLOW_STATUS_LABELS,
@@ -47,7 +47,8 @@ type ConfigRow = {
 };
 
 export function ApprovalWorkflowsPage() {
-  const isSuperAdmin = useIsSuperAdmin();
+  // Super admin or chairman — the same roles the RLS on these tables allows.
+  const isSuperAdmin = useIsAdmin();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Record<string, number>>({});
 

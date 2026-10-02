@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { RequireAccess } from "@/components/layout/require-access";
-import { useAllRoles, useIsSuperAdmin } from "@/lib/permissions";
+import { useAllRoles, useIsAdmin } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,8 @@ const slugify = (label: string) =>
 
 export function RoleManagementPage() {
   const qc = useQueryClient();
-  const isSuperAdmin = useIsSuperAdmin();
+  // Super admin or chairman — the same roles the RLS on these tables allows.
+  const isSuperAdmin = useIsAdmin();
   const roles = useAllRoles();
 
   const assignedCounts = useQuery({
