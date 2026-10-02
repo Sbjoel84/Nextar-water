@@ -176,6 +176,42 @@ function EmployeesPage() {
   const shown = (list.data ?? []).filter((row) => matchesSearch(q, row));
   const totalGross = (list.data ?? []).reduce((sum, e) => sum + grossSalary(e), 0);
 
+  // Header totals: what staff still owe on approved loans, and this month's
+  // approved fines (faulters). Pending items aren't counted until approved.
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const totals = useQuery({
+    queryKey: ["employee-totals", factoryId, month, year],
+    enabled: !!factoryId,
+    queryFn: async () => {
+      const [loans, fines] = await Promise.all([
+        supabase
+          .from("staff_loans")
+          .select("outstanding")
+          .eq("factory_id", factoryId!)
+          .eq("status", "active"),
+        supabase
+          .from("staff_deductions")
+          .select("employee_id,amount")
+          .eq("factory_id", factoryId!)
+          .eq("kind", "fine")
+          .eq("period_month", month)
+          .eq("period_year", year)
+          .in("status", ["approved", "applied"]),
+      ]);
+      if (loans.error) throw loans.error;
+      if (fines.error) throw fines.error;
+      return {
+        loans: (loans.data ?? []).reduce((s, l) => s + Number(l.outstanding ?? 0), 0),
+        loanCount: (loans.data ?? []).length,
+        fines: (fines.data ?? []).reduce((s, d) => s + Number(d.amount ?? 0), 0),
+        faulters: new Set((fines.data ?? []).map((d) => d.employee_id)).size,
+      };
+    },
+  });
+  const monthLabel = now.toLocaleString("en-GB", { month: "short", year: "numeric" });
+
   const invalidateAll = () => qc.invalidateQueries({ queryKey: ["employees-list"] });
 
   const del = useMutation({
@@ -204,6 +240,22 @@ function EmployeesPage() {
             Total Gross Salary ({list.data?.length ?? 0} employees)
           </div>
           <div className="text-2xl font-semibold tabular-nums">{money(totalGross)}</div>
+        </div>
+        <div className="rounded-2xl border bg-card px-5 py-3 text-center">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Faulters — {monthLabel} ({totals.data?.faulters ?? 0} staff)
+          </div>
+          <div className="text-2xl font-semibold tabular-nums">
+            {money(totals.data?.fines ?? 0)}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-card px-5 py-3 text-center">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Staff Loans Outstanding ({totals.data?.loanCount ?? 0} loans)
+          </div>
+          <div className="text-2xl font-semibold tabular-nums">
+            {money(totals.data?.loans ?? 0)}
+          </div>
         </div>
         {write && (
           <Dialog
@@ -546,9 +598,7 @@ function EmployeeForm({
           <div className="col-span-2">
             <Label>Gross salary (total)</Label>
             <div className="flex h-9 items-center rounded-md border bg-muted px-3 font-semibold tabular-nums">
-              {money(
-                basicSalary + housing + transport + meal + medical + utilities + otherAllow,
-              )}
+              {money(basicSalary + housing + transport + meal + medical + utilities + otherAllow)}
             </div>
           </div>
         </div>
@@ -816,8 +866,14 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
     },
   });
 
-  const refreshLoans = () => qc.invalidateQueries({ queryKey: ["staff-loans", employee.id] });
-  const refreshDed = () => qc.invalidateQueries({ queryKey: ["staff-deductions", employee.id] });
+  const refreshLoans = () => {
+    qc.invalidateQueries({ queryKey: ["staff-loans", employee.id] });
+    qc.invalidateQueries({ queryKey: ["employee-totals"] });
+  };
+  const refreshDed = () => {
+    qc.invalidateQueries({ queryKey: ["staff-deductions", employee.id] });
+    qc.invalidateQueries({ queryKey: ["employee-totals"] });
+  };
 
   // ---- loan form ----
   const [principal, setPrincipal] = useState(0);
