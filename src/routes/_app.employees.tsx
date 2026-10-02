@@ -177,7 +177,8 @@ function EmployeesPage() {
   const totalGross = (list.data ?? []).reduce((sum, e) => sum + grossSalary(e), 0);
 
   // Header totals: what staff still owe on approved loans, and this month's
-  // approved fines (faulters). Pending items aren't counted until approved.
+  // approved fines (faulters) and contributions. Pending items aren't counted
+  // until approved.
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
@@ -185,7 +186,7 @@ function EmployeesPage() {
     queryKey: ["employee-totals", factoryId, month, year],
     enabled: !!factoryId,
     queryFn: async () => {
-      const [loans, fines] = await Promise.all([
+      const [loans, deductions] = await Promise.all([
         supabase
           .from("staff_loans")
           .select("outstanding")
@@ -193,20 +194,24 @@ function EmployeesPage() {
           .eq("status", "active"),
         supabase
           .from("staff_deductions")
-          .select("employee_id,amount")
+          .select("employee_id,kind,amount")
           .eq("factory_id", factoryId!)
-          .eq("kind", "fine")
+          .in("kind", ["fine", "contribution"])
           .eq("period_month", month)
           .eq("period_year", year)
           .in("status", ["approved", "applied"]),
       ]);
       if (loans.error) throw loans.error;
-      if (fines.error) throw fines.error;
+      if (deductions.error) throw deductions.error;
+      const fines = (deductions.data ?? []).filter((d) => d.kind === "fine");
+      const contributions = (deductions.data ?? []).filter((d) => d.kind === "contribution");
       return {
         loans: (loans.data ?? []).reduce((s, l) => s + Number(l.outstanding ?? 0), 0),
         loanCount: (loans.data ?? []).length,
-        fines: (fines.data ?? []).reduce((s, d) => s + Number(d.amount ?? 0), 0),
-        faulters: new Set((fines.data ?? []).map((d) => d.employee_id)).size,
+        fines: fines.reduce((s, d) => s + Number(d.amount ?? 0), 0),
+        faulters: new Set(fines.map((d) => d.employee_id)).size,
+        contributions: contributions.reduce((s, d) => s + Number(d.amount ?? 0), 0),
+        contributors: new Set(contributions.map((d) => d.employee_id)).size,
       };
     },
   });
@@ -247,6 +252,14 @@ function EmployeesPage() {
           </div>
           <div className="text-2xl font-semibold tabular-nums">
             {money(totals.data?.fines ?? 0)}
+          </div>
+        </div>
+        <div className="rounded-2xl border bg-card px-5 py-3 text-center">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            Contributions — {monthLabel} ({totals.data?.contributors ?? 0} staff)
+          </div>
+          <div className="text-2xl font-semibold tabular-nums">
+            {money(totals.data?.contributions ?? 0)}
           </div>
         </div>
         <div className="rounded-2xl border bg-card px-5 py-3 text-center">
