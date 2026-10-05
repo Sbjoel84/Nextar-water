@@ -101,6 +101,9 @@ type StockRow = {
   quantity_sold: number;
   pr: number;
   damages: number;
+  // Optional until 20261005090000_stock_movement_summary_reconcile.sql is applied.
+  returned?: number;
+  adjustments?: number;
   closing_stock: number;
 };
 
@@ -128,7 +131,7 @@ function rangeBounds(key: RangeKey, from: string, to: string): { start: string; 
     return { start: startOfYear(now).toISOString(), end: endOfDay(now).toISOString() };
   if (key === "custom")
     return {
-      start: from ? new Date(from).toISOString() : startOfDay(now).toISOString(),
+      start: from ? new Date(from + "T00:00:00").toISOString() : startOfDay(now).toISOString(),
       end: to ? new Date(to + "T23:59:59").toISOString() : endOfDay(now).toISOString(),
     };
   return { start: startOfDay(now).toISOString(), end: endOfDay(now).toISOString() };
@@ -304,6 +307,8 @@ function SalesReturnsPage() {
                 <TableHead className="text-right">Quantity Sold</TableHead>
                 <TableHead className="text-right">PR</TableHead>
                 <TableHead className="text-right">Damages</TableHead>
+                <TableHead className="text-right">Returned</TableHead>
+                <TableHead className="text-right">Adjustments</TableHead>
                 <TableHead className="text-right">Closing Stock</TableHead>
               </TableRow>
             </TableHeader>
@@ -326,6 +331,13 @@ function SalesReturnsPage() {
                   <TableCell className="text-right">
                     {num(r.damages)} {r.unit}
                   </TableCell>
+                  <TableCell className="text-right">
+                    {num(r.returned ?? 0)} {r.unit}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(r.adjustments ?? 0) > 0 ? "+" : ""}
+                    {num(r.adjustments ?? 0)} {r.unit}
+                  </TableCell>
                   <TableCell className="text-right font-medium">
                     {num(r.closing_stock)} {r.unit}
                   </TableCell>
@@ -333,7 +345,7 @@ function SalesReturnsPage() {
               ))}
               {(stockSummary.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No active products for this factory.
                   </TableCell>
                 </TableRow>
