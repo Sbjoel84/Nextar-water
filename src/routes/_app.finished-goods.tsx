@@ -69,6 +69,7 @@ import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
 import { PosDialog } from "./_app.sales";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/finished-goods")({
   head: () => ({
@@ -717,7 +718,7 @@ function FinishedGoodsPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search product, SKU, category…"
+                placeholder="Search product, SKU, category, #ID…"
                 className="pl-8 h-9 w-56"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -739,6 +740,7 @@ function FinishedGoodsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Product</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Category</TableHead>
@@ -752,6 +754,9 @@ function FinishedGoodsPage() {
                 const low = isLowStock(p.current_stock, p.reorder_level);
                 return (
                   <TableRow key={p.id}>
+                    <TableCell>
+                      <RefId id={p.id} />
+                    </TableCell>
                     <TableCell className="font-medium">{p.name}</TableCell>
                     <TableCell>
                       <Badge variant={p.product_type === "semi_finished" ? "outline" : "secondary"}>
@@ -846,7 +851,7 @@ function FinishedGoodsPage() {
               })}
               {searchedList.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     {q.trim() ? "No products match your search." : "No products yet."}
                   </TableCell>
                 </TableRow>
@@ -868,6 +873,7 @@ function FinishedGoodsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Reference</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -878,78 +884,83 @@ function FinishedGoodsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(pendingAdjustments.data ?? []).map((a) => {
-                  const isSelf = a.submitted_by === currentUser.data;
-                  return (
-                    <TableRow key={a.id}>
-                      <TableCell className="font-mono text-xs">{a.reference_number}</TableCell>
-                      <TableCell className="font-medium">{a.products?.name ?? "—"}</TableCell>
-                      <TableCell className="text-right text-destructive">
-                        {num(Number(a.quantity_delta))} {a.products?.unit ?? ""}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{a.reason ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {a.status.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(a.submitted_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {a.status === "pending_approval" && approve && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Approve"
-                              onClick={() => reviewAdjustment.mutate({ id: a.id, approve: true })}
-                            >
-                              <PackageCheck className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {a.status === "pending_approval" && approve && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reject"
-                              onClick={() =>
-                                reviewAdjustment.mutate({
-                                  id: a.id,
-                                  approve: false,
-                                  reason: "Rejected",
-                                })
-                              }
-                            >
-                              <PackageX className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                          {a.status === "approved" && post && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Post"
-                              onClick={() => postAdjustment.mutate(a.id)}
-                            >
-                              <Send className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {(a.status === "pending_approval" || a.status === "approved") &&
-                            cancel && (
+                {(pendingAdjustments.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((a) => {
+                    const isSelf = a.submitted_by === currentUser.data;
+                    return (
+                      <TableRow key={a.id}>
+                        <TableCell>
+                          <RefId id={a.id} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{a.reference_number}</TableCell>
+                        <TableCell className="font-medium">{a.products?.name ?? "—"}</TableCell>
+                        <TableCell className="text-right text-destructive">
+                          {num(Number(a.quantity_delta))} {a.products?.unit ?? ""}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{a.reason ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {a.status.replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(a.submitted_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {a.status === "pending_approval" && approve && !isSelf && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Cancel"
-                                onClick={() => cancelAdjustment.mutate(a.id)}
+                                title="Approve"
+                                onClick={() => reviewAdjustment.mutate({ id: a.id, approve: true })}
                               >
-                                <Ban className="h-4 w-4 text-muted-foreground" />
+                                <PackageCheck className="h-4 w-4 text-success" />
                               </Button>
                             )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                            {a.status === "pending_approval" && approve && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() =>
+                                  reviewAdjustment.mutate({
+                                    id: a.id,
+                                    approve: false,
+                                    reason: "Rejected",
+                                  })
+                                }
+                              >
+                                <PackageX className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                            {a.status === "approved" && post && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Post"
+                                onClick={() => postAdjustment.mutate(a.id)}
+                              >
+                                <Send className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {(a.status === "pending_approval" || a.status === "approved") &&
+                              cancel && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Cancel"
+                                  onClick={() => cancelAdjustment.mutate(a.id)}
+                                >
+                                  <Ban className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>
@@ -968,6 +979,7 @@ function FinishedGoodsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Batch #</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead className="text-right">Quantity Produced</TableHead>
@@ -976,55 +988,60 @@ function FinishedGoodsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(pendingBatches.data ?? []).map((b) => {
-                  const isSelf = b.created_by === currentUser.data;
-                  return (
-                    <TableRow key={b.id}>
-                      <TableCell className="font-mono text-xs">
-                        {b.production_number}
-                        {b.batch_number ? ` · ${b.batch_number}` : ""}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {b.products?.name ?? "—"}
-                        {autoSupply(supplyLinks.data?.[b.product_id]) && (
-                          <div className="text-xs font-normal text-muted-foreground">
-                            → {supplyLinks.data?.[b.product_id]?.factoryName} raw materials
+                {(pendingBatches.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((b) => {
+                    const isSelf = b.created_by === currentUser.data;
+                    return (
+                      <TableRow key={b.id}>
+                        <TableCell>
+                          <RefId id={b.id} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {b.production_number}
+                          {b.batch_number ? ` · ${b.batch_number}` : ""}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {b.products?.name ?? "—"}
+                          {autoSupply(supplyLinks.data?.[b.product_id]) && (
+                            <div className="text-xs font-normal text-muted-foreground">
+                              → {supplyLinks.data?.[b.product_id]?.factoryName} raw materials
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {num(Number(b.quantity_produced))} {b.products?.unit ?? b.unit}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(b.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {confirmBatchPerm && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Confirm"
+                                onClick={() => setConfirmTarget(b)}
+                              >
+                                <Check className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {rejectBatchPerm && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() => setRejectTarget(b)}
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
                           </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {num(Number(b.quantity_produced))} {b.products?.unit ?? b.unit}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(b.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {confirmBatchPerm && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Confirm"
-                              onClick={() => setConfirmTarget(b)}
-                            >
-                              <Check className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {rejectBatchPerm && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reject"
-                              onClick={() => setRejectTarget(b)}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>
@@ -1043,6 +1060,7 @@ function FinishedGoodsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Batch #</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Request</TableHead>
@@ -1054,85 +1072,90 @@ function FinishedGoodsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(pendingCorrections.data ?? []).map((c) => {
-                  const isSelf = c.requested_by === currentUser.data;
-                  const unit = c.production?.products?.unit ?? c.production?.unit ?? "";
-                  const delta = correctionDelta(c);
-                  return (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-mono text-xs">
-                        {c.production?.production_number ?? "—"}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {c.production?.products?.name ?? "—"}
-                        {c.production &&
-                          autoSupply(supplyLinks.data?.[c.production.product_id]) && (
-                            <div className="text-xs font-normal text-muted-foreground">
-                              Adjusts {supplyLinks.data?.[c.production.product_id]?.factoryName} raw
-                              material
-                            </div>
-                          )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={c.kind === "delete" ? "destructive" : "outline"}>
-                          {c.kind === "delete" ? "Delete" : "Edit"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {c.kind === "edit" ? (
-                          <>
-                            Qty {num(Number(c.old_values.quantity_produced ?? 0))} →{" "}
-                            {num(Number(c.new_quantity_produced ?? 0))}
-                            <br />
-                            Damaged {num(Number(c.old_values.damaged_quantity ?? 0))} →{" "}
-                            {num(Number(c.new_damaged_quantity ?? 0))}
-                          </>
-                        ) : (
-                          "Remove batch from stock"
-                        )}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-medium ${delta < 0 ? "text-destructive" : delta > 0 ? "text-success" : ""}`}
-                      >
-                        {delta > 0 ? "+" : ""}
-                        {num(delta)} {unit}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground max-w-[220px]">
-                        {c.reason}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {c.requested_by_name ?? "—"}
-                        <br />
-                        {new Date(c.requested_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {!isSelf && (
+                {(pendingCorrections.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((c) => {
+                    const isSelf = c.requested_by === currentUser.data;
+                    const unit = c.production?.products?.unit ?? c.production?.unit ?? "";
+                    const delta = correctionDelta(c);
+                    return (
+                      <TableRow key={c.id}>
+                        <TableCell>
+                          <RefId id={c.id} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {c.production?.production_number ?? "—"}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {c.production?.products?.name ?? "—"}
+                          {c.production &&
+                            autoSupply(supplyLinks.data?.[c.production.product_id]) && (
+                              <div className="text-xs font-normal text-muted-foreground">
+                                Adjusts {supplyLinks.data?.[c.production.product_id]?.factoryName}{" "}
+                                raw material
+                              </div>
+                            )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={c.kind === "delete" ? "destructive" : "outline"}>
+                            {c.kind === "delete" ? "Delete" : "Edit"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {c.kind === "edit" ? (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Approve"
-                                disabled={approveCorrection.isPending}
-                                onClick={() => approveCorrection.mutate(c.id)}
-                              >
-                                <Check className="h-4 w-4 text-success" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Reject"
-                                onClick={() => setRejectCorrection(c)}
-                              >
-                                <X className="h-4 w-4 text-destructive" />
-                              </Button>
+                              Qty {num(Number(c.old_values.quantity_produced ?? 0))} →{" "}
+                              {num(Number(c.new_quantity_produced ?? 0))}
+                              <br />
+                              Damaged {num(Number(c.old_values.damaged_quantity ?? 0))} →{" "}
+                              {num(Number(c.new_damaged_quantity ?? 0))}
                             </>
+                          ) : (
+                            "Remove batch from stock"
                           )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right font-medium ${delta < 0 ? "text-destructive" : delta > 0 ? "text-success" : ""}`}
+                        >
+                          {delta > 0 ? "+" : ""}
+                          {num(delta)} {unit}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground max-w-[220px]">
+                          {c.reason}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {c.requested_by_name ?? "—"}
+                          <br />
+                          {new Date(c.requested_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {!isSelf && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Approve"
+                                  disabled={approveCorrection.isPending}
+                                  onClick={() => approveCorrection.mutate(c.id)}
+                                >
+                                  <Check className="h-4 w-4 text-success" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Reject"
+                                  onClick={() => setRejectCorrection(c)}
+                                >
+                                  <X className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>
@@ -1148,6 +1171,7 @@ function FinishedGoodsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Reference</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -1159,30 +1183,37 @@ function FinishedGoodsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(recentDamage.data ?? []).map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-mono text-xs">{d.reference_number}</TableCell>
-                    <TableCell>{d.products?.name ?? "—"}</TableCell>
-                    <TableCell className="text-right text-destructive">
-                      {num(Number(d.quantity))} {d.unit ?? ""}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {d.unit_cost == null ? "—" : money(Number(d.unit_cost))}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-destructive">
-                      {d.unit_cost == null ? "—" : money(Number(d.quantity) * Number(d.unit_cost))}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {d.source_type.toLowerCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{d.reason ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(d.created_at).toLocaleDateString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {(recentDamage.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell>
+                        <RefId id={d.id} />
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{d.reference_number}</TableCell>
+                      <TableCell>{d.products?.name ?? "—"}</TableCell>
+                      <TableCell className="text-right text-destructive">
+                        {num(Number(d.quantity))} {d.unit ?? ""}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {d.unit_cost == null ? "—" : money(Number(d.unit_cost))}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-destructive">
+                        {d.unit_cost == null
+                          ? "—"
+                          : money(Number(d.quantity) * Number(d.unit_cost))}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">
+                          {d.source_type.toLowerCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{d.reason ?? "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(d.created_at).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -2038,6 +2069,7 @@ function HistoryDialog({ product }: { product: Product }) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>ID</TableHead>
             <TableHead>Date &amp; Time</TableHead>
             <TableHead>Type</TableHead>
             <TableHead className="text-right">Qty</TableHead>
@@ -2050,6 +2082,9 @@ function HistoryDialog({ product }: { product: Product }) {
         <TableBody>
           {(movements.data ?? []).map((m) => (
             <TableRow key={m.id}>
+              <TableCell>
+                <RefId id={m.id} />
+              </TableCell>
               <TableCell>{new Date(m.created_at).toLocaleString()}</TableCell>
               <TableCell>
                 <Badge variant={movementBadge(m.movement_type)} className="capitalize">
@@ -2071,7 +2106,7 @@ function HistoryDialog({ product }: { product: Product }) {
           ))}
           {(movements.data ?? []).length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+              <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                 No movements yet.
               </TableCell>
             </TableRow>
@@ -2083,6 +2118,7 @@ function HistoryDialog({ product }: { product: Product }) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>ID</TableHead>
             <TableHead>Effective</TableHead>
             <TableHead className="text-right">Previous price</TableHead>
             <TableHead className="text-right">New price</TableHead>
@@ -2091,6 +2127,9 @@ function HistoryDialog({ product }: { product: Product }) {
         <TableBody>
           {(priceHistory.data ?? []).map((h) => (
             <TableRow key={h.id}>
+              <TableCell>
+                <RefId id={h.id} />
+              </TableCell>
               <TableCell>{new Date(h.effective_date).toLocaleString()}</TableCell>
               <TableCell className="text-right text-muted-foreground">
                 {h.previous_price === null ? "—" : money(Number(h.previous_price))}
@@ -2100,7 +2139,7 @@ function HistoryDialog({ product }: { product: Product }) {
           ))}
           {(priceHistory.data ?? []).length === 0 && (
             <TableRow>
-              <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+              <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
                 No price history yet.
               </TableCell>
             </TableRow>
@@ -2213,6 +2252,7 @@ function PackagingDialog({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Packaging unit</TableHead>
               <TableHead className="text-right">1 unit =</TableHead>
               <TableHead>Status</TableHead>
@@ -2222,6 +2262,9 @@ function PackagingDialog({
           <TableBody>
             {(rules.data ?? []).map((r) => (
               <TableRow key={r.id}>
+                <TableCell>
+                  <RefId id={r.id} />
+                </TableCell>
                 <TableCell className="font-medium capitalize">{r.packaging_unit}</TableCell>
                 <TableCell className="text-right">
                   {num(Number(r.conversion_factor))} {r.base_unit}

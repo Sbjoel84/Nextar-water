@@ -41,6 +41,9 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Trash2, Ban, Check, X, Pencil, Droplet, Package } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/costing")({
   head: () => ({ meta: [{ title: "Costing — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -161,6 +164,7 @@ function PriceOptionsEditor({
 }
 
 function CostingPage() {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const { canSubmit, canEdit, canCancel, canApprove, canReject } = usePermissions();
   const factory = useFactoryId();
@@ -319,9 +323,11 @@ function CostingPage() {
           <CardTitle>Costing history</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Sheet #</TableHead>
                 <TableHead>Product</TableHead>
                 <TableHead>Yield</TableHead>
@@ -335,59 +341,64 @@ function CostingPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(sheets.data ?? []).map((s) => {
-                const isSelf = s.created_by === currentUser.data;
-                return (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.sheet_number}</TableCell>
-                    <TableCell>{s.products?.name ?? "—"}</TableCell>
-                    <TableCell>
-                      {num(s.yield_quantity)} {s.products?.unit}
-                    </TableCell>
-                    <TableCell>{money(s.material_cost)}</TableCell>
-                    <TableCell>{money(s.unit_cost)}</TableCell>
-                    <TableCell className="font-medium">{money(s.cost_per_pack)}</TableCell>
-                    <TableCell>{s.is_applied ? "Yes" : "No"}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadge(s.status)}>
-                        {WORKFLOW_STATUS_LABELS[s.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(s.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {s.status === "pending_approval" && (
-                        <div className="flex justify-end gap-1">
-                          {editPerm && isSelf && s.sheet_type && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Edit"
-                              onClick={() => setEditingSheet(s)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {cancelPerm && isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Cancel"
-                              onClick={() => cancelSheet.mutate(s.id)}
-                            >
-                              <Ban className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {(sheets.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((s) => {
+                  const isSelf = s.created_by === currentUser.data;
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <RefId id={s.id} />
+                      </TableCell>
+                      <TableCell className="font-medium">{s.sheet_number}</TableCell>
+                      <TableCell>{s.products?.name ?? "—"}</TableCell>
+                      <TableCell>
+                        {num(s.yield_quantity)} {s.products?.unit}
+                      </TableCell>
+                      <TableCell>{money(s.material_cost)}</TableCell>
+                      <TableCell>{money(s.unit_cost)}</TableCell>
+                      <TableCell className="font-medium">{money(s.cost_per_pack)}</TableCell>
+                      <TableCell>{s.is_applied ? "Yes" : "No"}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusBadge(s.status)}>
+                          {WORKFLOW_STATUS_LABELS[s.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {new Date(s.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        {s.status === "pending_approval" && (
+                          <div className="flex justify-end gap-1">
+                            {editPerm && isSelf && s.sheet_type && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit"
+                                onClick={() => setEditingSheet(s)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {cancelPerm && isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Cancel"
+                                onClick={() => cancelSheet.mutate(s.id)}
+                              >
+                                <Ban className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               {(sheets.data?.length ?? 0) === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                     No costing sheets yet.
                   </TableCell>
                 </TableRow>
@@ -403,9 +414,11 @@ function CostingPage() {
             <CardTitle>Pending Costing Sheets to Approve</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
+            <SearchBox value={q} onChange={setQ} className="mb-3" />
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Sheet #</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead className="text-right">Cost / Pack</TableHead>
@@ -414,43 +427,48 @@ function CostingPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingSheets.map((s) => {
-                  const isSelf = s.created_by === currentUser.data;
-                  return (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">{s.sheet_number}</TableCell>
-                      <TableCell>{s.products?.name ?? "—"}</TableCell>
-                      <TableCell className="text-right">{money(s.cost_per_pack)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(s.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {approvePerm && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Approve & Apply"
-                              onClick={() => approveSheet.mutate(s.id)}
-                            >
-                              <Check className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {rejectPerm && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reject"
-                              onClick={() => setRejectTarget(s)}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {pendingSheets
+                  .filter((x) => matchesSearch(q, x))
+                  .map((s) => {
+                    const isSelf = s.created_by === currentUser.data;
+                    return (
+                      <TableRow key={s.id}>
+                        <TableCell>
+                          <RefId id={s.id} />
+                        </TableCell>
+                        <TableCell className="font-medium">{s.sheet_number}</TableCell>
+                        <TableCell>{s.products?.name ?? "—"}</TableCell>
+                        <TableCell className="text-right">{money(s.cost_per_pack)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(s.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {approvePerm && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Approve & Apply"
+                                onClick={() => approveSheet.mutate(s.id)}
+                              >
+                                <Check className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {rejectPerm && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() => setRejectTarget(s)}
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>

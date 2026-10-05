@@ -23,6 +23,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Check, X } from "lucide-react";
 import { toast } from "sonner";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 type DeleteRequestRow = {
   id: string;
@@ -70,6 +73,7 @@ function useRequesterNames(userIds: string[]) {
 }
 
 export function DeleteRequestsTab() {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const [rejectTarget, setRejectTarget] = useState<DeleteRequestRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -130,9 +134,11 @@ export function DeleteRequestsTab() {
 
       <Card className="rounded-2xl">
         <CardContent className="overflow-x-auto p-0">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Record</TableHead>
                 <TableHead>Reason</TableHead>
@@ -142,48 +148,53 @@ export function DeleteRequestsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
-                    <Badge variant="outline">{TABLE_LABELS[r.table_name] ?? r.table_name}</Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">{r.entity_label}</TableCell>
-                  <TableCell className="max-w-xs truncate text-sm" title={r.reason}>
-                    {r.reason}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {requesterNames.data?.[r.requested_by] ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {new Date(r.requested_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Approve"
-                        disabled={approve.isPending}
-                        onClick={() => approve.mutate(r)}
-                      >
-                        <Check className="h-4 w-4 text-success" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Reject"
-                        onClick={() => setRejectTarget(r)}
-                      >
-                        <X className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows
+                .filter((x) => matchesSearch(q, x))
+                .map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <RefId id={r.id} />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{TABLE_LABELS[r.table_name] ?? r.table_name}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{r.entity_label}</TableCell>
+                    <TableCell className="max-w-xs truncate text-sm" title={r.reason}>
+                      {r.reason}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {requesterNames.data?.[r.requested_by] ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {new Date(r.requested_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Approve"
+                          disabled={approve.isPending}
+                          onClick={() => approve.mutate(r)}
+                        >
+                          <Check className="h-4 w-4 text-success" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reject"
+                          onClick={() => setRejectTarget(r)}
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className={
                       requests.error
                         ? "py-8 text-center text-destructive"

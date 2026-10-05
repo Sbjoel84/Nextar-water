@@ -24,6 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Workflow, History } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/approval-workflows")({
   head: () => ({
@@ -209,6 +210,7 @@ export function ApprovalWorkflowsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>When</TableHead>
                   <TableHead>Module</TableHead>
                   <TableHead>Action</TableHead>
@@ -220,6 +222,9 @@ export function ApprovalWorkflowsPage() {
               <TableBody>
                 {history.data!.map((h) => (
                   <TableRow key={h.id}>
+                    <TableCell>
+                      <RefId id={h.id} />
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {new Date(h.created_at).toLocaleString()}
                     </TableCell>

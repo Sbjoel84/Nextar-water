@@ -56,6 +56,7 @@ import {
 import { generateReceiptPdf, generateDebtStatementPdf } from "@/lib/pdf";
 import { CustomerProfileDialog, type Customer } from "@/routes/_app.customers";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/cash-ledger/debts")({
   head: () => ({
@@ -424,7 +425,7 @@ function DebtsPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search customer or invoice…"
+                placeholder="Search customer, invoice or #ID…"
                 className="pl-8 h-9 w-56"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -450,6 +451,7 @@ function DebtsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Phone</TableHead>
@@ -464,6 +466,9 @@ function DebtsPage() {
             <TableBody>
               {filtered.map((d) => (
                 <TableRow key={d.id}>
+                  <TableCell>
+                    <RefId id={d.id} />
+                  </TableCell>
                   <TableCell>{new Date(d.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>{d.customers?.name ?? "—"}</TableCell>
                   <TableCell className="text-muted-foreground">
@@ -594,7 +599,7 @@ function DebtsPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     No debts match.
                   </TableCell>
                 </TableRow>
@@ -730,6 +735,7 @@ function DebtDetailDialog({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date & Time</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Remarks</TableHead>
@@ -739,6 +745,9 @@ function DebtDetailDialog({
             <TableBody>
               {(payments.data ?? []).map((p) => (
                 <TableRow key={p.id}>
+                  <TableCell>
+                    <RefId id={p.id} />
+                  </TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
                     {new Date(p.created_at).toLocaleString()}
                   </TableCell>
@@ -755,7 +764,7 @@ function DebtDetailDialog({
               ))}
               {(payments.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
                     No payments recorded yet.
                   </TableCell>
                 </TableRow>

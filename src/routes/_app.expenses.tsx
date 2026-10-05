@@ -70,6 +70,7 @@ import { logAudit } from "@/lib/audit";
 import { ApprovalHistory } from "@/components/workflow/approval-history";
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/expenses")({
   head: () => ({ meta: [{ title: "Expenses — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -634,7 +635,7 @@ function ExpensesPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search entries…"
+                placeholder="Search entries or #ID…"
                 className="pl-8 h-9 w-48"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -656,6 +657,7 @@ function ExpensesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="min-w-[280px]">Details</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Cash In (₦)</TableHead>
@@ -674,6 +676,9 @@ function ExpensesPage() {
                   c && writeCashIn && (c.recorded_by === currentUser.data || reverse);
                 return (
                   <TableRow key={row.key}>
+                    <TableCell>
+                      <RefId id={row.expense?.id ?? row.cashIn?.id} />
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {row.date}
                     </TableCell>
@@ -841,7 +846,7 @@ function ExpensesPage() {
               })}
               {displayRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No entries in this range.
                   </TableCell>
                 </TableRow>

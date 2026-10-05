@@ -39,6 +39,9 @@ import { toast } from "sonner";
 import { Truck, Plus, UserRound, PackageCheck, Pencil, Trash2 } from "lucide-react";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/logistics")({
   head: () => ({ meta: [{ title: "Logistics — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -98,6 +101,7 @@ const emptyVehicleForm = {
 };
 
 function LogisticsPage() {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const { canWrite } = usePermissions();
   const factory = useFactoryId();
@@ -369,9 +373,11 @@ function LogisticsPage() {
           )}
           <Card className="rounded-2xl">
             <CardContent className="overflow-x-auto pt-6">
+              <SearchBox value={q} onChange={setQ} className="mb-3" />
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>ID</TableHead>
                     <TableHead>Delivery #</TableHead>
                     <TableHead>Destination</TableHead>
                     <TableHead>Vehicle</TableHead>
@@ -383,44 +389,49 @@ function LogisticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(deliveries.data ?? []).map((d) => (
-                    <TableRow key={d.id}>
-                      <TableCell className="font-medium">{d.delivery_number}</TableCell>
-                      <TableCell>{d.destination ?? "—"}</TableCell>
-                      <TableCell>{d.vehicles?.plate_number ?? "—"}</TableCell>
-                      <TableCell>{d.drivers?.full_name ?? "—"}</TableCell>
-                      <TableCell>{d.delivery_routes?.name ?? "—"}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {new Date(d.scheduled_date).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(d.status)} className="capitalize">
-                          {d.status.replace("_", " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {write && d.status !== "delivered" && d.status !== "cancelled" && (
-                          <Select
-                            value={d.status}
-                            onValueChange={(v) => setStatus.mutate({ id: d.id, status: v })}
-                          >
-                            <SelectTrigger className="h-8 w-36">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="in_transit">In transit</SelectItem>
-                              <SelectItem value="delivered">Delivered</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {(deliveries.data ?? [])
+                    .filter((x) => matchesSearch(q, x))
+                    .map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell>
+                          <RefId id={d.id} />
+                        </TableCell>
+                        <TableCell className="font-medium">{d.delivery_number}</TableCell>
+                        <TableCell>{d.destination ?? "—"}</TableCell>
+                        <TableCell>{d.vehicles?.plate_number ?? "—"}</TableCell>
+                        <TableCell>{d.drivers?.full_name ?? "—"}</TableCell>
+                        <TableCell>{d.delivery_routes?.name ?? "—"}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {new Date(d.scheduled_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusVariant(d.status)} className="capitalize">
+                            {d.status.replace("_", " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {write && d.status !== "delivered" && d.status !== "cancelled" && (
+                            <Select
+                              value={d.status}
+                              onValueChange={(v) => setStatus.mutate({ id: d.id, status: v })}
+                            >
+                              <SelectTrigger className="h-8 w-36">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="in_transit">In transit</SelectItem>
+                                <SelectItem value="delivered">Delivered</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   {(deliveries.data?.length ?? 0) === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                         No deliveries scheduled.
                       </TableCell>
                     </TableRow>
@@ -441,9 +452,11 @@ function LogisticsPage() {
           )}
           <Card className="rounded-2xl">
             <CardContent className="overflow-x-auto pt-6">
+              <SearchBox value={q} onChange={setQ} className="mb-3" />
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>ID</TableHead>
                     <TableHead>Plate</TableHead>
                     <TableHead>Brand / Model</TableHead>
                     <TableHead>Type</TableHead>
@@ -454,59 +467,64 @@ function LogisticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(vehicles.data ?? []).map((v) => (
-                    <TableRow key={v.id}>
-                      <TableCell className="font-medium">{v.plate_number}</TableCell>
-                      <TableCell>{[v.brand, v.model].filter(Boolean).join(" ") || "—"}</TableCell>
-                      <TableCell className="capitalize">{v.vehicle_type ?? "—"}</TableCell>
-                      <TableCell>{v.year ?? "—"}</TableCell>
-                      <TableCell>{v.capacity ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {v.status}
-                        </Badge>
-                      </TableCell>
-                      {write && (
+                  {(vehicles.data ?? [])
+                    .filter((x) => matchesSearch(q, x))
+                    .map((v) => (
+                      <TableRow key={v.id}>
                         <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Edit"
-                              onClick={() => {
-                                setEditingVehicle(v);
-                                setVForm({
-                                  plate_number: v.plate_number,
-                                  brand: v.brand ?? "",
-                                  model: v.model ?? "",
-                                  vehicle_type: v.vehicle_type ?? "",
-                                  year: v.year != null ? String(v.year) : "",
-                                  color: v.color ?? "",
-                                  capacity: v.capacity ?? "",
-                                  chassis_number: v.chassis_number ?? "",
-                                  engine_number: v.engine_number ?? "",
-                                  registration_expiry_date: v.registration_expiry_date ?? "",
-                                  insurance_expiry_date: v.insurance_expiry_date ?? "",
-                                  status: v.status,
-                                });
-                                setVehicleOpen(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Remove"
-                              onClick={() => setDeleteVehicleTarget(v)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
+                          <RefId id={v.id} />
                         </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
+                        <TableCell className="font-medium">{v.plate_number}</TableCell>
+                        <TableCell>{[v.brand, v.model].filter(Boolean).join(" ") || "—"}</TableCell>
+                        <TableCell className="capitalize">{v.vehicle_type ?? "—"}</TableCell>
+                        <TableCell>{v.year ?? "—"}</TableCell>
+                        <TableCell>{v.capacity ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {v.status}
+                          </Badge>
+                        </TableCell>
+                        {write && (
+                          <TableCell>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit"
+                                onClick={() => {
+                                  setEditingVehicle(v);
+                                  setVForm({
+                                    plate_number: v.plate_number,
+                                    brand: v.brand ?? "",
+                                    model: v.model ?? "",
+                                    vehicle_type: v.vehicle_type ?? "",
+                                    year: v.year != null ? String(v.year) : "",
+                                    color: v.color ?? "",
+                                    capacity: v.capacity ?? "",
+                                    chassis_number: v.chassis_number ?? "",
+                                    engine_number: v.engine_number ?? "",
+                                    registration_expiry_date: v.registration_expiry_date ?? "",
+                                    insurance_expiry_date: v.insurance_expiry_date ?? "",
+                                    status: v.status,
+                                  });
+                                  setVehicleOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Remove"
+                                onClick={() => setDeleteVehicleTarget(v)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
                   {(vehicles.data?.length ?? 0) === 0 && (
                     <TableRow>
                       <TableCell
@@ -533,9 +551,11 @@ function LogisticsPage() {
           )}
           <Card className="rounded-2xl">
             <CardContent className="overflow-x-auto pt-6">
+              <SearchBox value={q} onChange={setQ} className="mb-3" />
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>License #</TableHead>
@@ -544,49 +564,54 @@ function LogisticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(drivers.data ?? []).map((d) => (
-                    <TableRow key={d.id}>
-                      <TableCell className="font-medium">{d.full_name}</TableCell>
-                      <TableCell>{d.phone ?? "—"}</TableCell>
-                      <TableCell>{d.license_number ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {d.status}
-                        </Badge>
-                      </TableCell>
-                      {write && (
+                  {(drivers.data ?? [])
+                    .filter((x) => matchesSearch(q, x))
+                    .map((d) => (
+                      <TableRow key={d.id}>
                         <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Edit"
-                              onClick={() => {
-                                setEditingDriver(d);
-                                setDForm({
-                                  full_name: d.full_name,
-                                  phone: d.phone ?? "",
-                                  license_number: d.license_number ?? "",
-                                  status: d.status,
-                                });
-                                setDriverOpen(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Remove"
-                              onClick={() => setDeleteDriverTarget(d)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
+                          <RefId id={d.id} />
                         </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
+                        <TableCell className="font-medium">{d.full_name}</TableCell>
+                        <TableCell>{d.phone ?? "—"}</TableCell>
+                        <TableCell>{d.license_number ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {d.status}
+                          </Badge>
+                        </TableCell>
+                        {write && (
+                          <TableCell>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit"
+                                onClick={() => {
+                                  setEditingDriver(d);
+                                  setDForm({
+                                    full_name: d.full_name,
+                                    phone: d.phone ?? "",
+                                    license_number: d.license_number ?? "",
+                                    status: d.status,
+                                  });
+                                  setDriverOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Remove"
+                                onClick={() => setDeleteDriverTarget(d)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
                   {(drivers.data?.length ?? 0) === 0 && (
                     <TableRow>
                       <TableCell

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequireAccess } from "@/components/layout/require-access";
+import { createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions, useIsSuperAdmin } from "@/lib/permissions";
@@ -15,6 +16,12 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { money } from "@/lib/format";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+
+// The page search, shared by every queue card below.
+const QueueSearch = createContext("");
 import {
   Receipt,
   HandCoins,
@@ -59,6 +66,15 @@ function QueueCard({
   rows: { key: string; cells: React.ReactNode[] }[];
   empty: string;
 }) {
+  const q = useContext(QueueSearch);
+  // Each row is keyed by its record id; match it plus the plain-text cells.
+  rows = rows.filter((r) =>
+    matchesSearch(
+      q,
+      { id: r.key },
+      r.cells.filter((c) => typeof c !== "object"),
+    ),
+  );
   return (
     <Card className="rounded-2xl">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -79,6 +95,9 @@ function QueueCard({
             <TableBody>
               {rows.slice(0, 6).map((r) => (
                 <TableRow key={r.key}>
+                  <TableCell>
+                    <RefId id={r.key} />
+                  </TableCell>
                   {r.cells.map((c, i) => (
                     <TableCell key={i}>{c}</TableCell>
                   ))}
@@ -98,6 +117,7 @@ function QueueCard({
 }
 
 function ApprovalsPage() {
+  const [q, setQ] = useSearchQuery();
   const { canApprove, canConfirm, canPost } = usePermissions();
   const currentUser = useCurrentUser();
   const uid = currentUser.data;
@@ -376,6 +396,7 @@ function ApprovalsPage() {
           submissions.
         </p>
       </div>
+      <SearchBox value={q} onChange={setQ} />
 
       {nothingToApprove ? (
         <Card className="rounded-2xl border-dashed">
@@ -384,245 +405,247 @@ function ApprovalsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {canApprove("sales") && (
-            <QueueCard
-              icon={ShoppingCart}
-              title="Sales"
-              to="/sales"
-              empty="No sales awaiting approval."
-              rows={(sales.data ?? []).map((s) => ({
-                key: s.id,
-                cells: [
-                  s.invoice_number,
-                  s.customer_name ?? "Walk-in",
-                  money(Number(s.grand_total)),
-                ],
-              }))}
-            />
-          )}
-          {canApprove("expenses") && (
-            <QueueCard
-              icon={Receipt}
-              title="Expenses"
-              to="/expenses"
-              empty="No expenses awaiting approval."
-              rows={(expenses.data ?? []).map((e: any) => ({
-                key: e.id,
-                cells: [e.description ?? "—", money(Number(e.amount)), e.expense_date],
-              }))}
-            />
-          )}
-          {debtStatuses.length > 0 && (
-            <QueueCard
-              icon={Wallet}
-              title="Debt Write-offs"
-              to="/cash-ledger/debts"
-              empty="No write-off requests pending."
-              rows={(debts.data ?? []).map((d: any) => ({
-                key: d.id,
-                cells: [
-                  d.customers?.name ?? "—",
-                  money(Number(d.outstanding)),
-                  d.writeoff_reason ?? "—",
-                  d.writeoff_status === "approved" ? (
-                    <Badge variant="outline">Approved — post it</Badge>
-                  ) : (
-                    <Badge variant="secondary">Awaiting approval</Badge>
-                  ),
-                ],
-              }))}
-            />
-          )}
-          {canApprove("payments") && (
-            <QueueCard
-              icon={HandCoins}
-              title="Payment Confirmations"
-              to="/cash-ledger/ledger"
-              empty="No payments awaiting confirmation."
-              rows={(payments.data ?? []).map((p: any) => ({
-                key: p.id,
-                cells: [p.receipt_number, p.customers?.name ?? "—", money(Number(p.amount))],
-              }))}
-            />
-          )}
-          {canApprove("payroll") && (
-            <QueueCard
-              icon={Wallet}
-              title="Payroll"
-              to="/payroll"
-              empty="No payroll runs awaiting approval."
-              rows={(payroll.data ?? []).map((p: any) => ({
-                key: p.id,
-                cells: [
-                  p.employees?.full_name ?? "—",
-                  `${p.period_month}/${p.period_year}`,
-                  money(Number(p.net_salary)),
-                ],
-              }))}
-            />
-          )}
-          {(canApprove("raw-materials") || canApprove("finished-goods")) && (
-            <QueueCard
-              icon={PackageMinus}
-              title="Stock Write-offs"
-              to="/raw-materials"
-              empty="No stock write-off requests pending."
-              rows={[
-                ...(stockRaw.data ?? []).map((r: any) => ({
-                  key: r.id,
+        <QueueSearch.Provider value={q}>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {canApprove("sales") && (
+              <QueueCard
+                icon={ShoppingCart}
+                title="Sales"
+                to="/sales"
+                empty="No sales awaiting approval."
+                rows={(sales.data ?? []).map((s) => ({
+                  key: s.id,
                   cells: [
-                    r.reference_number,
-                    r.raw_materials?.name ?? "—",
-                    `${r.quantity_delta} ${r.raw_materials?.unit ?? ""}`,
-                    r.reason ?? "—",
+                    s.invoice_number,
+                    s.customer_name ?? "Walk-in",
+                    money(Number(s.grand_total)),
                   ],
-                })),
-                ...(stockFinished.data ?? []).map((r: any) => ({
+                }))}
+              />
+            )}
+            {canApprove("expenses") && (
+              <QueueCard
+                icon={Receipt}
+                title="Expenses"
+                to="/expenses"
+                empty="No expenses awaiting approval."
+                rows={(expenses.data ?? []).map((e: any) => ({
+                  key: e.id,
+                  cells: [e.description ?? "—", money(Number(e.amount)), e.expense_date],
+                }))}
+              />
+            )}
+            {debtStatuses.length > 0 && (
+              <QueueCard
+                icon={Wallet}
+                title="Debt Write-offs"
+                to="/cash-ledger/debts"
+                empty="No write-off requests pending."
+                rows={(debts.data ?? []).map((d: any) => ({
+                  key: d.id,
+                  cells: [
+                    d.customers?.name ?? "—",
+                    money(Number(d.outstanding)),
+                    d.writeoff_reason ?? "—",
+                    d.writeoff_status === "approved" ? (
+                      <Badge variant="outline">Approved — post it</Badge>
+                    ) : (
+                      <Badge variant="secondary">Awaiting approval</Badge>
+                    ),
+                  ],
+                }))}
+              />
+            )}
+            {canApprove("payments") && (
+              <QueueCard
+                icon={HandCoins}
+                title="Payment Confirmations"
+                to="/cash-ledger/ledger"
+                empty="No payments awaiting confirmation."
+                rows={(payments.data ?? []).map((p: any) => ({
+                  key: p.id,
+                  cells: [p.receipt_number, p.customers?.name ?? "—", money(Number(p.amount))],
+                }))}
+              />
+            )}
+            {canApprove("payroll") && (
+              <QueueCard
+                icon={Wallet}
+                title="Payroll"
+                to="/payroll"
+                empty="No payroll runs awaiting approval."
+                rows={(payroll.data ?? []).map((p: any) => ({
+                  key: p.id,
+                  cells: [
+                    p.employees?.full_name ?? "—",
+                    `${p.period_month}/${p.period_year}`,
+                    money(Number(p.net_salary)),
+                  ],
+                }))}
+              />
+            )}
+            {(canApprove("raw-materials") || canApprove("finished-goods")) && (
+              <QueueCard
+                icon={PackageMinus}
+                title="Stock Write-offs"
+                to="/raw-materials"
+                empty="No stock write-off requests pending."
+                rows={[
+                  ...(stockRaw.data ?? []).map((r: any) => ({
+                    key: r.id,
+                    cells: [
+                      r.reference_number,
+                      r.raw_materials?.name ?? "—",
+                      `${r.quantity_delta} ${r.raw_materials?.unit ?? ""}`,
+                      r.reason ?? "—",
+                    ],
+                  })),
+                  ...(stockFinished.data ?? []).map((r: any) => ({
+                    key: r.id,
+                    cells: [
+                      r.reference_number,
+                      r.products?.name ?? "—",
+                      `${r.quantity_delta} ${r.products?.unit ?? ""}`,
+                      r.reason ?? "—",
+                    ],
+                  })),
+                ]}
+              />
+            )}
+            {canApprove("users") && (
+              <QueueCard
+                icon={ShieldCheck}
+                title="Role Changes"
+                to="/users"
+                empty="No role changes pending."
+                rows={(roleGrants.data ?? []).map((r: any) => ({
+                  key: r.id,
+                  cells: [<span className="capitalize">{r.action}</span>, r.role],
+                }))}
+              />
+            )}
+            {canApprove("production-requests") && (
+              <QueueCard
+                icon={ClipboardList}
+                title="Production Requests"
+                to="/production-requests"
+                empty="No requests awaiting approval."
+                rows={(productionRequests.data ?? []).map((r: any) => ({
                   key: r.id,
                   cells: [
-                    r.reference_number,
+                    r.request_number,
                     r.products?.name ?? "—",
-                    `${r.quantity_delta} ${r.products?.unit ?? ""}`,
-                    r.reason ?? "—",
+                    `${r.quantity_requested} ${r.unit ?? ""}`,
                   ],
-                })),
-              ]}
-            />
-          )}
-          {canApprove("users") && (
-            <QueueCard
-              icon={ShieldCheck}
-              title="Role Changes"
-              to="/users"
-              empty="No role changes pending."
-              rows={(roleGrants.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [<span className="capitalize">{r.action}</span>, r.role],
-              }))}
-            />
-          )}
-          {canApprove("production-requests") && (
-            <QueueCard
-              icon={ClipboardList}
-              title="Production Requests"
-              to="/production-requests"
-              empty="No requests awaiting approval."
-              rows={(productionRequests.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [
-                  r.request_number,
-                  r.products?.name ?? "—",
-                  `${r.quantity_requested} ${r.unit ?? ""}`,
-                ],
-              }))}
-            />
-          )}
-          {canApprove("production-requests") && (
-            <QueueCard
-              icon={ClipboardList}
-              title="Purchase Requests"
-              to="/procurement"
-              empty="No purchase requests awaiting approval."
-              rows={(purchaseRequests.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [
-                  r.request_number,
-                  r.raw_materials?.name ?? "—",
-                  `${r.quantity_requested} ${r.unit ?? ""}`,
-                ],
-              }))}
-            />
-          )}
-          {canApprove("customers") && (
-            <QueueCard
-              icon={HandCoins}
-              title="Customer Account Adjustments"
-              to="/customers"
-              empty="No customer account adjustments awaiting approval."
-              rows={(customerAdjustments.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [
-                  r.customers?.name ?? "—",
-                  <span className="capitalize">{String(r.effect).replace(/_/g, " ")}</span>,
-                  money(Number(r.amount)),
-                ],
-              }))}
-            />
-          )}
-          {canApprove("payroll") && (
-            <QueueCard
-              icon={HandCoins}
-              title="Staff Loans & Deductions"
-              to="/employees"
-              empty="No staff loans, fines, or contributions awaiting approval."
-              rows={[
-                ...(staffLoans.data ?? []).map((r: any) => ({
+                }))}
+              />
+            )}
+            {canApprove("production-requests") && (
+              <QueueCard
+                icon={ClipboardList}
+                title="Purchase Requests"
+                to="/procurement"
+                empty="No purchase requests awaiting approval."
+                rows={(purchaseRequests.data ?? []).map((r: any) => ({
                   key: r.id,
                   cells: [
-                    r.employees?.full_name ?? "—",
-                    "Loan",
-                    r.loan_number,
-                    money(Number(r.principal)),
+                    r.request_number,
+                    r.raw_materials?.name ?? "—",
+                    `${r.quantity_requested} ${r.unit ?? ""}`,
                   ],
-                })),
-                ...(staffDeductions.data ?? []).map((r: any) => ({
+                }))}
+              />
+            )}
+            {canApprove("customers") && (
+              <QueueCard
+                icon={HandCoins}
+                title="Customer Account Adjustments"
+                to="/customers"
+                empty="No customer account adjustments awaiting approval."
+                rows={(customerAdjustments.data ?? []).map((r: any) => ({
                   key: r.id,
                   cells: [
-                    r.employees?.full_name ?? "—",
-                    <span className="capitalize">{r.kind}</span>,
-                    r.label,
+                    r.customers?.name ?? "—",
+                    <span className="capitalize">{String(r.effect).replace(/_/g, " ")}</span>,
                     money(Number(r.amount)),
                   ],
-                })),
-              ]}
-            />
-          )}
-          {canConfirm("goods-receiving") && (
-            <QueueCard
-              icon={PackagePlus}
-              title="Items Receiving"
-              to="/raw-materials"
-              empty="No item receipts awaiting confirmation."
-              rows={(goodsReceipts.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [
-                  r.receipt_number,
-                  r.raw_materials?.name ?? "—",
-                  `${r.quantity} ${r.unit ?? ""}`,
-                ],
-              }))}
-            />
-          )}
-          {canConfirm("production") && (
-            <QueueCard
-              icon={Factory}
-              title="Production Batches"
-              to="/finished-goods"
-              empty="No production batches awaiting confirmation."
-              rows={(productionBatches.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [
-                  r.batch_number ?? "—",
-                  r.products?.name ?? "—",
-                  `${r.quantity_produced} ${r.unit ?? ""}`,
-                ],
-              }))}
-            />
-          )}
-          {canApprove("costing") && (
-            <QueueCard
-              icon={Calculator}
-              title="Costing Sheets"
-              to="/costing"
-              empty="No costing sheets awaiting approval."
-              rows={(costingSheets.data ?? []).map((r: any) => ({
-                key: r.id,
-                cells: [r.sheet_number, r.products?.name ?? "—", money(Number(r.unit_cost))],
-              }))}
-            />
-          )}
-        </div>
+                }))}
+              />
+            )}
+            {canApprove("payroll") && (
+              <QueueCard
+                icon={HandCoins}
+                title="Staff Loans & Deductions"
+                to="/employees"
+                empty="No staff loans, fines, or contributions awaiting approval."
+                rows={[
+                  ...(staffLoans.data ?? []).map((r: any) => ({
+                    key: r.id,
+                    cells: [
+                      r.employees?.full_name ?? "—",
+                      "Loan",
+                      r.loan_number,
+                      money(Number(r.principal)),
+                    ],
+                  })),
+                  ...(staffDeductions.data ?? []).map((r: any) => ({
+                    key: r.id,
+                    cells: [
+                      r.employees?.full_name ?? "—",
+                      <span className="capitalize">{r.kind}</span>,
+                      r.label,
+                      money(Number(r.amount)),
+                    ],
+                  })),
+                ]}
+              />
+            )}
+            {canConfirm("goods-receiving") && (
+              <QueueCard
+                icon={PackagePlus}
+                title="Items Receiving"
+                to="/raw-materials"
+                empty="No item receipts awaiting confirmation."
+                rows={(goodsReceipts.data ?? []).map((r: any) => ({
+                  key: r.id,
+                  cells: [
+                    r.receipt_number,
+                    r.raw_materials?.name ?? "—",
+                    `${r.quantity} ${r.unit ?? ""}`,
+                  ],
+                }))}
+              />
+            )}
+            {canConfirm("production") && (
+              <QueueCard
+                icon={Factory}
+                title="Production Batches"
+                to="/finished-goods"
+                empty="No production batches awaiting confirmation."
+                rows={(productionBatches.data ?? []).map((r: any) => ({
+                  key: r.id,
+                  cells: [
+                    r.batch_number ?? "—",
+                    r.products?.name ?? "—",
+                    `${r.quantity_produced} ${r.unit ?? ""}`,
+                  ],
+                }))}
+              />
+            )}
+            {canApprove("costing") && (
+              <QueueCard
+                icon={Calculator}
+                title="Costing Sheets"
+                to="/costing"
+                empty="No costing sheets awaiting approval."
+                rows={(costingSheets.data ?? []).map((r: any) => ({
+                  key: r.id,
+                  cells: [r.sheet_number, r.products?.name ?? "—", money(Number(r.unit_cost))],
+                }))}
+              />
+            )}
+          </div>
+        </QueueSearch.Provider>
       )}
     </div>
   );

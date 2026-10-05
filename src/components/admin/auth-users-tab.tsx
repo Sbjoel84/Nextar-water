@@ -25,6 +25,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 // The raw Supabase Auth record list -- separate from `profiles`, since
 // that's a client-readable app table while auth.users only exists via the
@@ -32,6 +35,7 @@ import { RefreshCw, Trash2, AlertTriangle } from "lucide-react";
 // matching profile -- the exact failure mode that motivated this feature)
 // visible and one click away from a real, permanent delete.
 export function AuthUsersTab() {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const { accounts, remove } = useAccountsAdmin();
   const { canWrite, canEdit, canDelete } = usePermissions();
@@ -82,9 +86,11 @@ export function AuthUsersTab() {
 
       <Card className="rounded-2xl">
         <CardContent className="overflow-x-auto p-0">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Last Sign-in</TableHead>
@@ -93,63 +99,68 @@ export function AuthUsersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((u) => {
-                const orphan = !profileIds.has(u.id);
-                return (
-                  <TableRow key={u.id}>
-                    <TableCell className="text-xs">{u.email ?? "—"}</TableCell>
-                    <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(u.created_at).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs whitespace-nowrap">
-                      {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : "Never"}
-                    </TableCell>
-                    <TableCell>
-                      {orphan ? (
-                        <Badge variant="destructive" className="gap-1">
-                          <AlertTriangle className="h-3 w-3" /> No profile (orphaned)
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Synced</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {canRemove && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title="Delete permanently">
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Permanently delete {u.email ?? "this user"}?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {orphan
-                                  ? "This removes the leftover Supabase Auth credential. The email will be free for a fresh signup afterward."
-                                  : "This removes their profile, roles, and login credential entirely. This cannot be undone."}
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => remove.mutate(u.id, { onSuccess: () => sync() })}
-                              >
-                                Delete permanently
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {rows
+                .filter((x) => matchesSearch(q, x))
+                .map((u) => {
+                  const orphan = !profileIds.has(u.id);
+                  return (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <RefId id={u.id} />
+                      </TableCell>
+                      <TableCell className="text-xs">{u.email ?? "—"}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {new Date(u.created_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : "Never"}
+                      </TableCell>
+                      <TableCell>
+                        {orphan ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <AlertTriangle className="h-3 w-3" /> No profile (orphaned)
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Synced</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {canRemove && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" title="Delete permanently">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Permanently delete {u.email ?? "this user"}?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {orphan
+                                    ? "This removes the leftover Supabase Auth credential. The email will be free for a fresh signup afterward."
+                                    : "This removes their profile, roles, and login credential entirely. This cannot be undone."}
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => remove.mutate(u.id, { onSuccess: () => sync() })}
+                                >
+                                  Delete permanently
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               {rows.length === 0 && !authUsers.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                     No users found.
                   </TableCell>
                 </TableRow>

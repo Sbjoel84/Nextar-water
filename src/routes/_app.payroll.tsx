@@ -39,6 +39,9 @@ import { money } from "@/lib/format";
 import { toast } from "sonner";
 import { Plus, Printer, FileDown, Wallet, Check, X, Send, Ban, Undo2 } from "lucide-react";
 import { generatePayslipPdf } from "@/lib/pdf";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/payroll")({
   head: () => ({ meta: [{ title: "Payroll — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -123,6 +126,7 @@ const statusBadge = (s: string | null): "default" | "secondary" | "outline" | "d
       : "outline";
 
 function PayrollPage() {
+  const [q, setQ] = useSearchQuery();
   const { data: factoryId } = useFactoryId();
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
@@ -301,9 +305,11 @@ function PayrollPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Employee</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead className="text-right">Gross</TableHead>
@@ -314,112 +320,119 @@ function PayrollPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
-                    <div className="font-medium">{r.employees?.full_name ?? "—"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {r.employees?.employee_code ?? "—"}
-                    </div>
-                  </TableCell>
-                  <TableCell>{r.employees?.department ?? "—"}</TableCell>
-                  <TableCell className="text-right">{money(Number(r.gross_salary))}</TableCell>
-                  <TableCell className="text-right">
-                    {money(
-                      Number(r.paye) +
-                        Number(r.pension) +
-                        Number(r.loans) +
-                        Number(r.advance) +
-                        Number(r.other_deductions),
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {money(Number(r.net_salary))}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusBadge(r.status)} className="capitalize">
-                      {(r.status ?? "pending_approval").replace(/_/g, " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {r.status === "pending_approval" &&
-                        approve &&
-                        r.submitted_by !== currentUser.data && (
+              {(list.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <RefId id={r.id} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{r.employees?.full_name ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {r.employees?.employee_code ?? "—"}
+                      </div>
+                    </TableCell>
+                    <TableCell>{r.employees?.department ?? "—"}</TableCell>
+                    <TableCell className="text-right">{money(Number(r.gross_salary))}</TableCell>
+                    <TableCell className="text-right">
+                      {money(
+                        Number(r.paye) +
+                          Number(r.pension) +
+                          Number(r.loans) +
+                          Number(r.advance) +
+                          Number(r.other_deductions),
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {money(Number(r.net_salary))}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusBadge(r.status)} className="capitalize">
+                        {(r.status ?? "pending_approval").replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {r.status === "pending_approval" &&
+                          approve &&
+                          r.submitted_by !== currentUser.data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Approve"
+                              onClick={() => setApproveTarget(r)}
+                            >
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                          )}
+                        {r.status === "pending_approval" &&
+                          reject &&
+                          r.submitted_by !== currentUser.data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Reject"
+                              onClick={() => setRejectTarget(r)}
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        {r.status === "approved" && post && r.submitted_by !== currentUser.data && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Approve"
-                            onClick={() => setApproveTarget(r)}
+                            title="Post & mark paid"
+                            onClick={() => setPostTarget(r)}
                           >
-                            <Check className="h-4 w-4 text-success" />
+                            <Send className="h-4 w-4 text-success" />
                           </Button>
                         )}
-                      {r.status === "pending_approval" &&
-                        reject &&
-                        r.submitted_by !== currentUser.data && (
+                        {(r.status === "pending_approval" || r.status === "approved") && cancel && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Reject"
-                            onClick={() => setRejectTarget(r)}
+                            title="Cancel"
+                            onClick={() => setCancelTarget(r)}
                           >
-                            <X className="h-4 w-4 text-destructive" />
+                            <Ban className="h-4 w-4 text-muted-foreground" />
                           </Button>
                         )}
-                      {r.status === "approved" && post && r.submitted_by !== currentUser.data && (
+                        {r.status === "posted" &&
+                          reverse &&
+                          r.submitted_by !== currentUser.data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Reverse"
+                              onClick={() => setReverseTarget(r)}
+                            >
+                              <Undo2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Post & mark paid"
-                          onClick={() => setPostTarget(r)}
+                          title="Print"
+                          onClick={() => printPayslip(r, "print")}
                         >
-                          <Send className="h-4 w-4 text-success" />
+                          <Printer className="h-4 w-4" />
                         </Button>
-                      )}
-                      {(r.status === "pending_approval" || r.status === "approved") && cancel && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Cancel"
-                          onClick={() => setCancelTarget(r)}
+                          title="Download PDF"
+                          onClick={() => printPayslip(r, "download")}
                         >
-                          <Ban className="h-4 w-4 text-muted-foreground" />
+                          <FileDown className="h-4 w-4" />
                         </Button>
-                      )}
-                      {r.status === "posted" && reverse && r.submitted_by !== currentUser.data && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Reverse"
-                          onClick={() => setReverseTarget(r)}
-                        >
-                          <Undo2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Print"
-                        onClick={() => printPayslip(r, "print")}
-                      >
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Download PDF"
-                        onClick={() => printPayslip(r, "download")}
-                      >
-                        <FileDown className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No payroll submitted for this period.
                   </TableCell>
                 </TableRow>

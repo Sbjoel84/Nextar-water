@@ -54,6 +54,7 @@ import { toast } from "sonner";
 import { generateReceiptPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/cash-ledger/ledger")({
   head: () => ({ meta: [{ title: "Cash Ledger — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -517,7 +518,7 @@ function LedgerPage() {
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search…"
+                placeholder="Search or paste #ID…"
                 className="pl-8 h-9 w-48"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -539,6 +540,7 @@ function LedgerPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Number</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Type</TableHead>
@@ -553,6 +555,9 @@ function LedgerPage() {
             <TableBody>
               {filtered.map((r) => (
                 <TableRow key={r.id}>
+                  <TableCell>
+                    <RefId id={r.id} />
+                  </TableCell>
                   <TableCell className="font-mono text-xs">{r.number}</TableCell>
                   <TableCell>{r.date}</TableCell>
                   <TableCell>
@@ -644,7 +649,7 @@ function LedgerPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     No transactions match.
                   </TableCell>
                 </TableRow>

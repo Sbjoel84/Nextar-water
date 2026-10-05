@@ -506,7 +506,10 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
                     key={a.id}
                     className="flex items-center justify-between rounded-md border p-2"
                   >
-                    <span className="capitalize">{String(a.action).replace(/_/g, " ")}</span>
+                    <span className="capitalize">
+                      {String(a.action).replace(/^record_/, "").replace(/_/g, " ")}
+                      {a.entity ? ` · ${String(a.entity).replace(/_/g, " ")}` : ""}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(a.created_at), "MMM d, HH:mm")}
                     </span>

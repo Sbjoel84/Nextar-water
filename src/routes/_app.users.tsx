@@ -50,6 +50,9 @@ import {
   Copy,
 } from "lucide-react";
 import { toast } from "sonner";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/users")({
   head: () => ({
@@ -101,6 +104,7 @@ type RoleGrantRequest = {
 };
 
 export function UsersPage() {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const allRoles = useAllRoles();
   const roleLabel = (slug: string) => allRoles.data?.find((r) => r.slug === slug)?.label ?? slug;
@@ -298,9 +302,11 @@ export function UsersPage() {
             <CardTitle>Role Change Requests</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
+            <SearchBox value={q} onChange={setQ} className="mb-3" />
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead>Role</TableHead>
@@ -310,90 +316,95 @@ export function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(pendingRequests.data ?? []).map((r) => {
-                  const isSelf = r.requested_by === currentUser.data;
-                  return (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-medium">{nameFor(r.target_user_id)}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={r.action === "grant" ? "secondary" : "destructive"}
-                          className="capitalize"
-                        >
-                          {r.action}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {roleLabel(r.role)}
-                        {r.factory_id &&
-                          ` · ${factories.data?.find((f) => f.id === r.factory_id)?.name ?? ""}`}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {r.status.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(r.requested_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {r.status === "pending_approval" && approve && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Approve"
-                              onClick={() => review.mutate({ id: r.id, doApprove: true })}
-                            >
-                              <Check className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {r.status === "pending_approval" && approve && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reject"
-                              onClick={() => review.mutate({ id: r.id, doApprove: false })}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                          {r.status === "approved" && post && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Post"
-                              onClick={() => postGrant.mutate(r.id)}
-                            >
-                              <Send className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {(r.status === "pending_approval" || r.status === "approved") &&
-                            cancel && (
+                {(pendingRequests.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((r) => {
+                    const isSelf = r.requested_by === currentUser.data;
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell>
+                          <RefId id={r.id} />
+                        </TableCell>
+                        <TableCell className="font-medium">{nameFor(r.target_user_id)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={r.action === "grant" ? "secondary" : "destructive"}
+                            className="capitalize"
+                          >
+                            {r.action}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {roleLabel(r.role)}
+                          {r.factory_id &&
+                            ` · ${factories.data?.find((f) => f.id === r.factory_id)?.name ?? ""}`}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {r.status.replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(r.requested_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {r.status === "pending_approval" && approve && !isSelf && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Cancel"
-                                onClick={() => cancelGrant.mutate(r.id)}
+                                title="Approve"
+                                onClick={() => review.mutate({ id: r.id, doApprove: true })}
                               >
-                                <Ban className="h-4 w-4 text-muted-foreground" />
+                                <Check className="h-4 w-4 text-success" />
                               </Button>
                             )}
-                          {r.status === "posted" && reverse && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reverse"
-                              onClick={() => setReverseTarget(r)}
-                            >
-                              <Undo2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                            {r.status === "pending_approval" && approve && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() => review.mutate({ id: r.id, doApprove: false })}
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                            {r.status === "approved" && post && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Post"
+                                onClick={() => postGrant.mutate(r.id)}
+                              >
+                                <Send className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {(r.status === "pending_approval" || r.status === "approved") &&
+                              cancel && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Cancel"
+                                  onClick={() => cancelGrant.mutate(r.id)}
+                                >
+                                  <Ban className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              )}
+                            {r.status === "posted" && reverse && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reverse"
+                                onClick={() => setReverseTarget(r)}
+                              >
+                                <Undo2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>
@@ -407,9 +418,11 @@ export function UsersPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead></TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Roles</TableHead>
@@ -418,129 +431,134 @@ export function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(profiles.data ?? []).map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>
-                        {(p.full_name || p.email || "?").slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TableCell>
-                  <TableCell>
-                    {write ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditTarget(p)}
-                        className="group text-left"
-                        title="Edit user"
-                      >
-                        <div className="flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">
-                          {p.full_name ?? "—"}
-                          <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                        </div>
-                        <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
-                      </button>
-                    ) : (
-                      <>
-                        <div className="font-medium">{p.full_name ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
-                      </>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {rolesFor(p.id).map((r) => (
-                        <Badge key={r.id} variant="secondary" className="gap-1">
-                          {roleLabel(r.role)}
-                          {r.factory_id &&
-                            ` · ${factories.data?.find((f) => f.id === r.factory_id)?.name ?? ""}`}
-                          {write && (
-                            <button
-                              onClick={() => revoke.mutate(r)}
-                              className="ml-1 hover:text-destructive"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </Badge>
-                      ))}
-                      {rolesFor(p.id).length === 0 && (
-                        <span className="text-xs text-muted-foreground">No roles</span>
+              {(profiles.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <RefId id={p.id} />
+                    </TableCell>
+                    <TableCell>
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>
+                          {(p.full_name || p.email || "?").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
+                    <TableCell>
+                      {write ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditTarget(p)}
+                          className="group text-left"
+                          title="Edit user"
+                        >
+                          <div className="flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">
+                            {p.full_name ?? "—"}
+                            <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                          </div>
+                          <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
+                        </button>
+                      ) : (
+                        <>
+                          <div className="font-medium">{p.full_name ?? "—"}</div>
+                          <div className="text-xs text-muted-foreground">{p.email ?? "—"}</div>
+                        </>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={p.production_scope}
-                      onValueChange={(v) =>
-                        setScope.mutate({ userId: p.id, scope: v as ProductionScope })
-                      }
-                      disabled={!write || setScope.isPending}
-                    >
-                      <SelectTrigger className="h-8">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="BOTH">Both factories</SelectItem>
-                        <SelectItem value="NYLON">Nylon only</SelectItem>
-                        <SelectItem value="WATER">Water only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Only isolates the Production module.
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    {write && (
-                      <div className="flex gap-2">
-                        <Select
-                          value={pendingRole[p.id] ?? ""}
-                          onValueChange={(v) =>
-                            setPendingRole((s) => ({ ...s, [p.id]: v as Role }))
-                          }
-                        >
-                          <SelectTrigger className="h-8">
-                            <SelectValue placeholder="Select role…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(allRoles.data ?? []).map((r) => (
-                              <SelectItem key={r.slug} value={r.slug}>
-                                {r.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1 shrink-0"
-                          disabled={!write || !pendingRole[p.id] || assign.isPending}
-                          onClick={() => {
-                            const role = pendingRole[p.id];
-                            if (!role) return;
-                            const already = rolesFor(p.id).some(
-                              (r) => r.role === role && r.factory_id === null,
-                            );
-                            if (already) {
-                              toast.error(
-                                `${p.full_name ?? "This user"} already has the ${roleLabel(role)} role`,
-                              );
-                              return;
-                            }
-                            assign.mutate({ userId: p.id, role });
-                          }}
-                        >
-                          <Plus className="h-4 w-4" /> Add
-                        </Button>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {rolesFor(p.id).map((r) => (
+                          <Badge key={r.id} variant="secondary" className="gap-1">
+                            {roleLabel(r.role)}
+                            {r.factory_id &&
+                              ` · ${factories.data?.find((f) => f.id === r.factory_id)?.name ?? ""}`}
+                            {write && (
+                              <button
+                                onClick={() => revoke.mutate(r)}
+                                className="ml-1 hover:text-destructive"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </Badge>
+                        ))}
+                        {rolesFor(p.id).length === 0 && (
+                          <span className="text-xs text-muted-foreground">No roles</span>
+                        )}
                       </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={p.production_scope}
+                        onValueChange={(v) =>
+                          setScope.mutate({ userId: p.id, scope: v as ProductionScope })
+                        }
+                        disabled={!write || setScope.isPending}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="BOTH">Both factories</SelectItem>
+                          <SelectItem value="NYLON">Nylon only</SelectItem>
+                          <SelectItem value="WATER">Water only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Only isolates the Production module.
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      {write && (
+                        <div className="flex gap-2">
+                          <Select
+                            value={pendingRole[p.id] ?? ""}
+                            onValueChange={(v) =>
+                              setPendingRole((s) => ({ ...s, [p.id]: v as Role }))
+                            }
+                          >
+                            <SelectTrigger className="h-8">
+                              <SelectValue placeholder="Select role…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(allRoles.data ?? []).map((r) => (
+                                <SelectItem key={r.slug} value={r.slug}>
+                                  {r.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 shrink-0"
+                            disabled={!write || !pendingRole[p.id] || assign.isPending}
+                            onClick={() => {
+                              const role = pendingRole[p.id];
+                              if (!role) return;
+                              const already = rolesFor(p.id).some(
+                                (r) => r.role === role && r.factory_id === null,
+                              );
+                              if (already) {
+                                toast.error(
+                                  `${p.full_name ?? "This user"} already has the ${roleLabel(role)} role`,
+                                );
+                                return;
+                              }
+                              assign.mutate({ userId: p.id, role });
+                            }}
+                          >
+                            <Plus className="h-4 w-4" /> Add
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(profiles.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     No accounts yet — they appear here once someone signs in.
                   </TableCell>
                 </TableRow>
@@ -599,7 +617,11 @@ function EditUserDialog({ profile, onDone }: { profile: Profile; onDone: () => v
     !isKnownDepartment ? (profile.department ?? "") : "",
   );
   const department =
-    departmentChoice === "none" ? "" : departmentChoice === "__custom__" ? customDepartment : departmentChoice;
+    departmentChoice === "none"
+      ? ""
+      : departmentChoice === "__custom__"
+        ? customDepartment
+        : departmentChoice;
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [savedPassword, setSavedPassword] = useState<string | null>(null);
@@ -744,7 +766,9 @@ function EditUserDialog({ profile, onDone }: { profile: Profile; onDone: () => v
               </Button>
             </div>
             {password && password.length < 8 && (
-              <p className="text-[11px] text-destructive">Password must be at least 8 characters.</p>
+              <p className="text-[11px] text-destructive">
+                Password must be at least 8 characters.
+              </p>
             )}
           </div>
 

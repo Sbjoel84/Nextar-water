@@ -36,6 +36,7 @@ import {
   summariseItems,
 } from "@/components/sales/account-ledger";
 import { AccountAdjustmentsCard } from "@/components/customers/account-adjustments";
+import { RefId } from "@/components/shared/ref-id";
 
 type CustomerSaleRow = {
   id: string;
@@ -400,6 +401,7 @@ export function CustomerAccountDialog({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Invoice</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Method</TableHead>
@@ -415,6 +417,9 @@ export function CustomerAccountDialog({
                   const st = salePaymentStatus(inv);
                   return (
                     <TableRow key={inv.id}>
+                      <TableCell>
+                        <RefId id={inv.id} />
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{inv.invoice_number}</TableCell>
                       <TableCell>{inv.sale_date}</TableCell>
                       <TableCell>
@@ -444,7 +449,7 @@ export function CustomerAccountDialog({
                 })}
                 {(invoices.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
                       No purchases yet.
                     </TableCell>
                   </TableRow>
@@ -457,6 +462,7 @@ export function CustomerAccountDialog({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Receipt</TableHead>
                   <TableHead>Date & Time</TableHead>
                   <TableHead>Method</TableHead>
@@ -466,6 +472,9 @@ export function CustomerAccountDialog({
               <TableBody>
                 {(payments.data ?? []).map((p) => (
                   <TableRow key={p.id}>
+                    <TableCell>
+                      <RefId id={p.id} />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{p.receipt_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
                       {new Date(p.created_at).toLocaleString()}
@@ -480,7 +489,7 @@ export function CustomerAccountDialog({
                 ))}
                 {(payments.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
                       No payments yet.
                     </TableCell>
                   </TableRow>

@@ -31,8 +31,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Check, X, UserCheck } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export function PendingTab() {
+  const [q, setQ] = useSearchQuery();
   const { accounts, approve, reject } = useAccountsAdmin();
   // Super admin or chairman — the same roles the RLS on these tables allows.
   const isSuperAdmin = useIsAdmin();
@@ -55,9 +59,11 @@ export function PendingTab() {
 
       <Card className="rounded-2xl">
         <CardContent className="overflow-x-auto p-0">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead></TableHead>
                 <TableHead>Full Name</TableHead>
                 <TableHead>Email</TableHead>
@@ -68,52 +74,57 @@ export function PendingTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    <Avatar className="h-8 w-8">
-                      {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.full_name ?? ""} />}
-                      <AvatarFallback>
-                        {(a.full_name || a.email || "?").slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TableCell>
-                  <TableCell className="font-medium">{a.full_name ?? "—"}</TableCell>
-                  <TableCell className="text-xs">{a.email ?? "—"}</TableCell>
-                  <TableCell>{a.department ?? "—"}</TableCell>
-                  <TableCell className="text-xs">{roleLabel(a.role_requested)}</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Approve"
-                        onClick={() => {
-                          setApproveTarget(a);
-                          setApproveRole(a.role_requested ?? "");
-                          setApproveDepartment(a.department ?? "");
-                        }}
-                      >
-                        <Check className="h-4 w-4 text-success" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Reject"
-                        onClick={() => setRejectTarget(a)}
-                      >
-                        <X className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows
+                .filter((x) => matchesSearch(q, x))
+                .map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <RefId id={a.id} />
+                    </TableCell>
+                    <TableCell>
+                      <Avatar className="h-8 w-8">
+                        {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.full_name ?? ""} />}
+                        <AvatarFallback>
+                          {(a.full_name || a.email || "?").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
+                    <TableCell className="font-medium">{a.full_name ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{a.email ?? "—"}</TableCell>
+                    <TableCell>{a.department ?? "—"}</TableCell>
+                    <TableCell className="text-xs">{roleLabel(a.role_requested)}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Approve"
+                          onClick={() => {
+                            setApproveTarget(a);
+                            setApproveRole(a.role_requested ?? "");
+                            setApproveDepartment(a.department ?? "");
+                          }}
+                        >
+                          <Check className="h-4 w-4 text-success" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reject"
+                          onClick={() => setRejectTarget(a)}
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     No accounts waiting for approval.
                   </TableCell>
                 </TableRow>

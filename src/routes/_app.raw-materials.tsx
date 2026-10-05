@@ -67,6 +67,7 @@ import {
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/raw-materials")({
   head: () => ({
@@ -617,7 +618,7 @@ function RawMaterialsPage() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search material, category, supplier…"
+              placeholder="Search material, supplier, #ID…"
               className="pl-8 h-9 w-56"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -628,6 +629,7 @@ function RawMaterialsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Supplier</TableHead>
@@ -642,6 +644,9 @@ function RawMaterialsPage() {
                 const low = isLowStock(m.current_stock, m.reorder_level);
                 return (
                   <TableRow key={m.id}>
+                    <TableCell>
+                      <RefId id={m.id} />
+                    </TableCell>
                     <TableCell className="font-medium">
                       {m.name}
                       {m.approval_status === "pending_approval" && (
@@ -816,7 +821,7 @@ function RawMaterialsPage() {
               })}
               {searchedMaterials.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     {q.trim() ? "No materials match your search." : "No raw materials yet."}
                   </TableCell>
                 </TableRow>
@@ -838,6 +843,7 @@ function RawMaterialsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Receipt #</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead className="text-right">Received</TableHead>
@@ -849,68 +855,73 @@ function RawMaterialsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(pendingReceipts.data ?? []).map((r) => {
-                  const isSelf = r.submitted_by === currentUser.data;
-                  return (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-medium">{r.receipt_number}</TableCell>
-                      <TableCell>{r.raw_materials?.name ?? "—"}</TableCell>
-                      <TableCell className="text-right">
-                        {num(Number(r.quantity))} {r.raw_materials?.unit ?? ""}
-                      </TableCell>
-                      <TableCell className="text-right text-destructive">
-                        {Number(r.damaged_quantity) > 0
-                          ? `${num(Number(r.damaged_quantity))} ${r.raw_materials?.unit ?? ""}`
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {num(Number(r.accepted_quantity))} {r.raw_materials?.unit ?? ""}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {r.status.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(r.submitted_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {confirmReceipt_ && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Confirm"
-                              onClick={() => confirmReceipt.mutate(r.id)}
-                            >
-                              <Check className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {rejectReceipt_ && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reject"
-                              onClick={() => rejectReceipt.mutate(r.id)}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                          {cancelReceipt_ && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Cancel"
-                              onClick={() => cancelReceipt.mutate(r.id)}
-                            >
-                              <Ban className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {(pendingReceipts.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((r) => {
+                    const isSelf = r.submitted_by === currentUser.data;
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell>
+                          <RefId id={r.id} />
+                        </TableCell>
+                        <TableCell className="font-medium">{r.receipt_number}</TableCell>
+                        <TableCell>{r.raw_materials?.name ?? "—"}</TableCell>
+                        <TableCell className="text-right">
+                          {num(Number(r.quantity))} {r.raw_materials?.unit ?? ""}
+                        </TableCell>
+                        <TableCell className="text-right text-destructive">
+                          {Number(r.damaged_quantity) > 0
+                            ? `${num(Number(r.damaged_quantity))} ${r.raw_materials?.unit ?? ""}`
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {num(Number(r.accepted_quantity))} {r.raw_materials?.unit ?? ""}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {r.status.replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(r.submitted_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {confirmReceipt_ && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Confirm"
+                                onClick={() => confirmReceipt.mutate(r.id)}
+                              >
+                                <Check className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {rejectReceipt_ && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() => rejectReceipt.mutate(r.id)}
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                            {cancelReceipt_ && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Cancel"
+                                onClick={() => cancelReceipt.mutate(r.id)}
+                              >
+                                <Ban className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>
@@ -929,6 +940,7 @@ function RawMaterialsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Reference</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -939,78 +951,85 @@ function RawMaterialsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(pendingAdjustments.data ?? []).map((a) => {
-                  const isSelf = a.submitted_by === currentUser.data;
-                  return (
-                    <TableRow key={a.id}>
-                      <TableCell className="font-mono text-xs">{a.reference_number}</TableCell>
-                      <TableCell className="font-medium">{a.raw_materials?.name ?? "—"}</TableCell>
-                      <TableCell className="text-right text-destructive">
-                        {num(Number(a.quantity_delta))} {a.raw_materials?.unit ?? ""}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{a.reason ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {a.status.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(a.submitted_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          {a.status === "pending_approval" && approve && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Approve"
-                              onClick={() => reviewAdjustment.mutate({ id: a.id, approve: true })}
-                            >
-                              <PackagePlus className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {a.status === "pending_approval" && approve && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Reject"
-                              onClick={() =>
-                                reviewAdjustment.mutate({
-                                  id: a.id,
-                                  approve: false,
-                                  reason: "Rejected",
-                                })
-                              }
-                            >
-                              <PackageMinus className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                          {a.status === "approved" && post && !isSelf && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Post"
-                              onClick={() => postAdjustment.mutate(a.id)}
-                            >
-                              <Send className="h-4 w-4 text-success" />
-                            </Button>
-                          )}
-                          {(a.status === "pending_approval" || a.status === "approved") &&
-                            cancel && (
+                {(pendingAdjustments.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((a) => {
+                    const isSelf = a.submitted_by === currentUser.data;
+                    return (
+                      <TableRow key={a.id}>
+                        <TableCell>
+                          <RefId id={a.id} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{a.reference_number}</TableCell>
+                        <TableCell className="font-medium">
+                          {a.raw_materials?.name ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-destructive">
+                          {num(Number(a.quantity_delta))} {a.raw_materials?.unit ?? ""}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{a.reason ?? "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize">
+                            {a.status.replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(a.submitted_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {a.status === "pending_approval" && approve && !isSelf && (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Cancel"
-                                onClick={() => cancelAdjustment.mutate(a.id)}
+                                title="Approve"
+                                onClick={() => reviewAdjustment.mutate({ id: a.id, approve: true })}
                               >
-                                <Ban className="h-4 w-4 text-muted-foreground" />
+                                <PackagePlus className="h-4 w-4 text-success" />
                               </Button>
                             )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                            {a.status === "pending_approval" && approve && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() =>
+                                  reviewAdjustment.mutate({
+                                    id: a.id,
+                                    approve: false,
+                                    reason: "Rejected",
+                                  })
+                                }
+                              >
+                                <PackageMinus className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                            {a.status === "approved" && post && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Post"
+                                onClick={() => postAdjustment.mutate(a.id)}
+                              >
+                                <Send className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {(a.status === "pending_approval" || a.status === "approved") &&
+                              cancel && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Cancel"
+                                  onClick={() => cancelAdjustment.mutate(a.id)}
+                                >
+                                  <Ban className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
               </TableBody>
             </Table>
           </CardContent>
@@ -1026,6 +1045,7 @@ function RawMaterialsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Reference</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
@@ -1037,30 +1057,37 @@ function RawMaterialsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(recentDamage.data ?? []).map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-mono text-xs">{d.reference_number}</TableCell>
-                    <TableCell>{d.raw_materials?.name ?? "—"}</TableCell>
-                    <TableCell className="text-right text-destructive">
-                      {num(Number(d.quantity))} {d.unit ?? ""}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {d.unit_cost == null ? "—" : money(Number(d.unit_cost))}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-destructive">
-                      {d.unit_cost == null ? "—" : money(Number(d.quantity) * Number(d.unit_cost))}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {d.source_type.toLowerCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{d.reason ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(d.created_at).toLocaleDateString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {(recentDamage.data ?? [])
+                  .filter((x) => matchesSearch(q, x))
+                  .map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell>
+                        <RefId id={d.id} />
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{d.reference_number}</TableCell>
+                      <TableCell>{d.raw_materials?.name ?? "—"}</TableCell>
+                      <TableCell className="text-right text-destructive">
+                        {num(Number(d.quantity))} {d.unit ?? ""}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {d.unit_cost == null ? "—" : money(Number(d.unit_cost))}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-destructive">
+                        {d.unit_cost == null
+                          ? "—"
+                          : money(Number(d.quantity) * Number(d.unit_cost))}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">
+                          {d.source_type.toLowerCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{d.reason ?? "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(d.created_at).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -1908,6 +1935,7 @@ function HistoryDialog({ material }: { material: Material }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date &amp; Time</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
@@ -1922,6 +1950,9 @@ function HistoryDialog({ material }: { material: Material }) {
             <TableBody>
               {(movements.data ?? []).map((m) => (
                 <TableRow key={m.id}>
+                  <TableCell>
+                    <RefId id={m.id} />
+                  </TableCell>
                   <TableCell>{new Date(m.created_at).toLocaleString()}</TableCell>
                   <TableCell>
                     <Badge variant={badgeVariant(m.movement_type) as any} className="capitalize">
@@ -1951,7 +1982,7 @@ function HistoryDialog({ material }: { material: Material }) {
               ))}
               {(movements.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
                     No movements yet.
                   </TableCell>
                 </TableRow>
@@ -1965,6 +1996,7 @@ function HistoryDialog({ material }: { material: Material }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Effective</TableHead>
                 <TableHead className="text-right">Previous cost</TableHead>
                 <TableHead className="text-right">New cost</TableHead>
@@ -1973,6 +2005,9 @@ function HistoryDialog({ material }: { material: Material }) {
             <TableBody>
               {(costHistory.data ?? []).map((c) => (
                 <TableRow key={c.id}>
+                  <TableCell>
+                    <RefId id={c.id} />
+                  </TableCell>
                   <TableCell>{new Date(c.effective_date).toLocaleString()}</TableCell>
                   <TableCell className="text-right text-muted-foreground">
                     {c.previous_cost == null ? "—" : money(Number(c.previous_cost))}
@@ -1982,7 +2017,7 @@ function HistoryDialog({ material }: { material: Material }) {
               ))}
               {(costHistory.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
                     No unit cost changes recorded yet.
                   </TableCell>
                 </TableRow>

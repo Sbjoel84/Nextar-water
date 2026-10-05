@@ -69,6 +69,7 @@ import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { fetchAll } from "@/lib/metrics";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/sales")({
   head: () => ({ meta: [{ title: "Sales & POS — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -567,7 +568,7 @@ function SalesPage() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search invoice, customer, product, sales person…"
+              placeholder="Search invoice, customer, product, #ID…"
               className="pl-8 h-9 w-64"
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -578,6 +579,7 @@ function SalesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Invoice</TableHead>
                 <TableHead>Date &amp; Time</TableHead>
                 <TableHead>Customer</TableHead>
@@ -603,6 +605,9 @@ function SalesPage() {
                 const canDeleteRow = canRequestDelete;
                 return (
                   <TableRow key={s.id}>
+                    <TableCell>
+                      <RefId id={s.id} />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{s.invoice_number}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {new Date(s.created_at).toLocaleString()}
@@ -787,7 +792,7 @@ function SalesPage() {
               })}
               {filteredSales.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                     {q.trim() ? "No sales match your search." : "No sales yet."}
                   </TableCell>
                 </TableRow>

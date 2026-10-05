@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FileDown, FileText } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
 
 type Row = Pick<
   AccountSummary,
@@ -185,6 +186,7 @@ export function CustomerAccountsCard({ factoryId }: { factoryId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead className="text-right">Available advance</TableHead>
               <TableHead className="text-right">Outstanding debt</TableHead>
@@ -196,19 +198,22 @@ export function CustomerAccountsCard({ factoryId }: { factoryId: string }) {
           <TableBody>
             {accounts.isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   Loading…
                 </TableCell>
               </TableRow>
             ) : visible.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   No customers match.
                 </TableCell>
               </TableRow>
             ) : (
               visible.map((r) => (
                 <TableRow key={r.customer_id}>
+                  <TableCell>
+                    <RefId id={r.customer_id} />
+                  </TableCell>
                   <TableCell className="font-medium">{r.customer_name}</TableCell>
                   <TableCell
                     className={`text-right ${r.available_advance > 0 ? "font-medium text-success" : ""}`}

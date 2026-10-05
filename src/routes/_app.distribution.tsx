@@ -44,6 +44,9 @@ import { logAudit } from "@/lib/audit";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/distribution")({
   head: () => ({
@@ -264,6 +267,7 @@ type Perms = ReturnType<typeof usePermissions>;
 /* ------------------------------------------------------------------ Reps --- */
 
 function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; perms: Perms }) {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Rep | null>(null);
   const [open, setOpen] = useState(false);
@@ -304,9 +308,11 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
         )}
       </CardHeader>
       <CardContent className="overflow-x-auto">
+        <SearchBox value={q} onChange={setQ} className="mb-3" />
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Phone</TableHead>
@@ -315,48 +321,53 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
             </TableRow>
           </TableHeader>
           <TableBody>
-            {reps.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
-                <TableCell className="font-medium">{r.full_name}</TableCell>
-                <TableCell>{r.phone ?? "—"}</TableCell>
-                <TableCell>
-                  <Badge variant={r.status === "active" ? "secondary" : "outline"}>
-                    {r.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    {canEdit && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Edit"
-                        onClick={() => {
-                          setEditing(r);
-                          setOpen(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {canDelete && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Delete"
-                        onClick={() => setDeleteTarget(r)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            {reps
+              .filter((x) => matchesSearch(q, x))
+              .map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>
+                    <RefId id={r.id} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
+                  <TableCell className="font-medium">{r.full_name}</TableCell>
+                  <TableCell>{r.phone ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={r.status === "active" ? "secondary" : "outline"}>
+                      {r.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Edit"
+                          onClick={() => {
+                            setEditing(r);
+                            setOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete"
+                          onClick={() => setDeleteTarget(r)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             {reps.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                   No sales reps yet.
                 </TableCell>
               </TableRow>
@@ -499,6 +510,7 @@ function DispatchesTab({
   routes: NamedRow[];
   perms: Perms;
 }) {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<DispatchRow | null>(null);
@@ -542,9 +554,11 @@ function DispatchesTab({
         )}
       </CardHeader>
       <CardContent className="overflow-x-auto">
+        <SearchBox value={q} onChange={setQ} className="mb-3" />
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Dispatch #</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Rep</TableHead>
@@ -555,42 +569,49 @@ function DispatchesTab({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(list.data ?? []).map((d) => (
-              <TableRow key={d.id}>
-                <TableCell className="font-mono text-xs">{d.dispatch_number}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs">
-                  {new Date(d.dispatch_date).toLocaleDateString()}
-                </TableCell>
-                <TableCell className="font-medium">{d.sales_reps?.full_name ?? "—"}</TableCell>
-                <TableCell className="text-right">{d.stock_dispatch_items?.length ?? 0}</TableCell>
-                <TableCell className="text-right">{money(Number(d.total_value))}</TableCell>
-                <TableCell>
-                  <Badge variant={statusBadge(d.status)} className="capitalize">
-                    {d.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" title="View" onClick={() => setDetail(d)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    {d.status === "posted" && canReverse && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Reverse"
-                        onClick={() => setReverseTarget(d)}
-                      >
-                        <Undo2 className="h-4 w-4 text-destructive" />
+            {(list.data ?? [])
+              .filter((x) => matchesSearch(q, x))
+              .map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell>
+                    <RefId id={d.id} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{d.dispatch_number}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    {new Date(d.dispatch_date).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="font-medium">{d.sales_reps?.full_name ?? "—"}</TableCell>
+                  <TableCell className="text-right">
+                    {d.stock_dispatch_items?.length ?? 0}
+                  </TableCell>
+                  <TableCell className="text-right">{money(Number(d.total_value))}</TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadge(d.status)} className="capitalize">
+                      {d.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" title="View" onClick={() => setDetail(d)}>
+                        <Eye className="h-4 w-4" />
                       </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {d.status === "posted" && canReverse && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reverse"
+                          onClick={() => setReverseTarget(d)}
+                        >
+                          <Undo2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             {(list.data ?? []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                   No dispatches yet.
                 </TableCell>
               </TableRow>
@@ -981,6 +1002,7 @@ function ReturnsTab({
   perms: Perms;
   currentUserId: string | null;
 }) {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [inspectTarget, setInspectTarget] = useState<ReturnRow | null>(null);
@@ -1025,9 +1047,11 @@ function ReturnsTab({
         )}
       </CardHeader>
       <CardContent className="overflow-x-auto">
+        <SearchBox value={q} onChange={setQ} className="mb-3" />
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Return #</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Rep</TableHead>
@@ -1037,48 +1061,53 @@ function ReturnsTab({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(list.data ?? []).map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs">
-                  {new Date(r.return_date).toLocaleDateString()}
-                </TableCell>
-                <TableCell className="font-medium">{r.sales_reps?.full_name ?? "—"}</TableCell>
-                <TableCell className="text-right">{r.rep_return_items?.length ?? 0}</TableCell>
-                <TableCell>
-                  <Badge variant={statusBadge(r.status)} className="capitalize">
-                    {r.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-1">
-                    {r.status === "received" && canConfirm && r.received_by !== currentUserId && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Inspect"
-                        onClick={() => setInspectTarget(r)}
-                      >
-                        <Undo2 className="h-4 w-4 text-warning" />
-                      </Button>
-                    )}
-                    {r.status === "received" && canCancel && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Cancel"
-                        onClick={() => setCancelTarget(r)}
-                      >
-                        <Ban className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            {(list.data ?? [])
+              .filter((x) => matchesSearch(q, x))
+              .map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>
+                    <RefId id={r.id} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    {new Date(r.return_date).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="font-medium">{r.sales_reps?.full_name ?? "—"}</TableCell>
+                  <TableCell className="text-right">{r.rep_return_items?.length ?? 0}</TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadge(r.status)} className="capitalize">
+                      {r.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      {r.status === "received" && canConfirm && r.received_by !== currentUserId && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Inspect"
+                          onClick={() => setInspectTarget(r)}
+                        >
+                          <Undo2 className="h-4 w-4 text-warning" />
+                        </Button>
+                      )}
+                      {r.status === "received" && canCancel && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Cancel"
+                          onClick={() => setCancelTarget(r)}
+                        >
+                          <Ban className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             {(list.data ?? []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                   No rep returns yet.
                 </TableCell>
               </TableRow>
@@ -1406,6 +1435,7 @@ function RemittancesTab({
   reps: Rep[];
   perms: Perms;
 }) {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const canPost = perms.canPost("distribution");
@@ -1438,9 +1468,11 @@ function RemittancesTab({
         )}
       </CardHeader>
       <CardContent className="overflow-x-auto">
+        <SearchBox value={q} onChange={setQ} className="mb-3" />
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Remittance #</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Rep</TableHead>
@@ -1449,20 +1481,25 @@ function RemittancesTab({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(list.data ?? []).map((r) => (
-              <TableRow key={r.id}>
-                <TableCell className="font-mono text-xs">{r.remittance_number}</TableCell>
-                <TableCell className="whitespace-nowrap text-xs">
-                  {new Date(r.remittance_date).toLocaleDateString()}
-                </TableCell>
-                <TableCell className="font-medium">{r.sales_reps?.full_name ?? "—"}</TableCell>
-                <TableCell className="capitalize">{r.payment_method}</TableCell>
-                <TableCell className="text-right">{money(Number(r.amount))}</TableCell>
-              </TableRow>
-            ))}
+            {(list.data ?? [])
+              .filter((x) => matchesSearch(q, x))
+              .map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>
+                    <RefId id={r.id} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{r.remittance_number}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    {new Date(r.remittance_date).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="font-medium">{r.sales_reps?.full_name ?? "—"}</TableCell>
+                  <TableCell className="capitalize">{r.payment_method}</TableCell>
+                  <TableCell className="text-right">{money(Number(r.amount))}</TableCell>
+                </TableRow>
+              ))}
             {(list.data ?? []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                   No remittances recorded yet.
                 </TableCell>
               </TableRow>

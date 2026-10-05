@@ -58,6 +58,9 @@ import {
   UserCheck,
   Copy,
 } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/account-approvals")({
   head: () => ({
@@ -101,6 +104,7 @@ const statusVariant = (status: string): "default" | "secondary" | "outline" | "d
 };
 
 export function AccountApprovalsPage() {
+  const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
   // Super admin or chairman — the same roles the RLS on these tables allows.
   const isSuperAdmin = useIsAdmin();
@@ -326,9 +330,11 @@ export function AccountApprovalsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead></TableHead>
                 <TableHead>Full Name</TableHead>
                 <TableHead>User ID</TableHead>
@@ -343,146 +349,151 @@ export function AccountApprovalsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    <Avatar className="h-8 w-8">
-                      {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.full_name ?? ""} />}
-                      <AvatarFallback>
-                        {(a.full_name || a.email || "?").slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TableCell>
-                  <TableCell className="font-medium">{a.full_name ?? "—"}</TableCell>
-                  <TableCell>
-                    <button
-                      onClick={() => copyId(a.id)}
-                      className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
-                      title={a.id}
-                    >
-                      {a.id.slice(0, 8)}… <Copy className="h-3 w-3" />
-                    </button>
-                  </TableCell>
-                  <TableCell className="text-xs">{a.email ?? "—"}</TableCell>
-                  <TableCell>{a.department ?? "—"}</TableCell>
-                  <TableCell>{roleDisplay(a)}</TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(a.status)} className="capitalize">
-                      {a.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {a.created_by ? "Admin-created" : "Self-registered"}
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {lastLoginLabel(a.id)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="View details"
-                        onClick={() => setDetail(a)}
+              {filtered
+                .filter((x) => matchesSearch(q, x))
+                .map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <RefId id={a.id} />
+                    </TableCell>
+                    <TableCell>
+                      <Avatar className="h-8 w-8">
+                        {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.full_name ?? ""} />}
+                        <AvatarFallback>
+                          {(a.full_name || a.email || "?").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
+                    <TableCell className="font-medium">{a.full_name ?? "—"}</TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() => copyId(a.id)}
+                        className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+                        title={a.id}
                       >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {a.status === "pending" && (
-                        <>
+                        {a.id.slice(0, 8)}… <Copy className="h-3 w-3" />
+                      </button>
+                    </TableCell>
+                    <TableCell className="text-xs">{a.email ?? "—"}</TableCell>
+                    <TableCell>{a.department ?? "—"}</TableCell>
+                    <TableCell>{roleDisplay(a)}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(a.status)} className="capitalize">
+                        {a.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {a.created_by ? "Admin-created" : "Self-registered"}
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {lastLoginLabel(a.id)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="View details"
+                          onClick={() => setDetail(a)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {a.status === "pending" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Approve"
+                              onClick={() => {
+                                setApproveTarget(a);
+                                setApproveRole(a.role_requested ?? "");
+                                setApproveDepartment(a.department ?? "");
+                              }}
+                            >
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Reject"
+                              onClick={() => setRejectTarget(a)}
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                        {a.status === "active" && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Approve"
-                            onClick={() => {
-                              setApproveTarget(a);
-                              setApproveRole(a.role_requested ?? "");
-                              setApproveDepartment(a.department ?? "");
-                            }}
+                            title="Suspend"
+                            onClick={() => setStatus.mutate({ id: a.id, status: "suspended" })}
                           >
-                            <Check className="h-4 w-4 text-success" />
+                            <PauseCircle className="h-4 w-4 text-warning" />
                           </Button>
+                        )}
+                        {(a.status === "suspended" ||
+                          a.status === "deactivated" ||
+                          a.status === "rejected") && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Reject"
-                            onClick={() => setRejectTarget(a)}
+                            title="Reinstate"
+                            onClick={() => setStatus.mutate({ id: a.id, status: "active" })}
                           >
-                            <X className="h-4 w-4 text-destructive" />
+                            <RotateCcw className="h-4 w-4 text-success" />
                           </Button>
-                        </>
-                      )}
-                      {a.status === "active" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Suspend"
-                          onClick={() => setStatus.mutate({ id: a.id, status: "suspended" })}
-                        >
-                          <PauseCircle className="h-4 w-4 text-warning" />
-                        </Button>
-                      )}
-                      {(a.status === "suspended" ||
-                        a.status === "deactivated" ||
-                        a.status === "rejected") && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Reinstate"
-                          onClick={() => setStatus.mutate({ id: a.id, status: "active" })}
-                        >
-                          <RotateCcw className="h-4 w-4 text-success" />
-                        </Button>
-                      )}
-                      {a.status !== "deactivated" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Deactivate"
-                          onClick={() => setStatus.mutate({ id: a.id, status: "deactivated" })}
-                        >
-                          <PowerOff className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Reset password"
-                        onClick={() => resetPassword(a.email)}
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" title="Delete account">
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
+                        {a.status !== "deactivated" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Deactivate"
+                            onClick={() => setStatus.mutate({ id: a.id, status: "deactivated" })}
+                          >
+                            <PowerOff className="h-4 w-4 text-destructive" />
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this account?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This removes {a.full_name ?? a.email}'s profile and role assignments.
-                              This cannot be undone from here.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => remove.mutate(a.id)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reset password"
+                          onClick={() => resetPassword(a.email)}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" title="Delete account">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this account?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This removes {a.full_name ?? a.email}'s profile and role
+                                assignments. This cannot be undone from here.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => remove.mutate(a.id)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     No {tab === "all" ? "" : tab} accounts.
                   </TableCell>
                 </TableRow>

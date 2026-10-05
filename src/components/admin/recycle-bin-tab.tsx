@@ -15,11 +15,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { matchesSearch } from "@/lib/search";
 import { purgeRecycleBin, RECYCLE_BIN_RETENTION_DAYS } from "@/lib/recycle-bin";
+import { RefId } from "@/components/shared/ref-id";
 
 type BinRow = {
   id: string;
   table_name: string;
+  entity_id: string;
   entity_label: string;
   reason: string | null;
   details: Record<string, unknown>;
@@ -91,7 +94,9 @@ export function RecycleBinTab() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("recycle_bin")
-        .select("id,table_name,entity_label,reason,details,deleted_by,deleted_at,purge_after")
+        .select(
+          "id,table_name,entity_id,entity_label,reason,details,deleted_by,deleted_at,purge_after",
+        )
         .order("deleted_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as BinRow[];
@@ -132,13 +137,12 @@ export function RecycleBinTab() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const q = search.trim().toLowerCase();
-  const list = (rows.data ?? []).filter(
-    (r) =>
-      !q ||
-      r.entity_label.toLowerCase().includes(q) ||
-      (TYPE_LABELS[r.table_name] ?? r.table_name).toLowerCase().includes(q) ||
-      (r.reason ?? "").toLowerCase().includes(q),
+  const list = (rows.data ?? []).filter((r) =>
+    matchesSearch(
+      search,
+      { label: r.entity_label, reason: r.reason, entity_id: r.entity_id, id: r.id },
+      TYPE_LABELS[r.table_name] ?? r.table_name,
+    ),
   );
 
   return (
@@ -150,7 +154,7 @@ export function RecycleBinTab() {
         </p>
         <Input
           className="max-w-xs"
-          placeholder="Search the recycle bin…"
+          placeholder="Search the recycle bin or #ID…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -161,6 +165,7 @@ export function RecycleBinTab() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Record</TableHead>
                 <TableHead>Reason</TableHead>
@@ -175,6 +180,9 @@ export function RecycleBinTab() {
                 const contents = r.table_name === "customers" ? customerContents(r.details) : "";
                 return (
                   <TableRow key={r.id}>
+                    <TableCell>
+                      <RefId id={r.entity_id} />
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">{TYPE_LABELS[r.table_name] ?? r.table_name}</Badge>
                     </TableCell>
@@ -216,7 +224,7 @@ export function RecycleBinTab() {
               })}
               {list.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     {rows.isLoading ? "Loading…" : "The recycle bin is empty."}
                   </TableCell>
                 </TableRow>

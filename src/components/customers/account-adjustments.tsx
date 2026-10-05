@@ -36,6 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Plus, Check, X, Ban } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
 
 export type AdjustmentEffect = "credit_up" | "credit_down" | "debt_up" | "debt_down" | "refund";
 
@@ -437,6 +438,7 @@ export function AccountAdjustmentsCard({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>ID</TableHead>
               <TableHead>Date</TableHead>
               {!customerId && <TableHead>Customer</TableHead>}
               <TableHead>Adjustment</TableHead>
@@ -450,13 +452,13 @@ export function AccountAdjustmentsCard({
           <TableBody>
             {list.isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   Loading…
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   {showAll ? "No adjustments yet." : "Nothing awaiting approval."}
                 </TableCell>
               </TableRow>
@@ -467,6 +469,9 @@ export function AccountAdjustmentsCard({
                 const canDecide = pending && (!own || isAdmin);
                 return (
                   <TableRow key={r.id}>
+                    <TableCell>
+                      <RefId id={r.id} />
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
                       {new Date(r.submitted_at).toLocaleDateString()}
                     </TableCell>

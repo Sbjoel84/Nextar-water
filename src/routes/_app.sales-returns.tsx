@@ -48,6 +48,9 @@ import {
   startOfYear,
   format,
 } from "date-fns";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/sales-returns")({
   head: () => ({
@@ -138,6 +141,7 @@ function rangeBounds(key: RangeKey, from: string, to: string): { start: string; 
 }
 
 function SalesReturnsPage() {
+  const [q, setQ] = useSearchQuery();
   const { data: factoryId } = useFactoryId();
   const { canSubmit, canConfirm, canCancel } = usePermissions();
   const submitPerm = canSubmit("sales-returns");
@@ -252,8 +256,9 @@ function SalesReturnsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales Returns</h1>
           <p className="text-sm text-muted-foreground">
-            Returned products must be inspected before any of it goes back into sellable stock — only
-            the accepted portion posts, and only after someone other than the receiver inspects it.
+            Returned products must be inspected before any of it goes back into sellable stock —
+            only the accepted portion posts, and only after someone other than the receiver inspects
+            it.
           </p>
         </div>
         {submitPerm && (
@@ -360,9 +365,11 @@ function SalesReturnsPage() {
           <CardTitle>Returns</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Return #</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Product</TableHead>
@@ -377,73 +384,78 @@ function SalesReturnsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-mono text-xs">{row.return_number}</TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(row.received_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="font-medium">{row.products?.name ?? "—"}</TableCell>
-                  <TableCell>{row.customers?.name ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {row.sales?.invoice_number ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {num(Number(row.quantity_returned))} {row.unit}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {row.accepted_quantity != null ? num(Number(row.accepted_quantity)) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {row.damaged_quantity > 0 ? num(Number(row.damaged_quantity)) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {row.rejected_quantity > 0 ? num(Number(row.rejected_quantity)) : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusBadge(row.status)} className="capitalize">
-                      {row.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {row.status === "received" &&
-                        inspectPerm &&
-                        row.received_by !== currentUser.data && (
+              {(list.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <RefId id={row.id} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{row.return_number}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {new Date(row.received_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="font-medium">{row.products?.name ?? "—"}</TableCell>
+                    <TableCell>{row.customers?.name ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {row.sales?.invoice_number ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(row.quantity_returned))} {row.unit}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {row.accepted_quantity != null ? num(Number(row.accepted_quantity)) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {row.damaged_quantity > 0 ? num(Number(row.damaged_quantity)) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {row.rejected_quantity > 0 ? num(Number(row.rejected_quantity)) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusBadge(row.status)} className="capitalize">
+                        {row.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {row.status === "received" &&
+                          inspectPerm &&
+                          row.received_by !== currentUser.data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Inspect"
+                              onClick={() => setInspectTarget(row)}
+                            >
+                              <Undo2 className="h-4 w-4 text-warning" />
+                            </Button>
+                          )}
+                        {row.status === "received" && cancelPerm && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Inspect"
-                            onClick={() => setInspectTarget(row)}
+                            title="Cancel"
+                            onClick={() => setCancelTarget(row)}
                           >
-                            <Undo2 className="h-4 w-4 text-warning" />
+                            <Ban className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
-                      {row.status === "received" && cancelPerm && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Cancel"
-                          onClick={() => setCancelTarget(row)}
+                          title="View"
+                          onClick={() => setDetailTarget(row)}
                         >
-                          <Ban className="h-4 w-4 text-destructive" />
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="View"
-                        onClick={() => setDetailTarget(row)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     No sales returns logged yet.
                   </TableCell>
                 </TableRow>

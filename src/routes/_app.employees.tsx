@@ -66,6 +66,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/employees")({
   head: () => ({ meta: [{ title: "Employees — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -306,7 +307,7 @@ function EmployeesPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search…"
+              placeholder="Search or paste #ID…"
               className="pl-8 h-9"
             />
           </div>
@@ -315,6 +316,7 @@ function EmployeesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead></TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Department</TableHead>
@@ -327,6 +329,9 @@ function EmployeesPage() {
             <TableBody>
               {shown.map((e) => (
                 <TableRow key={e.id}>
+                  <TableCell>
+                    <RefId id={e.id} />
+                  </TableCell>
                   <TableCell>
                     <EmployeePhoto path={e.photo_url} name={e.full_name} />
                   </TableCell>
@@ -388,7 +393,7 @@ function EmployeesPage() {
               ))}
               {shown.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No employees yet.
                   </TableCell>
                 </TableRow>
@@ -1032,6 +1037,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Loan #</TableHead>
                   <TableHead className="text-right">Principal</TableHead>
                   <TableHead>Schedule</TableHead>
@@ -1044,6 +1050,9 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
               <TableBody>
                 {(loans.data ?? []).map((l) => (
                   <TableRow key={l.id}>
+                    <TableCell>
+                      <RefId id={l.id} />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{l.loan_number}</TableCell>
                     <TableCell className="text-right">{money(Number(l.principal))}</TableCell>
                     <TableCell className="text-xs">{schedule(l)}</TableCell>
@@ -1092,7 +1101,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
                 ))}
                 {(loans.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
                       No loans recorded.
                     </TableCell>
                   </TableRow>
@@ -1188,6 +1197,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Ref</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Label</TableHead>
@@ -1200,6 +1210,9 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
               <TableBody>
                 {(deductions.data ?? []).map((d) => (
                   <TableRow key={d.id}>
+                    <TableCell>
+                      <RefId id={d.id} />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{d.reference_number}</TableCell>
                     <TableCell className="capitalize">{d.kind}</TableCell>
                     <TableCell>{d.label}</TableCell>
@@ -1249,7 +1262,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
                 ))}
                 {(deductions.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
                       Nothing recorded.
                     </TableCell>
                   </TableRow>

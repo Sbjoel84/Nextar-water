@@ -64,6 +64,9 @@ import { toast } from "sonner";
 import { generateProductionRequestPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/units";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/production-requests")({
   head: () => ({
@@ -119,6 +122,7 @@ const productionStatusBadge = (s: string): "default" | "secondary" | "outline" |
 };
 
 function ProductionRequestsPage() {
+  const [q, setQ] = useSearchQuery();
   const { data: factoryId } = useFactoryId();
   const { canSubmit, canApprove, canReject, canConfirm } = usePermissions();
   const submit = canSubmit("production-requests");
@@ -273,9 +277,11 @@ function ProductionRequestsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Number</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Requested By</TableHead>
@@ -288,97 +294,104 @@ function ProductionRequestsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-mono text-xs">{row.request_number}</TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(row.request_date).toLocaleString()}
-                  </TableCell>
-                  <TableCell>{row.requested_by_name}</TableCell>
-                  <TableCell>{row.department ?? "—"}</TableCell>
-                  <TableCell className="font-medium">
-                    {row.products?.name ?? "—"}
-                    {row.auto_generated && (
-                      <Badge variant="outline" className="ml-2 gap-1">
-                        <Sparkles className="h-3 w-3" /> Auto (low stock)
+              {(list.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <RefId id={row.id} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{row.request_number}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {new Date(row.request_date).toLocaleString()}
+                    </TableCell>
+                    <TableCell>{row.requested_by_name}</TableCell>
+                    <TableCell>{row.department ?? "—"}</TableCell>
+                    <TableCell className="font-medium">
+                      {row.products?.name ?? "—"}
+                      {row.auto_generated && (
+                        <Badge variant="outline" className="ml-2 gap-1">
+                          <Sparkles className="h-3 w-3" /> Auto (low stock)
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(row.quantity_requested))} {row.unit}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={approvalBadge(row.approval_status)} className="capitalize">
+                        {row.approval_status}
                       </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {num(Number(row.quantity_requested))} {row.unit}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={approvalBadge(row.approval_status)} className="capitalize">
-                      {row.approval_status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={productionStatusBadge(row.production_status)}
-                      className="capitalize"
-                    >
-                      {row.production_status.replace(/_/g, " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {row.approval_status === "pending" &&
-                        approvePerm &&
-                        row.requested_by !== currentUser.data && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Approve"
-                            onClick={() => setApproveTarget(row)}
-                          >
-                            <Check className="h-4 w-4 text-success" />
-                          </Button>
-                        )}
-                      {row.approval_status === "pending" &&
-                        rejectPerm &&
-                        row.requested_by !== currentUser.data && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Reject"
-                            onClick={() => setRejectTarget(row)}
-                          >
-                            <X className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      {row.approval_status === "approved" && !row.materials_issued && confirmPerm && (
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={productionStatusBadge(row.production_status)}
+                        className="capitalize"
+                      >
+                        {row.production_status.replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {row.approval_status === "pending" &&
+                          approvePerm &&
+                          row.requested_by !== currentUser.data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Approve"
+                              onClick={() => setApproveTarget(row)}
+                            >
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                          )}
+                        {row.approval_status === "pending" &&
+                          rejectPerm &&
+                          row.requested_by !== currentUser.data && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Reject"
+                              onClick={() => setRejectTarget(row)}
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        {row.approval_status === "approved" &&
+                          !row.materials_issued &&
+                          confirmPerm && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Confirm & issue materials"
+                              onClick={() => setIssueTarget(row)}
+                            >
+                              <PackageMinus className="h-4 w-4 text-warning" />
+                            </Button>
+                          )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Confirm & issue materials"
-                          onClick={() => setIssueTarget(row)}
+                          title="View"
+                          onClick={() => setDetailTarget(row)}
                         >
-                          <PackageMinus className="h-4 w-4 text-warning" />
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="View"
-                        onClick={() => setDetailTarget(row)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Print"
-                        onClick={() => printRequest(row)}
-                      >
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Print"
+                          onClick={() => printRequest(row)}
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     No production requests yet.
                   </TableCell>
                 </TableRow>
@@ -851,9 +864,7 @@ function ApproveDialog({ row, onDone }: { row: RequestRow; onDone: () => void })
     },
     onSuccess: (result) => {
       toast.success(
-        result?.materials_issued
-          ? "Request approved — materials issued"
-          : "Request approved",
+        result?.materials_issued ? "Request approved — materials issued" : "Request approved",
       );
       logAudit({
         action: "update",

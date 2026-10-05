@@ -56,6 +56,9 @@ import { generateProductionRequestPdf, generatePurchaseOrderPdf } from "@/lib/pd
 import { logAudit } from "@/lib/audit";
 import { usePendingAttention } from "@/lib/pending-attention";
 import { QuickAddMaterialDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/procurement")({
   head: () => ({
@@ -233,6 +236,7 @@ function RequestsSection({
   approvePerm: boolean;
   rejectPerm: boolean;
 }) {
+  const [q, setQ] = useSearchQuery();
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
@@ -360,9 +364,11 @@ function RequestsSection({
           <CardTitle>Requests</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Number</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Requested By</TableHead>
@@ -374,80 +380,85 @@ function RequestsSection({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-mono text-xs">{row.request_number}</TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(row.request_date).toLocaleString()}
-                  </TableCell>
-                  <TableCell>{row.requested_by_name}</TableCell>
-                  <TableCell className="font-medium">
-                    {row.raw_materials?.name ?? "—"}
-                    {row.auto_generated && (
-                      <Badge variant="outline" className="ml-2 gap-1">
-                        <Sparkles className="h-3 w-3" /> Auto (low stock)
+              {(list.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <RefId id={row.id} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{row.request_number}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {new Date(row.request_date).toLocaleString()}
+                    </TableCell>
+                    <TableCell>{row.requested_by_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {row.raw_materials?.name ?? "—"}
+                      {row.auto_generated && (
+                        <Badge variant="outline" className="ml-2 gap-1">
+                          <Sparkles className="h-3 w-3" /> Auto (low stock)
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(row.quantity_requested))} {row.unit}
+                    </TableCell>
+                    <TableCell>{row.suppliers?.name ?? "—"}</TableCell>
+                    <TableCell>
+                      <Badge variant={approvalBadge(row.approval_status)} className="capitalize">
+                        {row.approval_status}
                       </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {num(Number(row.quantity_requested))} {row.unit}
-                  </TableCell>
-                  <TableCell>{row.suppliers?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={approvalBadge(row.approval_status)} className="capitalize">
-                      {row.approval_status}
-                    </Badge>
-                    {row.po_number && (
-                      <Badge variant="secondary" className="ml-2">
-                        PO issued
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {row.approval_status === "pending" && approvePerm && (
+                      {row.po_number && (
+                        <Badge variant="secondary" className="ml-2">
+                          PO issued
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {row.approval_status === "pending" && approvePerm && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Approve"
+                            onClick={() => setApproveTarget(row)}
+                          >
+                            <Check className="h-4 w-4 text-success" />
+                          </Button>
+                        )}
+                        {row.approval_status === "pending" && rejectPerm && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Reject"
+                            onClick={() => setRejectTarget(row)}
+                          >
+                            <X className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Approve"
-                          onClick={() => setApproveTarget(row)}
+                          title="View"
+                          onClick={() => setDetailTarget(row)}
                         >
-                          <Check className="h-4 w-4 text-success" />
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      )}
-                      {row.approval_status === "pending" && rejectPerm && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="Reject"
-                          onClick={() => setRejectTarget(row)}
+                          title="Print"
+                          onClick={() => printRequest(row)}
                         >
-                          <X className="h-4 w-4 text-destructive" />
+                          <Printer className="h-4 w-4" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="View"
-                        onClick={() => setDetailTarget(row)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Print"
-                        onClick={() => printRequest(row)}
-                      >
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No purchase requests yet.
                   </TableCell>
                 </TableRow>
@@ -852,6 +863,7 @@ function OrdersSection({
   cancelPerm: boolean;
   receivePerm: boolean;
 }) {
+  const [q, setQ] = useSearchQuery();
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -944,9 +956,11 @@ function OrdersSection({
           <CardTitle>Orders</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>PO Number</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Material</TableHead>
@@ -958,72 +972,77 @@ function OrdersSection({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-mono text-xs">{row.po_number}</TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(row.issued_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="font-medium">{row.raw_materials?.name ?? "—"}</TableCell>
-                  <TableCell>{row.suppliers?.name ?? "—"}</TableCell>
-                  <TableCell className="text-right">
-                    {num(Number(row.quantity_ordered))} {row.unit}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {num(Number(row.quantity_received))} {row.unit}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={poStatusBadge(row.status)} className="capitalize">
-                      {row.status.replace(/_/g, " ")}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {receivePerm &&
-                        (row.status === "issued" || row.status === "partially_received") && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Receive items"
-                            onClick={() => setReceiveTarget(row)}
-                          >
-                            <PackagePlus className="h-4 w-4 text-success" />
-                          </Button>
-                        )}
-                      {cancelPerm &&
-                        (row.status === "issued" || row.status === "partially_received") && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Cancel"
-                            onClick={() => setCancelTarget(row)}
-                          >
-                            <Ban className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="View"
-                        onClick={() => setDetailTarget(row)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Print"
-                        onClick={() => printPo(row)}
-                      >
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {(list.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <RefId id={row.id} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{row.po_number}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {new Date(row.issued_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="font-medium">{row.raw_materials?.name ?? "—"}</TableCell>
+                    <TableCell>{row.suppliers?.name ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(row.quantity_ordered))} {row.unit}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(row.quantity_received))} {row.unit}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={poStatusBadge(row.status)} className="capitalize">
+                        {row.status.replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {receivePerm &&
+                          (row.status === "issued" || row.status === "partially_received") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Receive items"
+                              onClick={() => setReceiveTarget(row)}
+                            >
+                              <PackagePlus className="h-4 w-4 text-success" />
+                            </Button>
+                          )}
+                        {cancelPerm &&
+                          (row.status === "issued" || row.status === "partially_received") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Cancel"
+                              onClick={() => setCancelTarget(row)}
+                            >
+                              <Ban className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="View"
+                          onClick={() => setDetailTarget(row)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Print"
+                          onClick={() => printPo(row)}
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No purchase orders yet.
                   </TableCell>
                 </TableRow>

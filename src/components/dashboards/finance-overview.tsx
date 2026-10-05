@@ -60,6 +60,9 @@ import {
   Landmark,
 } from "lucide-react";
 import { startOfMonth, startOfWeek, startOfYear } from "date-fns";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 const PRESETS: { key: string; label: string; from: () => Date }[] = [
   { key: "today", label: "Today", from: () => new Date() },
@@ -303,14 +306,16 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
     return m;
   }, [txns, channelKeys]);
 
+  const [q, setQ] = useSearchQuery();
   const visible = useMemo(
     () =>
       txns.filter(
         (t) =>
           (channelFilter === "all" || t.channel === channelFilter) &&
-          (directionFilter === "all" || t.direction === directionFilter),
+          (directionFilter === "all" || t.direction === directionFilter) &&
+          matchesSearch(q, t, { id: t.key.replace(/^(pay|cash|exp|pr)-/, "") }),
       ),
-    [txns, channelFilter, directionFilter],
+    [txns, channelFilter, directionFilter, q],
   );
   const visibleIn = sum(
     visible.filter((t) => t.direction === "in"),
@@ -562,9 +567,11 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
             </div>
           </div>
 
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Reference</TableHead>
@@ -576,19 +583,22 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : visible.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     No records for this selection.
                   </TableCell>
                 </TableRow>
               ) : (
                 visible.slice(0, ROW_CAP).map((t) => (
                   <TableRow key={t.key}>
+                    <TableCell>
+                      <RefId id={t.key.replace(/^(pay|cash|exp|pr)-/, "")} />
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">{t.date || "—"}</TableCell>
                     <TableCell>{t.source}</TableCell>
                     <TableCell>{t.reference}</TableCell>

@@ -6,10 +6,15 @@ import { useFactoryId } from "@/lib/use-factory";
 import { usePermissions, type ModuleKey } from "@/lib/permissions";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
+import { refHex, shortRef, uuidPrefix, uuidRange } from "@/lib/ref";
+import { auditRecordLabel, RECORD_LABEL_KEYS } from "@/lib/audit";
 
 type Hit = { key: string; label: string; sub: string | null; to: string; q: string };
 
 // Where the top bar looks, and the page each hit opens (pre-filtered with ?q=).
+// Typing a transaction ID (#A1B2C3D4) looks it up by id in every source
+// instead, and in the audit trail — which still holds deleted records.
+// `columns: []` sources are only searched by ID.
 type Source = {
   group: string;
   module: ModuleKey;
@@ -103,9 +108,191 @@ const SOURCES: Source[] = [
     to: "/cash-ledger/ledger",
     toHit: (r) => ({ label: r.receipt_number, sub: r.payment_date, q: r.receipt_number }),
   },
+  {
+    group: "Production",
+    module: "production",
+    table: "production",
+    columns: ["production_number", "batch_number"],
+    select: "id,production_number,batch_number,production_date",
+    to: "/production",
+    toHit: (r) => ({
+      label: r.production_number ?? r.batch_number ?? "Production batch",
+      sub: r.production_date,
+      q: r.production_number ?? r.batch_number ?? "",
+    }),
+  },
+  {
+    group: "Production requests",
+    module: "production-requests",
+    table: "production_requests",
+    columns: ["request_number", "po_number", "requested_by_name"],
+    select: "id,request_number,po_number,request_date",
+    to: "/production-requests",
+    toHit: (r) => ({
+      label: r.request_number ?? r.po_number ?? "Request",
+      sub: r.request_date,
+      q: r.request_number ?? r.po_number ?? "",
+    }),
+  },
+  {
+    group: "Purchase orders",
+    module: "purchase-orders",
+    table: "purchase_orders",
+    columns: ["po_number"],
+    select: "id,po_number,status",
+    to: "/procurement",
+    toHit: (r) => ({ label: r.po_number ?? "Purchase order", sub: r.status, q: r.po_number ?? "" }),
+  },
+  {
+    group: "Goods received",
+    module: "goods-receiving",
+    table: "goods_receipts",
+    columns: ["receipt_number", "delivery_reference"],
+    select: "id,receipt_number,status",
+    to: "/procurement",
+    toHit: (r) => ({
+      label: r.receipt_number ?? "Goods receipt",
+      sub: r.status,
+      q: r.receipt_number ?? "",
+    }),
+  },
+  {
+    group: "Sales returns",
+    module: "sales-returns",
+    table: "sales_returns",
+    columns: ["return_number"],
+    select: "id,return_number,status",
+    to: "/sales-returns",
+    toHit: (r) => ({
+      label: r.return_number ?? "Sales return",
+      sub: r.status,
+      q: r.return_number ?? "",
+    }),
+  },
+  {
+    group: "Deliveries",
+    module: "logistics",
+    table: "deliveries",
+    columns: ["delivery_number"],
+    select: "id,delivery_number,scheduled_date",
+    to: "/logistics",
+    toHit: (r) => ({
+      label: r.delivery_number ?? "Delivery",
+      sub: r.scheduled_date,
+      q: r.delivery_number ?? "",
+    }),
+  },
+  {
+    group: "Dispatches",
+    module: "distribution",
+    table: "stock_dispatches",
+    columns: ["dispatch_number"],
+    select: "id,dispatch_number,dispatch_date",
+    to: "/distribution",
+    toHit: (r) => ({
+      label: r.dispatch_number ?? "Dispatch",
+      sub: r.dispatch_date,
+      q: r.dispatch_number ?? "",
+    }),
+  },
+  {
+    group: "Costing sheets",
+    module: "costing",
+    table: "costing_sheets",
+    columns: ["sheet_number"],
+    select: "id,sheet_number,status",
+    to: "/costing",
+    toHit: (r) => ({
+      label: r.sheet_number ?? "Costing sheet",
+      sub: r.status,
+      q: r.sheet_number ?? "",
+    }),
+  },
+  {
+    group: "Cash transactions",
+    module: "cash-flow",
+    table: "cash_transactions",
+    columns: ["transaction_number", "description", "related_reference"],
+    select: "id,transaction_number,description,transaction_date",
+    to: "/cash-ledger",
+    toHit: (r) => ({
+      label: r.transaction_number ?? r.description ?? "Cash transaction",
+      sub: [r.description, r.transaction_date].filter(Boolean).join(" · ") || null,
+      q: r.transaction_number ?? r.description ?? "",
+    }),
+  },
+  {
+    group: "Debts",
+    module: "debts",
+    table: "debts",
+    columns: [],
+    select: "id,status",
+    to: "/cash-ledger/debts",
+    toHit: (r) => ({ label: "Customer debt", sub: r.status, q: "" }),
+  },
+  {
+    group: "Payroll",
+    module: "payroll",
+    table: "payroll",
+    columns: [],
+    select: "id,period_month,period_year,status",
+    to: "/payroll",
+    toHit: (r) => ({
+      label: `Payroll ${r.period_month ?? ""}/${r.period_year ?? ""}`,
+      sub: r.status,
+      q: "",
+    }),
+  },
 ];
 
 const PER_GROUP = 5;
+
+const DELETE_ACTIONS = ["record_deleted", "delete", "approve_delete"];
+
+// The audit trail: by ID, every logged activity on that record (or the log
+// entry itself); by text, deleted records whose name matches — they're gone
+// from their own pages, so this is where they can still be traced.
+async function searchTrail(term: string, hex: string | null) {
+  let q: any = supabase
+    .from("audit_logs")
+    .select("id,action,entity,entity_id,old_value,new_value,created_at")
+    .order("created_at", { ascending: false });
+  if (hex) {
+    const [lo, hi] = uuidRange(hex);
+    q = q.or(`entity_id.like.${uuidPrefix(hex)}*,and(id.gte.${lo},id.lte.${hi})`);
+  } else {
+    q = q
+      .in("action", DELETE_ACTIONS)
+      .or(RECORD_LABEL_KEYS.map((k) => `old_value->>${k}.ilike.*${term}*`).join(","));
+  }
+  const { data, error } = await q.limit(hex ? 20 : PER_GROUP);
+  const hits: Hit[] = [];
+  if (!error) {
+    const seen = new Set<string>();
+    for (const r of data ?? []) {
+      // One hit per record — its full history is on the Audit Logs page.
+      const target = r.entity_id ?? r.id;
+      if (seen.has(target) || hits.length >= PER_GROUP) continue;
+      seen.add(target);
+      const deleted = DELETE_ACTIONS.includes(r.action);
+      hits.push({
+        key: `audit-${r.id}`,
+        label:
+          auditRecordLabel(r) ?? `${(r.entity ?? "record").replace(/_/g, " ")} ${shortRef(target)}`,
+        sub: [
+          deleted ? "Deleted" : r.action.replace(/_/g, " "),
+          r.entity?.replace(/_/g, " "),
+          new Date(r.created_at).toLocaleDateString(),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        to: "/audit-logs",
+        q: hex ? `#${hex.slice(0, 8).toUpperCase()}` : shortRef(target),
+      });
+    }
+  }
+  return { group: hex ? "Activity trail" : "Deleted records (audit trail)", hits };
+}
 
 // PostgREST's or=() syntax treats , ( ) " \ specially; they can't be matched
 // server-side, so drop them from the typed text.
@@ -136,20 +323,28 @@ export function GlobalSearch() {
   }, []);
 
   const sources = SOURCES.filter((src) => canView(src.module));
+  const canAudit = canView("audit-logs");
 
   const results = useQuery({
-    queryKey: ["global-search", factoryId, term, sources.map((x) => x.table).join()],
+    queryKey: ["global-search", factoryId, term, sources.map((x) => x.table).join(), canAudit],
     enabled: !!factoryId && term.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
+      const hex = term.includes(" ") ? null : refHex(term);
       const groups = await Promise.all(
         sources.map(async (src) => {
+          if (!hex && src.columns.length === 0) return { group: src.group, hits: [] as Hit[] };
           let q: any = supabase
             .from(src.table as any)
             .select(src.select)
-            .eq("factory_id", factoryId!)
-            .or(src.columns.map((c) => `${c}.ilike.%${term}%`).join(","));
-          if (src.extra) q = src.extra(q);
+            .eq("factory_id", factoryId!);
+          if (hex) {
+            const [lo, hi] = uuidRange(hex);
+            q = q.gte("id", lo).lte("id", hi);
+          } else {
+            q = q.or(src.columns.map((c) => `${c}.ilike.%${term}%`).join(","));
+            if (src.extra) q = src.extra(q);
+          }
           const { data, error } = await q.limit(PER_GROUP);
           if (error) return { group: src.group, hits: [] as Hit[] };
           return {
@@ -158,10 +353,13 @@ export function GlobalSearch() {
               key: `${src.table}-${r.id}`,
               to: src.to,
               ...src.toHit(r),
+              // An ID search opens the page filtered to exactly that record.
+              ...(hex ? { q: shortRef(r.id) } : {}),
             })) as Hit[],
           };
         }),
       );
+      if (canAudit) groups.push(await searchTrail(term, hex));
       return groups.filter((g) => g.hits.length > 0);
     },
   });
@@ -197,7 +395,7 @@ export function GlobalSearch() {
     <div ref={boxRef} className="relative w-full">
       <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
       <Input
-        placeholder="Search customers, invoices, products, suppliers…"
+        placeholder="Search anything, or paste a transaction ID (#A1B2C3D4)…"
         className="pl-8 h-9"
         value={text}
         onChange={(e) => {

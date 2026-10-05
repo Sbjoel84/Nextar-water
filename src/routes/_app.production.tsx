@@ -64,6 +64,9 @@ import { toast } from "sonner";
 import { generateProductionSlipPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/production")({
   head: () => ({ meta: [{ title: "Production — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -186,6 +189,7 @@ type EligibleRequest = {
 };
 
 function ProductionPage() {
+  const [q, setQ] = useSearchQuery();
   const factory = useFactoryId();
   const factoryId = factory.data;
   const settings = useFactorySettings(factoryId);
@@ -350,8 +354,8 @@ function ProductionPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Production</h1>
           <p className="text-sm text-muted-foreground">
-            Batch runs recorded here — Store must confirm each one before it enters finished products
-            inventory.
+            Batch runs recorded here — Store must confirm each one before it enters finished
+            products inventory.
           </p>
         </div>
         {write && (
@@ -421,9 +425,11 @@ function ProductionPage() {
           <CardTitle>Production Runs</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Number</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Type</TableHead>
@@ -440,151 +446,156 @@ function ProductionPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? []).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-mono text-xs">{row.production_number}</TableCell>
-                  <TableCell>{row.production_date}</TableCell>
-                  <TableCell>{row.production_types?.name ?? "—"}</TableCell>
-                  <TableCell className="font-medium">
-                    {row.products?.name ?? "—"}
-                    {row.packaging_unit && row.packaging_quantity != null && (
-                      <div className="text-xs text-muted-foreground">
-                        {num(Number(row.packaging_quantity))} {row.packaging_unit}
+              {(list.data ?? [])
+                .filter((x) => matchesSearch(q, x))
+                .map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <RefId id={row.id} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{row.production_number}</TableCell>
+                    <TableCell>{row.production_date}</TableCell>
+                    <TableCell>{row.production_types?.name ?? "—"}</TableCell>
+                    <TableCell className="font-medium">
+                      {row.products?.name ?? "—"}
+                      {row.packaging_unit && row.packaging_quantity != null && (
+                        <div className="text-xs text-muted-foreground">
+                          {num(Number(row.packaging_quantity))} {row.packaging_unit}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(row.quantity_produced))} {row.unit}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {row.damaged_quantity ? (
+                        <span className="text-destructive">
+                          {num(Number(row.damaged_quantity))} {row.unit}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {money(Number(row.production_cost ?? 0))}
+                    </TableCell>
+                    <TableCell>
+                      {row.production_scope ? (
+                        <Badge variant="outline" className="capitalize">
+                          {row.production_scope.toLowerCase()}
+                        </Badge>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                    <TableCell>{row.supervisor ?? "—"}</TableCell>
+                    <TableCell>{row.batch_number ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {row.production_requests?.request_number ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusBadge(row.status)} className="capitalize">
+                        {row.status.replace(/_/g, " ")}
+                      </Badge>
+                      {pendingCorrections.data?.[row.id] && (
+                        <Badge variant="outline" className="mt-1 gap-1 whitespace-nowrap">
+                          <Clock className="h-3 w-3" />
+                          {pendingCorrections.data[row.id] === "delete" ? "Delete" : "Edit"}{" "}
+                          awaiting Store
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {allowPrint && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Print"
+                            onClick={() => print(row, "print")}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {allowExport && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Export PDF"
+                            onClick={() => print(row, "download")}
+                          >
+                            <FileDown className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {row.status === "pending_confirmation" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edit"
+                            onClick={() => {
+                              setEditing(row);
+                              setFormOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {row.status === "pending_confirmation" && cancel && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" title="Cancel">
+                                <Ban className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Cancel this batch?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Nothing has posted to finished-products stock yet, so this simply
+                                  removes the pending batch. Its linked production request (if any)
+                                  becomes available for a new batch.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Back</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => cancelBatch.mutate(row)}>
+                                  Cancel Batch
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                        {row.status === "posted" && !pendingCorrections.data?.[row.id] && (
+                          <>
+                            {requestEdit && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Request correction (Store approval)"
+                                onClick={() => setCorrection({ row, kind: "edit" })}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {requestDelete && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Request delete (Store approval)"
+                                onClick={() => setCorrection({ row, kind: "delete" })}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </>
+                        )}
                       </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {num(Number(row.quantity_produced))} {row.unit}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {row.damaged_quantity ? (
-                      <span className="text-destructive">
-                        {num(Number(row.damaged_quantity))} {row.unit}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {money(Number(row.production_cost ?? 0))}
-                  </TableCell>
-                  <TableCell>
-                    {row.production_scope ? (
-                      <Badge variant="outline" className="capitalize">
-                        {row.production_scope.toLowerCase()}
-                      </Badge>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>{row.supervisor ?? "—"}</TableCell>
-                  <TableCell>{row.batch_number ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {row.production_requests?.request_number ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusBadge(row.status)} className="capitalize">
-                      {row.status.replace(/_/g, " ")}
-                    </Badge>
-                    {pendingCorrections.data?.[row.id] && (
-                      <Badge variant="outline" className="mt-1 gap-1 whitespace-nowrap">
-                        <Clock className="h-3 w-3" />
-                        {pendingCorrections.data[row.id] === "delete" ? "Delete" : "Edit"} awaiting
-                        Store
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      {allowPrint && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Print"
-                          onClick={() => print(row, "print")}
-                        >
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {allowExport && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Export PDF"
-                          onClick={() => print(row, "download")}
-                        >
-                          <FileDown className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {row.status === "pending_confirmation" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Edit"
-                          onClick={() => {
-                            setEditing(row);
-                            setFormOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {row.status === "pending_confirmation" && cancel && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title="Cancel">
-                              <Ban className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Cancel this batch?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Nothing has posted to finished-products stock yet, so this simply
-                                removes the pending batch. Its linked production request (if any)
-                                becomes available for a new batch.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Back</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => cancelBatch.mutate(row)}>
-                                Cancel Batch
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                      {row.status === "posted" && !pendingCorrections.data?.[row.id] && (
-                        <>
-                          {requestEdit && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Request correction (Store approval)"
-                              onClick={() => setCorrection({ row, kind: "edit" })}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {requestDelete && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Request delete (Store approval)"
-                              onClick={() => setCorrection({ row, kind: "delete" })}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
                     No production runs yet.
                   </TableCell>
                 </TableRow>

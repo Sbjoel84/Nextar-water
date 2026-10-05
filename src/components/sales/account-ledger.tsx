@@ -15,6 +15,7 @@ import {
   type LedgerTxn,
   type PendingSale,
 } from "@/lib/customer-account";
+import { RefId } from "@/components/shared/ref-id";
 
 export function AccountStatusBadge({ status }: { status: AccountSummary["account_status"] }) {
   const cls =
@@ -104,6 +105,7 @@ export function AccountLedgerTable({
     <Table className={compact ? "text-xs" : ""}>
       <TableHeader>
         <TableRow>
+          <TableHead>ID</TableHead>
           <TableHead>Date</TableHead>
           {!compact && <TableHead>Reference</TableHead>}
           <TableHead>Description</TableHead>
@@ -127,6 +129,9 @@ export function AccountLedgerTable({
         )}
         {rows.map((r) => (
           <TableRow key={r.key} className={r.pending ? "bg-muted/30 text-muted-foreground" : ""}>
+            <TableCell>
+              <RefId id={r.key.replace(/^pending-/, "")} />
+            </TableCell>
             <TableCell className="whitespace-nowrap">
               {new Date(r.date).toLocaleDateString()}
             </TableCell>

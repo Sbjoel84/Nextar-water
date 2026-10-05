@@ -45,6 +45,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Eye, EyeOff, RefreshCw, Copy, KeyRound, Trash2, Pencil, ShieldCheck } from "lucide-react";
+import { RefId } from "@/components/shared/ref-id";
+import { SearchBox } from "@/components/shared/search-box";
+import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 const statusVariant = (status: string): "default" | "secondary" | "outline" | "destructive" => {
   if (status === "active") return "secondary";
@@ -65,6 +68,7 @@ function generatePassword(length = 14): string {
 }
 
 export function UsersTab() {
+  const [q, setQ] = useSearchQuery();
   const { accounts, lastLogins, rolesFor, remove, resetPassword } = useAccountsAdmin();
   const allRoles = useAllRoles();
   const { canWrite, canEdit, canDelete } = usePermissions();
@@ -93,9 +97,11 @@ export function UsersTab() {
 
       <Card className="rounded-2xl">
         <CardContent className="overflow-x-auto p-0">
+          <SearchBox value={q} onChange={setQ} className="mb-3" />
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead></TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
@@ -106,99 +112,104 @@ export function UsersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    <Avatar className="h-8 w-8">
-                      {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.full_name ?? ""} />}
-                      <AvatarFallback>
-                        {(a.full_name || a.email || "?").slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      type="button"
-                      onClick={() => setEditTarget(a)}
-                      className="group text-left"
-                      title="Edit user"
-                    >
-                      <div className="flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">
-                        {a.full_name ?? "—"}
-                        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                      </div>
-                      <div className="text-xs text-muted-foreground">{a.email ?? "—"}</div>
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="gap-1">
-                      <ShieldCheck className="h-3 w-3" /> {roleLabel(primaryRole(a.id))}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {SCOPES.find((s) => s.value === a.production_scope)?.label ??
-                      a.production_scope}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(a.status)} className="capitalize">
-                      {a.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {lastLoginLabel(a.id)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Reset password"
-                        onClick={() => resetPassword(a.email)}
-                      >
-                        <KeyRound className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Edit user"
+              {rows
+                .filter((x) => matchesSearch(q, x))
+                .map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell>
+                      <RefId id={a.id} />
+                    </TableCell>
+                    <TableCell>
+                      <Avatar className="h-8 w-8">
+                        {a.avatar_url && <AvatarImage src={a.avatar_url} alt={a.full_name ?? ""} />}
+                        <AvatarFallback>
+                          {(a.full_name || a.email || "?").slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
                         onClick={() => setEditTarget(a)}
+                        className="group text-left"
+                        title="Edit user"
                       >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      {canRemove && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title="Delete user permanently">
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Permanently delete {a.full_name ?? a.email}?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This removes their profile, roles, and login credential entirely —
-                                including from Supabase Auth. They could sign up again from scratch
-                                afterward. This cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => remove.mutate(a.id)}>
-                                Delete permanently
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        <div className="flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">
+                          {a.full_name ?? "—"}
+                          <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                        </div>
+                        <div className="text-xs text-muted-foreground">{a.email ?? "—"}</div>
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="gap-1">
+                        <ShieldCheck className="h-3 w-3" /> {roleLabel(primaryRole(a.id))}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {SCOPES.find((s) => s.value === a.production_scope)?.label ??
+                        a.production_scope}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(a.status)} className="capitalize">
+                        {a.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {lastLoginLabel(a.id)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Reset password"
+                          onClick={() => resetPassword(a.email)}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Edit user"
+                          onClick={() => setEditTarget(a)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {canRemove && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" title="Delete user permanently">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Permanently delete {a.full_name ?? a.email}?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This removes their profile, roles, and login credential entirely —
+                                  including from Supabase Auth. They could sign up again from
+                                  scratch afterward. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => remove.mutate(a.id)}>
+                                  Delete permanently
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     No users yet.
                   </TableCell>
                 </TableRow>

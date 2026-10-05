@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/suppliers")({
   head: () => ({ meta: [{ title: "Suppliers — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -198,7 +199,7 @@ function SuppliersPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search…"
+              placeholder="Search or paste #ID…"
               className="pl-8 h-9"
             />
           </div>
@@ -207,6 +208,7 @@ function SuppliersPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Contact Person</TableHead>
@@ -220,6 +222,9 @@ function SuppliersPage() {
             <TableBody>
               {shown.map((s) => (
                 <TableRow key={s.id}>
+                  <TableCell>
+                    <RefId id={s.id} />
+                  </TableCell>
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell>{s.category ?? "—"}</TableCell>
                   <TableCell>{s.contact_person ?? "—"}</TableCell>
@@ -277,7 +282,7 @@ function SuppliersPage() {
               ))}
               {shown.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No suppliers yet.
                   </TableCell>
                 </TableRow>
@@ -400,6 +405,7 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Material</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Current Stock</TableHead>
@@ -409,6 +415,9 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
             <TableBody>
               {(materials.data ?? []).map((m) => (
                 <TableRow key={m.id}>
+                  <TableCell>
+                    <RefId id={m.id} />
+                  </TableCell>
                   <TableCell>{m.name}</TableCell>
                   <TableCell>{m.material_categories?.name ?? m.category ?? "—"}</TableCell>
                   <TableCell className="text-right">
@@ -419,7 +428,7 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
               ))}
               {(materials.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
                     No materials linked to this supplier yet.
                   </TableCell>
                 </TableRow>
@@ -433,6 +442,7 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Material</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
@@ -442,6 +452,9 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
             <TableBody>
               {(purchases.data ?? []).map((p) => (
                 <TableRow key={p.id}>
+                  <TableCell>
+                    <RefId id={p.id} />
+                  </TableCell>
                   <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>{p.raw_materials?.name ?? "—"}</TableCell>
                   <TableCell className="text-right">
@@ -454,7 +467,7 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
               ))}
               {(purchases.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
                     No purchases recorded yet.
                   </TableCell>
                 </TableRow>

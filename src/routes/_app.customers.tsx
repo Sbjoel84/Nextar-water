@@ -47,6 +47,7 @@ import { AccountAdjustmentsCard } from "@/components/customers/account-adjustmen
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/customers")({
   head: () => ({ meta: [{ title: "Customers — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -211,7 +212,7 @@ function CustomersPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search…"
+              placeholder="Search or paste #ID…"
               className="pl-8 h-9"
             />
           </div>
@@ -220,6 +221,7 @@ function CustomersPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Transactions</TableHead>
@@ -234,6 +236,9 @@ function CustomersPage() {
                 const paid = Number(c.total_purchases) - Number(c.outstanding_balance);
                 return (
                   <TableRow key={c.id}>
+                    <TableCell>
+                      <RefId id={c.id} />
+                    </TableCell>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         {c.name}
@@ -314,7 +319,7 @@ function CustomersPage() {
               })}
               {shown.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No customers yet.
                   </TableCell>
                 </TableRow>
@@ -431,6 +436,7 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Invoice</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -440,6 +446,9 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
               <TableBody>
                 {(invoices.data ?? []).map((inv) => (
                   <TableRow key={inv.id}>
+                    <TableCell>
+                      <RefId id={inv.id} />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{inv.invoice_number}</TableCell>
                     <TableCell>{inv.sale_date}</TableCell>
                     <TableCell className="text-right">{money(Number(inv.grand_total))}</TableCell>
@@ -454,7 +463,7 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
                 ))}
                 {(invoices.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                       No purchases yet.
                     </TableCell>
                   </TableRow>
@@ -466,6 +475,7 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>ID</TableHead>
                   <TableHead>Receipt</TableHead>
                   <TableHead>Date & Time</TableHead>
                   <TableHead>Method</TableHead>
@@ -475,6 +485,9 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
               <TableBody>
                 {(payments.data ?? []).map((p) => (
                   <TableRow key={p.id}>
+                    <TableCell>
+                      <RefId id={p.id} />
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{p.receipt_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
                       {new Date(p.created_at).toLocaleString()}
@@ -489,7 +502,7 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
                 ))}
                 {(payments.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                       No payments yet.
                     </TableCell>
                   </TableRow>

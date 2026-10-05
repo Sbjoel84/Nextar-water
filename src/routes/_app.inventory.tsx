@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { matchesSearch } from "@/lib/search";
+import { RefId } from "@/components/shared/ref-id";
 
 export const Route = createFileRoute("/_app/inventory")({
   head: () => ({
@@ -268,7 +269,7 @@ function InventoryOverviewPage() {
                 <Input
                   value={materialSearch}
                   onChange={(e) => setMaterialSearch(e.target.value)}
-                  placeholder="Search materials…"
+                  placeholder="Search materials or #ID…"
                   className="pl-8 h-9"
                 />
               </div>
@@ -277,6 +278,7 @@ function InventoryOverviewPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
@@ -291,6 +293,9 @@ function InventoryOverviewPage() {
                     const low = isLow(Number(m.current_stock), m.reorder_level);
                     return (
                       <TableRow key={m.id}>
+                        <TableCell>
+                          <RefId id={m.id} />
+                        </TableCell>
                         <TableCell className="font-medium">{m.name}</TableCell>
                         <TableCell>{m.material_categories?.name ?? m.category ?? "—"}</TableCell>
                         <TableCell className="text-right">
@@ -323,7 +328,7 @@ function InventoryOverviewPage() {
                   })}
                   {filteredMaterials.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         No raw materials for {factoryLabel.name}.
                       </TableCell>
                     </TableRow>
@@ -344,7 +349,7 @@ function InventoryOverviewPage() {
                   <Input
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
-                    placeholder="Search products or SKU…"
+                    placeholder="Search products, SKU or #ID…"
                     className="pl-8 h-9"
                   />
                 </div>
@@ -353,6 +358,7 @@ function InventoryOverviewPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>ID</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead>Category</TableHead>
@@ -369,6 +375,9 @@ function InventoryOverviewPage() {
                       const low = isLow(Number(p.current_stock), p.reorder_level);
                       return (
                         <TableRow key={p.id}>
+                          <TableCell>
+                            <RefId id={p.id} />
+                          </TableCell>
                           <TableCell className="font-medium">{p.name}</TableCell>
                           <TableCell className="font-mono text-xs">{p.sku ?? "—"}</TableCell>
                           <TableCell>{p.product_categories?.name ?? "—"}</TableCell>
@@ -411,7 +420,7 @@ function InventoryOverviewPage() {
                     })}
                     {filteredProducts.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                           No finished products for {factoryLabel.name}.
                         </TableCell>
                       </TableRow>
