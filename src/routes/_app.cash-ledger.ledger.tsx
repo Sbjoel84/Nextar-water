@@ -225,6 +225,7 @@ function LedgerPage() {
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["rp-cash-transactions"] });
     qc.invalidateQueries({ queryKey: ["rp-receipts"] });
+    qc.invalidateQueries({ queryKey: ["my-cash-in-hand"] });
     qc.invalidateQueries({ queryKey: ["expenses-cash-in"] });
     qc.invalidateQueries({ queryKey: ["cf-cash-transactions"] });
     qc.invalidateQueries({ queryKey: ["debts"] });
@@ -429,6 +430,7 @@ function LedgerPage() {
             {cashOutOpen && factoryId && (
               <CashOutDialog
                 factoryId={factoryId}
+                currency={currency}
                 onDone={() => {
                   setCashOutOpen(false);
                   invalidateAll();
@@ -952,17 +954,46 @@ function NewPaymentDialog({
 // write (writePayments) gates it now that it lives here. The recorded inflow
 // shows up on the Expenses page as Cash In, and this ledger deducts it from
 // Total Receipts so the sales takings and the Expenses float always add up.
-// The database refuses a Cash Out larger than the sales cash held.
-function CashOutDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
+// The database refuses a Cash Out larger than the sales cash held, and a cash
+// Cash Out larger than the cash this user collected themselves (cash in hand).
+function CashOutDialog({
+  factoryId,
+  currency,
+  onDone,
+}: {
+  factoryId: string;
+  currency: string;
+  onDone: () => void;
+}) {
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [receivedFrom, setReceivedFrom] = useState("");
   const [notes, setNotes] = useState("");
   const [recordedBy, setRecordedBy] = useState("");
 
+  // null when the my_cash_in_hand migration isn't applied yet — the database
+  // guard is the real check, this only warns early.
+  const cashInHand = useQuery({
+    queryKey: ["my-cash-in-hand", factoryId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("my_cash_in_hand" as any, {
+        p_factory: factoryId,
+      } as any);
+      if (error) return null;
+      return Number(data ?? 0);
+    },
+  });
+  const available = cashInHand.data ?? null;
+  const overCash = method === "cash" && available !== null && amount > Math.max(available, 0);
+
   const submit = useMutation({
     mutationFn: async () => {
       if (amount <= 0) throw new Error("Amount must be greater than 0");
+      if (overCash) {
+        throw new Error(
+          `Not enough cash in hand. You have ${money(Math.max(available ?? 0, 0), currency)} in cash collected from sales.`,
+        );
+      }
       if (!recordedBy.trim()) throw new Error("Enter who is recording this transaction");
       const { data, error } = await supabase.rpc("create_cash_transaction", {
         payload: {
@@ -996,6 +1027,18 @@ function CashOutDialog({ factoryId, onDone }: { factoryId: string; onDone: () =>
         <p className="text-sm text-muted-foreground">
           Record cash collected from sales that's being handed over to you now.
         </p>
+        {available !== null && (
+          <p className={`text-sm ${overCash ? "text-destructive" : "text-muted-foreground"}`}>
+            Your cash in hand: <strong>{money(Math.max(available, 0), currency)}</strong>
+            {overCash && " — a cash Cash Out can't exceed the cash you collected."}
+          </p>
+        )}
+        {available !== null && available < 0 && (
+          <p className="text-sm text-destructive">
+            Earlier Cash Outs were {money(-available, currency)} more than the cash you collected.
+            That shortfall is taken from your next cash collections.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Amount</Label>
@@ -1039,7 +1082,10 @@ function CashOutDialog({ factoryId, onDone }: { factoryId: string; onDone: () =>
         </div>
       </div>
       <DialogFooter>
-        <Button disabled={submit.isPending || amount <= 0} onClick={() => submit.mutate()}>
+        <Button
+          disabled={submit.isPending || amount <= 0 || overCash}
+          onClick={() => submit.mutate()}
+        >
           {submit.isPending ? "Saving…" : "Cash Out"}
         </Button>
       </DialogFooter>
