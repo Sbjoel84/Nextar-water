@@ -1030,41 +1030,48 @@ function CashOutDialog({
     [staff],
   );
 
-  // null when the cash-in-hand migrations aren't applied yet — the database
-  // guard is the real check, this only warns early.
+  // `factory` is the cash held for this factory (what's shown); `total` is all
+  // the cash the person holds, which the database guard checks — a Cash Out
+  // may also hand over cash collected for the other factory. null when the
+  // cash-in-hand migrations aren't applied yet; the guard is the real check.
   const cashInHand = useQuery({
     queryKey: ["my-cash-in-hand", factoryId, holder],
     enabled: !!holder,
-    queryFn: async () => {
+    queryFn: async (): Promise<{ factory: number; total: number } | null> => {
+      const split = await supabase.rpc(
+        "staff_cash_in_hand_split" as any,
+        { p_factory: factoryId, p_user: holder } as any,
+      );
+      if (!split.error) {
+        const d = split.data as { factory: number; total: number };
+        return { factory: Number(d.factory ?? 0), total: Number(d.total ?? 0) };
+      }
       const res = await supabase.rpc(
         "staff_cash_in_hand" as any,
-        {
-          p_factory: factoryId,
-          p_user: holder,
-        } as any,
+        { p_factory: factoryId, p_user: holder } as any,
       );
-      if (!res.error) return Number(res.data ?? 0);
+      if (!res.error) return { factory: Number(res.data ?? 0), total: Number(res.data ?? 0) };
       if (!isSelf) return null;
       const { data, error } = await supabase.rpc(
         "my_cash_in_hand" as any,
-        {
-          p_factory: factoryId,
-        } as any,
+        { p_factory: factoryId } as any,
       );
       if (error) return null;
-      return Number(data ?? 0);
+      return { factory: Number(data ?? 0), total: Number(data ?? 0) };
     },
   });
   const holderName = isSelf ? "Your" : `${staff[holder!] ?? "Their"}'s`;
-  const available = cashInHand.data ?? null;
-  const overCash = method === "cash" && available !== null && amount > Math.max(available, 0);
+  const available = cashInHand.data?.factory ?? null;
+  const total = cashInHand.data?.total ?? null;
+  const otherFactories = available !== null && total !== null ? total - Math.max(available, 0) : 0;
+  const overCash = method === "cash" && total !== null && amount > Math.max(total, 0);
 
   const submit = useMutation({
     mutationFn: async () => {
       if (amount <= 0) throw new Error("Amount must be greater than 0");
       if (overCash) {
         throw new Error(
-          `Not enough cash in hand. ${isSelf ? "You have" : `${staff[holder!] ?? "They"} has`} ${money(Math.max(available ?? 0, 0), currency)} in cash collected from sales.`,
+          `Not enough cash in hand. ${isSelf ? "You have" : `${staff[holder!] ?? "They"} has`} ${money(Math.max(total ?? 0, 0), currency)} in cash collected from sales.`,
         );
       }
       if (!recordedBy.trim()) throw new Error("Enter who is recording this transaction");
@@ -1123,9 +1130,15 @@ function CashOutDialog({
             {overCash && " — a cash Cash Out can't exceed the cash collected."}
           </p>
         )}
-        {available !== null && available < 0 && (
+        {otherFactories > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Plus {money(otherFactories, currency)} collected for another factory, which can also be
+            handed over here.
+          </p>
+        )}
+        {total !== null && total < 0 && (
           <p className="text-sm text-destructive">
-            Earlier Cash Outs were {money(-available, currency)} more than the cash collected. That
+            Earlier Cash Outs were {money(-total, currency)} more than the cash collected. That
             shortfall is taken from the next cash collections.
           </p>
         )}

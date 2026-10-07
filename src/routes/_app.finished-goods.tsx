@@ -226,7 +226,7 @@ function FinishedGoodsPage() {
   const { data: factoryId } = useFactoryId();
   const settings = useFactorySettings(factoryId);
   const qc = useQueryClient();
-  const { canWrite, canSubmit, canApprove, canPost, canCancel, canConfirm, canReject } =
+  const { canWrite, canSubmit, canApprove, canPost, canCancel, canConfirm, canReject, canDelete } =
     usePermissions();
   const write = canWrite("finished-goods");
   const submit = canSubmit("finished-goods");
@@ -234,6 +234,7 @@ function FinishedGoodsPage() {
   const approve = canApprove("finished-goods");
   const post = canPost("finished-goods");
   const cancel = canCancel("finished-goods");
+  const deletePerm = canDelete("finished-goods");
   const confirmBatchPerm = canConfirm("production");
   const rejectBatchPerm = canReject("production");
   useRealtimeInvalidate(
@@ -276,6 +277,7 @@ function FinishedGoodsPage() {
   const [transferTarget, setTransferTarget] = useState<Product | null>(null);
   const [historyTarget, setHistoryTarget] = useState<Product | null>(null);
   const [packagingTarget, setPackagingTarget] = useState<Product | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<PendingBatch | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PendingBatch | null>(null);
   const [rejectCorrection, setRejectCorrection] = useState<PendingCorrection | null>(null);
@@ -456,6 +458,18 @@ function FinishedGoodsPage() {
       if (error) throw error;
       return (data ?? []).reduce((s, d) => s + Number(d.quantity) * Number(d.unit_cost ?? 0), 0);
     },
+  });
+
+  // A wrongly created product: goes to admin approval, then the Recycle Bin.
+  const removeProduct = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      await requestDelete("products", id, reason);
+    },
+    onSuccess: () => {
+      toast.success("Deletion requested — pending admin approval");
+      setDeleteTarget(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const invalidateAll = () => {
@@ -844,6 +858,16 @@ function FinishedGoodsPage() {
                         >
                           <Printer className="h-4 w-4" />
                         </Button>
+                        {deletePerm && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Request deletion"
+                            onClick={() => setDeleteTarget(p)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1295,6 +1319,23 @@ function FinishedGoodsPage() {
           />
         )}
       </Dialog>
+      <RequestDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        isPending={removeProduct.isPending}
+        title={deleteTarget ? `Request deletion — ${deleteTarget.name}` : "Request deletion"}
+        description={
+          deleteTarget
+            ? `Once an admin approves, the product is hidden everywhere and moved to the Recycle Bin for 30 days.` +
+              (Number(deleteTarget.current_stock) !== 0
+                ? ` The ${Number(deleteTarget.current_stock).toLocaleString()} ${deleteTarget.unit} still in stock will be written off (restoring the product puts it back).`
+                : "")
+            : undefined
+        }
+        onConfirm={(reason) =>
+          deleteTarget && removeProduct.mutate({ id: deleteTarget.id, reason })
+        }
+      />
     </div>
   );
 }

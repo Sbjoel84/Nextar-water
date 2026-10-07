@@ -40,7 +40,8 @@ type DeleteRequestRow = {
 // (supabase/migrations/20260920090000_delete_request_approval.sql,
 // 20260922220000_supplier_delete_request_approval.sql,
 // 20260923130000_sales_customer_credit_and_soft_delete.sql,
-// 20260930090000_recycle_bin_and_customer_delete.sql).
+// 20260930090000_recycle_bin_and_customer_delete.sql,
+// 20261007120000_delete_finished_product.sql).
 export const TABLE_LABELS: Record<string, string> = {
   employees: "Employee",
   employee_documents: "Employee Document",
@@ -53,6 +54,7 @@ export const TABLE_LABELS: Record<string, string> = {
   suppliers: "Supplier",
   sales: "Sale",
   customers: "Customer (with all linked transactions)",
+  products: "Finished Product (stock left in it is written off)",
 };
 
 function useRequesterNames(userIds: string[]) {

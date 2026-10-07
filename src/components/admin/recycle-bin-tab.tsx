@@ -43,6 +43,7 @@ const TYPE_LABELS: Record<string, string> = {
   suppliers: "Supplier",
   sales: "Sale",
   customers: "Customer",
+  products: "Finished product",
 };
 
 function daysRemaining(purgeAfter: string): number {
@@ -177,7 +178,12 @@ export function RecycleBinTab() {
             <TableBody>
               {list.map((r) => {
                 const remaining = daysRemaining(r.purge_after);
-                const contents = r.table_name === "customers" ? customerContents(r.details) : "";
+                const contents =
+                  r.table_name === "customers"
+                    ? customerContents(r.details)
+                    : r.table_name === "products" && Number(r.details?.stock_written_off ?? 0) !== 0
+                      ? `${Number(r.details.stock_written_off).toLocaleString()} ${String(r.details.unit ?? "")} written off (put back on restore)`
+                      : "";
                 return (
                   <TableRow key={r.id}>
                     <TableCell>

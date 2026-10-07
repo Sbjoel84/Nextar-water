@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 // (supabase/migrations/20260920090000_delete_request_approval.sql,
 // 20260922220000_supplier_delete_request_approval.sql,
 // 20260923130000_sales_customer_credit_and_soft_delete.sql,
-// 20260930090000_recycle_bin_and_customer_delete.sql).
+// 20260930090000_recycle_bin_and_customer_delete.sql,
+// 20261007120000_delete_finished_product.sql).
 export type DeleteRequestTable =
   | "employees"
   | "employee_documents"
@@ -16,7 +17,8 @@ export type DeleteRequestTable =
   | "product_units"
   | "suppliers"
   | "sales"
-  | "customers";
+  | "customers"
+  | "products";
 
 // Every delete on these tables is RLS-blocked at the database level now —
 // this submits a request for an admin to approve instead of deleting
