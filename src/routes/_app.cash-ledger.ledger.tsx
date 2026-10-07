@@ -48,6 +48,7 @@ import {
   X,
   Undo2,
 } from "lucide-react";
+import { startOfDay, startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
 import { money } from "@/lib/format";
 import { EXPENSES_CASH_IN_CATEGORY, SALES_CASH_OUT, fetchAll, paymentCounts } from "@/lib/metrics";
 import { toast } from "sonner";
@@ -111,6 +112,25 @@ const reviewBadge = (s?: string): "default" | "secondary" | "outline" | "destruc
       ? "destructive"
       : "outline";
 
+type RangeKey = "all" | "today" | "week" | "month" | "year";
+
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Daily" },
+  { key: "week", label: "Weekly" },
+  { key: "month", label: "Monthly" },
+  { key: "year", label: "Yearly" },
+];
+
+function rangeStart(key: RangeKey): Date | null {
+  const now = new Date();
+  if (key === "today") return startOfDay(now);
+  if (key === "week") return startOfWeek(now);
+  if (key === "month") return startOfMonth(now);
+  if (key === "year") return startOfYear(now);
+  return null;
+}
+
 function LedgerPage() {
   const { data: factoryId } = useFactoryId();
   const settings = useFactorySettings(factoryId);
@@ -132,6 +152,7 @@ function LedgerPage() {
   const [reverseTarget, setReverseTarget] = useState<UnifiedRow | null>(null);
   const [q, setQ] = useSearchQuery();
   const [typeFilter, setTypeFilter] = useState<"all" | TxType>("all");
+  const [range, setRange] = useState<RangeKey>("month");
 
   const currentUser = useQuery({
     queryKey: ["current-user-id"],
@@ -281,18 +302,26 @@ function LedgerPage() {
     );
   }, [receipts.data, others.data, profiles.data]);
 
+  // The period buttons narrow both the cards and the table.
+  const since = rangeStart(range);
+  const sinceKey = since ? format(since, "yyyy-MM-dd") : null;
+  const rangeRows = useMemo(
+    () => (sinceKey ? rows.filter((r) => r.date.slice(0, 10) >= sinceKey) : rows),
+    [rows, sinceKey],
+  );
+
   const filtered = useMemo(() => {
-    let r = rows;
+    let r = rangeRows;
     if (typeFilter !== "all") r = r.filter((x) => x.type === typeFilter);
     if (q.trim()) r = r.filter((x) => matchesSearch(q, x, x.cashOut ? "cash out" : null));
     return r;
-  }, [rows, typeFilter, q]);
+  }, [rangeRows, typeFilter, q]);
 
   // Total Revenue = customer payments (not rejected/reversed) + other income.
   // Cash Out = money moved to Expenses + other outflows paid from here; each
   // Cash Out is Cash In on the Expenses page, which pays expenses from it, so
   // expenses are never deducted here as well.
-  const counted = rows.filter((r) => r.counts);
+  const counted = rangeRows.filter((r) => r.counts);
   const totalRevenue = counted
     .filter((r) => r.type === "receipt")
     .reduce((sum, r) => sum + r.amount, 0);
@@ -431,6 +460,8 @@ function LedgerPage() {
               <CashOutDialog
                 factoryId={factoryId}
                 currency={currency}
+                currentUserId={currentUser.data ?? null}
+                staff={profiles.data ?? {}}
                 onDone={() => {
                   setCashOutOpen(false);
                   invalidateAll();
@@ -457,6 +488,19 @@ function LedgerPage() {
             )}
           </Dialog>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {RANGES.map((r) => (
+          <Button
+            key={r.key}
+            size="sm"
+            variant={range === r.key ? "default" : "outline"}
+            onClick={() => setRange(r.key)}
+          >
+            {r.label}
+          </Button>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -538,9 +582,11 @@ function LedgerPage() {
             </Select>
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
+        <CardContent>
+          {/* Column titles stay pinned under the top bar as the page scrolls. The
+              wrapper only scrolls sideways on small screens, where the pin is lost. */}
+          <Table containerClassName="md:overflow-visible">
+            <TableHeader className="sticky top-14 z-10 bg-card shadow-[inset_0_-1px_0_var(--border)]">
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Number</TableHead>
@@ -955,14 +1001,20 @@ function NewPaymentDialog({
 // shows up on the Expenses page as Cash In, and this ledger deducts it from
 // Total Receipts so the sales takings and the Expenses float always add up.
 // The database refuses a Cash Out larger than the sales cash held, and a cash
-// Cash Out larger than the cash this user collected themselves (cash in hand).
+// Cash Out larger than the cash its collector holds (cash in hand, across all
+// factories). "Cash collected by" picks that collector — e.g. a cashier
+// handing over cash another salesperson collected — and defaults to yourself.
 function CashOutDialog({
   factoryId,
   currency,
+  currentUserId,
+  staff,
   onDone,
 }: {
   factoryId: string;
   currency: string;
+  currentUserId: string | null;
+  staff: Record<string, string>;
   onDone: () => void;
 }) {
   const [amount, setAmount] = useState(0);
@@ -970,19 +1022,40 @@ function CashOutDialog({
   const [receivedFrom, setReceivedFrom] = useState("");
   const [notes, setNotes] = useState("");
   const [recordedBy, setRecordedBy] = useState("");
+  const [collector, setCollector] = useState<string | null>(null);
+  const holder = collector ?? currentUserId;
+  const isSelf = !collector || collector === currentUserId;
+  const staffOptions = useMemo(
+    () => Object.entries(staff).sort((a, b) => a[1].localeCompare(b[1])),
+    [staff],
+  );
 
-  // null when the my_cash_in_hand migration isn't applied yet — the database
+  // null when the cash-in-hand migrations aren't applied yet — the database
   // guard is the real check, this only warns early.
   const cashInHand = useQuery({
-    queryKey: ["my-cash-in-hand", factoryId],
+    queryKey: ["my-cash-in-hand", factoryId, holder],
+    enabled: !!holder,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("my_cash_in_hand" as any, {
-        p_factory: factoryId,
-      } as any);
+      const res = await supabase.rpc(
+        "staff_cash_in_hand" as any,
+        {
+          p_factory: factoryId,
+          p_user: holder,
+        } as any,
+      );
+      if (!res.error) return Number(res.data ?? 0);
+      if (!isSelf) return null;
+      const { data, error } = await supabase.rpc(
+        "my_cash_in_hand" as any,
+        {
+          p_factory: factoryId,
+        } as any,
+      );
       if (error) return null;
       return Number(data ?? 0);
     },
   });
+  const holderName = isSelf ? "Your" : `${staff[holder!] ?? "Their"}'s`;
   const available = cashInHand.data ?? null;
   const overCash = method === "cash" && available !== null && amount > Math.max(available, 0);
 
@@ -991,7 +1064,7 @@ function CashOutDialog({
       if (amount <= 0) throw new Error("Amount must be greater than 0");
       if (overCash) {
         throw new Error(
-          `Not enough cash in hand. You have ${money(Math.max(available ?? 0, 0), currency)} in cash collected from sales.`,
+          `Not enough cash in hand. ${isSelf ? "You have" : `${staff[holder!] ?? "They"} has`} ${money(Math.max(available ?? 0, 0), currency)} in cash collected from sales.`,
         );
       }
       if (!recordedBy.trim()) throw new Error("Enter who is recording this transaction");
@@ -1006,6 +1079,7 @@ function CashOutDialog({
           description: notes || "Cash remitted from sales",
           related_reference: SALES_CASH_OUT,
           recorded_by_name: recordedBy.trim(),
+          ...(isSelf ? {} : { cash_holder: collector }),
         } as any,
       });
       if (error) throw error;
@@ -1027,16 +1101,32 @@ function CashOutDialog({
         <p className="text-sm text-muted-foreground">
           Record cash collected from sales that's being handed over to you now.
         </p>
+        <div>
+          <Label>Cash collected by</Label>
+          <Select value={holder ?? ""} onValueChange={(v) => setCollector(v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select staff…" />
+            </SelectTrigger>
+            <SelectContent>
+              {staffOptions.map(([id, name]) => (
+                <SelectItem key={id} value={id}>
+                  {name}
+                  {id === currentUserId ? " (you)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {available !== null && (
           <p className={`text-sm ${overCash ? "text-destructive" : "text-muted-foreground"}`}>
-            Your cash in hand: <strong>{money(Math.max(available, 0), currency)}</strong>
-            {overCash && " — a cash Cash Out can't exceed the cash you collected."}
+            {holderName} cash in hand: <strong>{money(Math.max(available, 0), currency)}</strong>
+            {overCash && " — a cash Cash Out can't exceed the cash collected."}
           </p>
         )}
         {available !== null && available < 0 && (
           <p className="text-sm text-destructive">
-            Earlier Cash Outs were {money(-available, currency)} more than the cash you collected.
-            That shortfall is taken from your next cash collections.
+            Earlier Cash Outs were {money(-available, currency)} more than the cash collected. That
+            shortfall is taken from the next cash collections.
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
