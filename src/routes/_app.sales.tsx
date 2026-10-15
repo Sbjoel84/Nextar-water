@@ -216,16 +216,46 @@ function SalesPage() {
       ),
   });
   const [q, setQ] = useSearchQuery();
-  const filteredSales = (sales.data ?? []).filter((s) => matchesSearch(q, s));
 
-  // End-of-day figures: revenue and PR (complimentary) giveaways are kept
+  // Period the summary cards and the sales table cover. sale_date is a plain
+  // YYYY-MM-DD string, so month/year are prefix matches.
+  const [period, setPeriod] = useState<"today" | "month" | "year" | "day" | "all">("today");
+  const [summaryDay, setSummaryDay] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const today = new Date().toLocaleDateString("en-CA");
+  const inPeriod = (saleDate: string) => {
+    switch (period) {
+      case "today":
+        return saleDate === today;
+      case "month":
+        return saleDate.startsWith(today.slice(0, 7));
+      case "year":
+        return saleDate.startsWith(today.slice(0, 4));
+      case "day":
+        return saleDate === summaryDay;
+      default:
+        return true;
+    }
+  };
+  const periodLabel = {
+    today: "Today",
+    month: "This month",
+    year: "This year",
+    day: summaryDay,
+    all: "All time",
+  }[period];
+  // A search looks across every sale (so an old invoice/ID can still be
+  // found); otherwise the table shows only the selected period.
+  const filteredSales = (sales.data ?? []).filter((s) =>
+    q.trim() ? matchesSearch(q, s) : inPeriod(s.sale_date),
+  );
+
+  // Period figures: revenue and PR (complimentary) giveaways are kept
   // apart, so what went out free is visible without inflating revenue. Same
   // rule as postedSalesRows(): only approved (posted), non-deleted sales count.
-  const [summaryDay, setSummaryDay] = useState(() => new Date().toLocaleDateString("en-CA"));
   const daySummary = useMemo(() => {
     const out = { revenue: 0, salesCount: 0, prValue: 0, prCount: 0, prPendingValue: 0 };
     for (const s of sales.data ?? []) {
-      if (s.deleted_at || s.sale_date !== summaryDay) continue;
+      if (s.deleted_at || !inPeriod(s.sale_date)) continue;
       if (s.is_pr) {
         if (s.status === "posted") {
           out.prValue += Number(s.subtotal ?? 0);
@@ -239,7 +269,8 @@ function SalesPage() {
       }
     }
     return out;
-  }, [sales.data, summaryDay]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sales.data, summaryDay, period, today]);
 
   const openInvoice = async (saleId: string, action: "download" | "print") => {
     const { data, error } = await supabase
@@ -512,13 +543,31 @@ function SalesPage() {
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Day summary</h2>
-          <Input
-            type="date"
-            className="h-9 w-auto"
-            value={summaryDay}
-            onChange={(e) => e.target.value && setSummaryDay(e.target.value)}
-          />
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Summary · {periodLabel}
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="month">This month</SelectItem>
+                <SelectItem value="year">This year</SelectItem>
+                <SelectItem value="day">Pick a day…</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+            {period === "day" && (
+              <Input
+                type="date"
+                className="h-9 w-auto"
+                value={summaryDay}
+                onChange={(e) => e.target.value && setSummaryDay(e.target.value)}
+              />
+            )}
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Card className="rounded-2xl">
@@ -564,7 +613,12 @@ function SalesPage() {
 
       <Card className="rounded-2xl">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Recent Sales</CardTitle>
+          <CardTitle>
+            Sales · {q.trim() ? "Search results" : periodLabel}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              ({filteredSales.length})
+            </span>
+          </CardTitle>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
