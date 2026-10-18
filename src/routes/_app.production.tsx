@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
-import { usePermissions, useMyProductionScope } from "@/lib/permissions";
-import { useActiveFactoryCode, setActiveFactoryCode } from "@/lib/factory-store";
+import { usePermissions } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,78 +71,10 @@ export const Route = createFileRoute("/_app/production")({
   head: () => ({ meta: [{ title: "Production — FMIS" }, { name: "robots", content: "noindex" }] }),
   component: () => (
     <RequireAccess module="production">
-      <ProductionFactoryGate />
+      <ProductionPage />
     </RequireAccess>
   ),
 });
-
-// Nylon and Water production are isolated per profiles.production_scope (see
-// has_production_scope_access() — enforced at the RLS/RPC layer). The Factory
-// Switcher (src/components/layout/factory-switcher.tsx) no longer locks a
-// scoped user's factory selection app-wide — Sales, Customers, Expenses etc.
-// are shared across both factories for everyone. This page is the one place
-// production_scope still matters on the front end, so it owns the
-// auto-correct itself: the moment a scoped user lands here on the "wrong"
-// factory (because they were freely switching around the rest of the app),
-// this snaps their active factory back to their own scope. The warning card
-// below is a defense-in-depth fallback for the brief window before that
-// effect and the scope query resolve.
-function ProductionFactoryGate() {
-  const factory = useFactoryId();
-  const factoryId = factory.data;
-  const myScope = useMyProductionScope();
-  const active = useActiveFactoryCode();
-  const qc = useQueryClient();
-  const currentFactory = useQuery({
-    queryKey: ["factory-code-for-gate", factoryId],
-    enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("factories")
-        .select("code,name")
-        .eq("id", factoryId!)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const scope = myScope.data ?? "BOTH";
-  const lockedCode = scope === "WATER" ? "water" : scope === "NYLON" ? "nylon" : null;
-
-  useEffect(() => {
-    if (lockedCode && active !== lockedCode) {
-      setActiveFactoryCode(lockedCode);
-      qc.invalidateQueries();
-    }
-  }, [lockedCode, active, qc]);
-
-  if (!factoryId || myScope.isLoading || currentFactory.isLoading) return null;
-
-  const isRestricted =
-    scope !== "BOTH" &&
-    currentFactory.data?.code &&
-    scope !== currentFactory.data.code.toUpperCase();
-
-  if (isRestricted) {
-    return (
-      <Card className="rounded-2xl border-dashed">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-warning" /> Wrong factory selected
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Your production scope is <span className="font-medium text-foreground">{scope}</span>{" "}
-          only. This should resolve automatically — if it doesn't, reload the page or ask an Admin
-          to check your access.
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return <ProductionPage />;
-}
 
 type Product = { id: string; name: string; unit: string; current_stock: number };
 type ProductionRow = {

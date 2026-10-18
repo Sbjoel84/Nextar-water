@@ -2,11 +2,11 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAllRoles, type Role } from "@/lib/permissions";
+import { AUTH_DISABLED, demoSignIn, isDemoSignedIn } from "@/lib/auth-bypass";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Boxes, BarChart3, ShieldCheck, Users, Lock, Eye, EyeOff } from "lucide-react";
+import { Loader2, Boxes, BarChart3, ShieldCheck, Users, Eye, EyeOff } from "lucide-react";
 
 const FEATURES = [
   {
@@ -35,10 +35,14 @@ const FEATURES = [
   },
   {
     icon: Users,
-    title: "Two factories, one login",
-    desc: "Water and Nylon, fully separated, one platform.",
+    title: "Built for water production",
+    desc: "Sachet, bottle and dispenser water on one platform.",
   },
 ];
+
+// Login card is always white, so fields use fixed light colours rather than theme tokens.
+const FIELD_CLASS =
+  "h-12 rounded-md border-slate-300 bg-white px-4 text-slate-900 shadow-none placeholder:text-slate-400 focus-visible:border-[#1677d2] focus-visible:ring-1 focus-visible:ring-[#1677d2]";
 
 // A plain <Input type="password"> with a toggle to reveal what was typed --
 // same input either way, just swaps the rendered type between "password"
@@ -51,6 +55,7 @@ function PasswordInput({
   minLength,
   value,
   onChange,
+  placeholder,
 }: {
   id?: string;
   name?: string;
@@ -59,6 +64,7 @@ function PasswordInput({
   minLength?: number;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -72,14 +78,15 @@ function PasswordInput({
         minLength={minLength}
         value={value}
         onChange={onChange}
-        className="pr-9"
+        placeholder={placeholder}
+        className={`${FIELD_CLASS} pr-11`}
       />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
         tabIndex={-1}
         aria-label={visible ? "Hide password" : "Show password"}
-        className="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground hover:text-foreground"
+        className="absolute inset-y-0 right-0 flex items-center px-3.5 text-slate-400 hover:text-slate-700"
       >
         {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
@@ -104,13 +111,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Enterprise inventory, sales, production, payroll, and reporting for the Water Factory and Nylon Factory.",
+          "Enterprise inventory, sales, production, payroll, and reporting for the Water Factory.",
       },
       { property: "og:title", content: "FMIS — Factory Management & Inventory System" },
       {
         property: "og:description",
         content:
-          "One platform for two factories. Fully separated data, secure roles, real-time dashboards.",
+          "One platform for your water factory. Secure roles, real-time dashboards.",
       },
       { property: "og:type", content: "website" },
     ],
@@ -121,6 +128,7 @@ export const Route = createFileRoute("/")({
 function Landing() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -137,6 +145,10 @@ function Landing() {
   const requestableRoles = roles.data ?? [];
 
   useEffect(() => {
+    if (AUTH_DISABLED) {
+      if (isDemoSignedIn()) navigate({ to: "/dashboard" });
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) navigate({ to: "/dashboard" });
     });
@@ -153,6 +165,14 @@ function Landing() {
     const signInPassword = String(formData.get("password") ?? "");
     if (!signInEmail || !signInPassword) {
       return toast.error("Enter your email and password");
+    }
+
+    if (AUTH_DISABLED) {
+      if (!demoSignIn(signInEmail, signInPassword)) {
+        return toast.error("Invalid demo email or password");
+      }
+      toast.success("Welcome back");
+      return navigate({ to: "/dashboard" });
     }
 
     setLoading(true);
@@ -229,210 +249,324 @@ function Landing() {
   };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="hidden lg:flex flex-col bg-sidebar text-sidebar-foreground p-10">
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <div className="h-40 w-80 overflow-hidden rounded-2xl bg-white p-3 shadow-lg">
-            <img
-              src="/assets/bluespring%20logo.jpeg"
-              alt="Bluespring Total Connect"
-              className="h-full w-full object-contain"
-            />
-          </div>
+    <div className="flex min-h-screen flex-col bg-[#06112e]">
+      {/* Hero */}
+      <section className="relative isolate flex flex-1 flex-col justify-center overflow-hidden bg-gradient-to-br from-[#0a3a82] via-[#0b4697] to-[#0a3a82]">
+        <LoginWave />
 
-          <div className="mt-10">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sidebar-border bg-sidebar-accent px-3 py-1 text-xs font-medium text-sidebar-accent-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" /> Enterprise · Two-factory ready
+        <div className="relative mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:py-20">
+          <div className="grid items-center gap-8 lg:grid-cols-[1fr_400px] lg:gap-16">
+            <div className="text-center text-white lg:pl-8 lg:text-left">
+              <div className="mx-auto h-24 w-64 overflow-hidden rounded-xl bg-white px-3 py-2 shadow-lg sm:h-28 sm:w-72 lg:mx-0 lg:h-36 lg:w-96">
+                <img
+                  src="/assets/nextar%20logo.jpeg"
+                  alt="Nextar"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <h1 className="mt-8 text-2xl font-bold leading-tight sm:text-3xl lg:text-[2rem]">
+                Factory Management &<br />
+                Inventory System
+              </h1>
+              <p className="mt-1 text-base text-white/85 lg:text-lg">
+                of <strong className="font-semibold text-white">Nextar Table Water</strong>
+              </p>
             </div>
-            <h1 className="mt-6 text-4xl font-semibold leading-tight">
-              Factory Management &<br />
-              Inventory System
-            </h1>
-            <p className="mt-4 max-w-md mx-auto text-sidebar-foreground/70">
-              Run your <strong className="text-sidebar-foreground">Water Factory</strong> and{" "}
-              <strong className="text-sidebar-foreground">Nylon Factory</strong> on one platform.
-              Sales, production, raw materials, payroll, and reports — all cleanly separated by
-              factory, with role-based access and complete audit history.
-            </p>
+
+            <div className="w-full rounded-2xl bg-white p-6 text-slate-900 shadow-2xl shadow-black/20">
+              <Tabs value={mode} onValueChange={(v) => setMode(v as "signin" | "signup")}>
+                <TabsContent value="signin" className="mt-0">
+                  <form onSubmit={signIn} className="space-y-3.5">
+                    <div>
+                      <Label htmlFor="email" className="sr-only">
+                        Email
+                      </Label>
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className={FIELD_CLASS}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="password" className="sr-only">
+                        Password
+                      </Label>
+                      <PasswordInput
+                        id="password"
+                        name="password"
+                        autoComplete="current-password"
+                        required
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={forgot}
+                      className="text-xs text-[#1677d2] underline underline-offset-2 hover:text-[#0b5cad]"
+                    >
+                      Forgot your password?
+                    </button>
+                    <Button
+                      type="submit"
+                      disabled={loading}
+                      className="mt-3 h-12 w-full rounded-md bg-[#050f2c] text-sm font-bold uppercase tracking-wider text-white hover:bg-[#0b1a45]"
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Sign in
+                    </Button>
+                  </form>
+
+                  <div className="mt-5 text-center text-sm text-slate-500">
+                    <p>No account yet?</p>
+                    <button
+                      type="button"
+                      onClick={() => setMode("signup")}
+                      className="mt-1 text-sm font-bold uppercase tracking-wide text-[#1677d2] underline underline-offset-4 hover:text-[#0b5cad]"
+                    >
+                      Sign up
+                    </button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="signup" className="mt-0">
+                  <form onSubmit={signUp} className="space-y-3.5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="su-name" className="sr-only">
+                          Full name
+                        </Label>
+                        <Input
+                          id="su-name"
+                          required
+                          placeholder="Full name"
+                          value={suFullName}
+                          onChange={(e) => setSuFullName(e.target.value)}
+                          className={FIELD_CLASS}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="su-username" className="sr-only">
+                          Username
+                        </Label>
+                        <Input
+                          id="su-username"
+                          placeholder="Username"
+                          value={suUsername}
+                          onChange={(e) => setSuUsername(e.target.value)}
+                          className={FIELD_CLASS}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="su-email" className="sr-only">
+                        Email
+                      </Label>
+                      <Input
+                        id="su-email"
+                        type="email"
+                        required
+                        placeholder="Email"
+                        value={suEmail}
+                        onChange={(e) => setSuEmail(e.target.value)}
+                        className={FIELD_CLASS}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="su-phone" className="sr-only">
+                          Phone
+                        </Label>
+                        <Input
+                          id="su-phone"
+                          type="tel"
+                          placeholder="Phone"
+                          value={suPhone}
+                          onChange={(e) => setSuPhone(e.target.value)}
+                          className={FIELD_CLASS}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="su-department" className="sr-only">
+                          Department
+                        </Label>
+                        <Input
+                          id="su-department"
+                          placeholder="Department"
+                          value={suDepartment}
+                          onChange={(e) => setSuDepartment(e.target.value)}
+                          className={FIELD_CLASS}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="sr-only">Role requested</Label>
+                      <Select value={suRole} onValueChange={(v) => setSuRole(v as Role)}>
+                        <SelectTrigger className={`${FIELD_CLASS} data-[placeholder]:text-slate-400`}>
+                          <SelectValue placeholder="Role requested" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {requestableRoles.map((r) => (
+                            <SelectItem key={r.slug} value={r.slug}>
+                              {r.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="su-password" className="sr-only">
+                          Password
+                        </Label>
+                        <PasswordInput
+                          id="su-password"
+                          required
+                          minLength={6}
+                          placeholder="Password"
+                          value={suPassword}
+                          onChange={(e) => setSuPassword(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="su-confirm" className="sr-only">
+                          Confirm password
+                        </Label>
+                        <PasswordInput
+                          id="su-confirm"
+                          required
+                          minLength={6}
+                          placeholder="Confirm"
+                          value={suConfirmPassword}
+                          onChange={(e) => setSuConfirmPassword(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      An Admin reviews and approves new accounts before you can sign in.
+                    </p>
+
+                    <Button
+                      type="submit"
+                      disabled={loading}
+                      className="mt-1 h-12 w-full rounded-md bg-[#050f2c] text-sm font-bold uppercase tracking-wider text-white hover:bg-[#0b1a45]"
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Create account
+                    </Button>
+                  </form>
+
+                  <div className="mt-5 text-center text-sm text-slate-500">
+                    <p>Already have an account?</p>
+                    <button
+                      type="button"
+                      onClick={() => setMode("signin")}
+                      className="mt-1 text-sm font-bold uppercase tracking-wide text-[#1677d2] underline underline-offset-4 hover:text-[#0b5cad]"
+                    >
+                      Sign in
+                    </button>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div className="flex items-center justify-between text-xs text-sidebar-foreground/60">
-          <span>© {new Date().getFullYear()} FMIS</span>
-          <span>Water Factory · Nylon Factory</span>
-        </div>
-      </div>
+      {/* Footer */}
+      <footer className="bg-[#06112e] text-white">
+        <div className="mx-auto w-full max-w-6xl px-4 pt-7 pb-5 sm:px-6">
+          <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr_1fr]">
+            <div className="h-9 w-32 overflow-hidden rounded-md bg-white px-2 py-1">
+              <img
+                src="/assets/nextar%20logo.jpeg"
+                alt="Nextar"
+                className="h-full w-full object-contain"
+              />
+            </div>
 
-      <div className="flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md lg:hidden mb-6 flex justify-center">
-          <div className="h-10 w-40 overflow-hidden rounded-lg bg-white">
-            <img
-              src="/assets/bluespring%20logo.jpeg"
-              alt="Bluespring Total Connect"
-              className="h-full w-full object-contain"
-            />
+            <div>
+              <h2 className="text-[10px] font-semibold uppercase tracking-widest text-white/40">
+                Platform
+              </h2>
+              <p className="mt-4 max-w-xs text-xs leading-snug text-white/90">
+                Run your Water Factory on one platform. Sales, production, raw materials, payroll,
+                and reports, with role-based access and complete audit history.
+              </p>
+              <p className="mt-1 text-xs text-white/40">Enterprise · Water production</p>
+            </div>
+
+            <div>
+              <h2 className="text-[10px] font-semibold uppercase tracking-widest text-white/40">
+                Built by
+              </h2>
+              <div className="mt-4 flex items-center gap-2.5 text-xs text-white/90">
+                <img
+                  src="/assets/shieldnet-logo.png"
+                  alt="ShieldNetCore Tech"
+                  className="h-10 w-10 rounded-md bg-white object-contain p-1"
+                />
+                <span>ShieldNetCore Tech</span>
+              </div>
+            </div>
           </div>
+
+          <div className="mt-8 text-[10px] text-white/40">© {new Date().getFullYear()} FMIS</div>
         </div>
-
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl">Welcome</CardTitle>
-            <CardDescription>Sign in to access your factory dashboard</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="signin">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Sign in</TabsTrigger>
-                <TabsTrigger value="signup">Sign up</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="signin">
-                <form onSubmit={signIn} className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="password">Password</Label>
-                      <button
-                        type="button"
-                        onClick={forgot}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Forgot?
-                      </button>
-                    </div>
-                    <PasswordInput
-                      id="password"
-                      name="password"
-                      autoComplete="current-password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign in
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="signup">
-                <form onSubmit={signUp} className="space-y-4 pt-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="su-name">Full name</Label>
-                      <Input
-                        id="su-name"
-                        required
-                        value={suFullName}
-                        onChange={(e) => setSuFullName(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="su-username">Username</Label>
-                      <Input
-                        id="su-username"
-                        value={suUsername}
-                        onChange={(e) => setSuUsername(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="su-email">Email</Label>
-                    <Input
-                      id="su-email"
-                      type="email"
-                      required
-                      value={suEmail}
-                      onChange={(e) => setSuEmail(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="su-phone">Phone</Label>
-                      <Input
-                        id="su-phone"
-                        type="tel"
-                        value={suPhone}
-                        onChange={(e) => setSuPhone(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="su-department">Department</Label>
-                      <Input
-                        id="su-department"
-                        value={suDepartment}
-                        onChange={(e) => setSuDepartment(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Role requested</Label>
-                    <Select value={suRole} onValueChange={(v) => setSuRole(v as Role)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {requestableRoles.map((r) => (
-                          <SelectItem key={r.slug} value={r.slug}>
-                            {r.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="su-password">Password</Label>
-                      <PasswordInput
-                        id="su-password"
-                        required
-                        minLength={6}
-                        value={suPassword}
-                        onChange={(e) => setSuPassword(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="su-confirm">Confirm password</Label>
-                      <PasswordInput
-                        id="su-confirm"
-                        required
-                        minLength={6}
-                        value={suConfirmPassword}
-                        onChange={(e) => setSuConfirmPassword(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    An Admin reviews and approves new accounts before you can sign in.
-                  </p>
-
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Create account
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+      </footer>
     </div>
+  );
+}
+
+// Layered light-blue "silk" curves along the bottom of the hero.
+function LoginWave() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[70%] w-full"
+      viewBox="0 0 1440 600"
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <linearGradient id="wave-a" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#1d6fd1" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#0b4697" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="wave-b" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stopColor="#3f9be8" stopOpacity="0.9" />
+          <stop offset="55%" stopColor="#7cc4f5" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="#1d6fd1" stopOpacity="0.4" />
+        </linearGradient>
+        <linearGradient id="wave-c" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#0e57b5" stopOpacity="0.95" />
+          <stop offset="50%" stopColor="#5fb2f0" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#0e57b5" stopOpacity="0.9" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M0 420 C 220 330, 380 140, 620 90 C 820 50, 900 160, 1100 260 C 1260 340, 1360 330, 1440 300 L1440 600 L0 600 Z"
+        fill="url(#wave-a)"
+      />
+      <path
+        d="M0 520 C 160 470, 300 400, 440 300 C 560 210, 640 130, 760 150 C 900 175, 980 330, 1120 420 C 1240 495, 1360 470, 1440 430 L1440 600 L0 600 Z"
+        fill="url(#wave-b)"
+      />
+      <path
+        d="M0 600 L0 560 C 200 540, 360 520, 520 470 C 700 410, 860 380, 1040 440 C 1180 490, 1320 470, 1440 440 L1440 600 Z"
+        fill="url(#wave-c)"
+      />
+    </svg>
   );
 }

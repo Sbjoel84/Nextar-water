@@ -77,10 +77,9 @@ const DEPARTMENT_OPTIONS = [
   "Finance & Accounts",
   "Inventory / Store",
   "Water Factory",
-  "Nylon Factory",
 ];
 
-type ProductionScope = "NYLON" | "WATER" | "BOTH";
+type ProductionScope = "WATER" | "BOTH";
 type Profile = {
   id: string;
   full_name: string | null;
@@ -500,8 +499,7 @@ export function UsersPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="BOTH">Both factories</SelectItem>
-                          <SelectItem value="NYLON">Nylon only</SelectItem>
+                          <SelectItem value="BOTH">All factories</SelectItem>
                           <SelectItem value="WATER">Water only</SelectItem>
                         </SelectContent>
                       </Select>

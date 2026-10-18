@@ -2,24 +2,23 @@ import { useAccountsAdmin } from "@/lib/use-accounts-admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Factory } from "lucide-react";
 
-// Factories are a fixed 2-row table baked into migrations across this app
-// (water/nylon), not a user-editable concept -- so this is a read-only
+// Factories are a fixed table baked into migrations (water only), not a
+// user-editable concept -- so this is a read-only
 // summary rather than a CRUD screen.
 export function FactoryTab() {
   const { accounts, factories } = useAccountsAdmin();
   const rows = accounts.data ?? [];
 
-  const countFor = (scope: "NYLON" | "WATER" | "BOTH") =>
+  const countFor = (scope: "WATER" | "BOTH") =>
     rows.filter((a) => a.status !== "pending" && a.production_scope === scope).length;
 
   const cards = [
-    { code: "nylon", label: "Nylon Factory", count: countFor("NYLON") },
     { code: "water", label: "Water Factory", count: countFor("WATER") },
-    { code: "both", label: "Both Factories", count: countFor("BOTH") },
+    { code: "both", label: "All Factories", count: countFor("BOTH") },
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       {cards.map((c) => {
         const factory = factories.data?.find((f) => f.code === c.code);
         return (

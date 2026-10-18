@@ -78,13 +78,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "Enterprise inventory, sales, production, payroll, and reporting for the Water Factory and Nylon Factory.",
+          "Enterprise inventory, sales, production, payroll, and reporting for the Water Factory.",
       },
       { property: "og:title", content: "FMIS — Factory Management & Inventory System" },
       {
         property: "og:description",
         content:
-          "One platform for two factories. Fully separated data, secure roles, real-time dashboards.",
+          "One platform for your water factory. Secure roles, real-time dashboards.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -97,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
       },
-      { rel: "icon", href: "/assets/bluespring%20logo.jpeg", type: "image/jpeg" },
+      { rel: "icon", href: "/favicon.ico", sizes: "any" },
     ],
   }),
   shellComponent: RootShell,
@@ -124,8 +124,8 @@ function RootShell({ children }: { children: ReactNode }) {
         >
           <div className="h-28 w-56 overflow-hidden rounded-2xl bg-white p-3 shadow-lg animate-pulse">
             <img
-              src="/assets/bluespring%20logo.jpeg"
-              alt="Bluespring Total Connect"
+              src="/assets/nextar%20logo.jpeg"
+              alt="Nextar"
               className="h-full w-full object-contain"
             />
           </div>

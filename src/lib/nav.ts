@@ -13,7 +13,6 @@ import {
   ClipboardList,
   Calculator,
   PackageCheck,
-  CheckSquare,
   HandCoins,
   FileStack,
   Landmark,
@@ -55,7 +54,6 @@ export const nav: { section: string; items: NavItem[] }[] = [
     section: "Overview",
     items: [
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, module: "dashboard" },
-      { title: "Approval Center", url: "/approvals", icon: CheckSquare, module: "approvals" },
     ],
   },
   {
@@ -104,7 +102,7 @@ export const nav: { section: string; items: NavItem[] }[] = [
   {
     section: "Finance",
     items: [
-      { title: "Finance Overview", url: "/finance", icon: Landmark, module: "finance" },
+      { title: "Account Overview", url: "/finance", icon: Landmark, module: "finance" },
       {
         title: "Payments",
         url: "/cash-ledger",

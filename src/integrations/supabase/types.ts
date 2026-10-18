@@ -2875,6 +2875,7 @@ export type Database = {
           customer_id: string | null
           customer_name: string | null
           customer_phone: string | null
+          customer_type: string
           deleted_at: string | null
           discount: number
           factory_id: string
@@ -2905,6 +2906,7 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string | null
           customer_phone?: string | null
+          customer_type?: string
           deleted_at?: string | null
           discount?: number
           factory_id: string
@@ -2935,6 +2937,7 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string | null
           customer_phone?: string | null
+          customer_type?: string
           deleted_at?: string | null
           discount?: number
           factory_id?: string

@@ -306,8 +306,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Rename the two factories. Each keeps fully separate data — Water and Nylon can't be
-                merged or removed here.
+                Rename the factory.
               </p>
               {(factories.data ?? []).map((f) => (
                 <FactoryRow
@@ -675,7 +674,7 @@ type ProductionTypeRow = {
 };
 
 // Configurable production types (spec §5): Production's "type" dropdown reads
-// straight from this table, so adding "NYLON ROPE" next quarter is a data
+// straight from this table, so adding a new product type next quarter is a data
 // entry here, never a code change or deploy.
 function ProductionTypesCard() {
   const qc = useQueryClient();
@@ -684,7 +683,7 @@ function ProductionTypesCard() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [department, setDepartment] = useState("Production");
-  const [scope, setScope] = useState<"NYLON" | "WATER" | "BOTH">("BOTH");
+  const [scope, setScope] = useState<"WATER" | "BOTH">("BOTH");
   const [uom, setUom] = useState("");
 
   const types = useQuery({
@@ -802,7 +801,7 @@ function ProductionTypesCard() {
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Nylon Bag"
+                placeholder="e.g. Sachet Water"
               />
             </div>
             <div>
@@ -810,7 +809,7 @@ function ProductionTypesCard() {
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. NYLON_BAG"
+                placeholder="e.g. SACHET_WATER"
               />
             </div>
             <div>
@@ -821,7 +820,6 @@ function ProductionTypesCard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="BOTH">Both</SelectItem>
-                  <SelectItem value="NYLON">Nylon</SelectItem>
                   <SelectItem value="WATER">Water</SelectItem>
                 </SelectContent>
               </Select>

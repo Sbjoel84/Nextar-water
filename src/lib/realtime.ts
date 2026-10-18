@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_OFFLINE } from "@/integrations/supabase/client";
 
 /**
  * Subscribes to Postgres changes on `tables` and invalidates `queryKeys`
@@ -21,7 +21,7 @@ export function useRealtimeInvalidate(tables: string[], queryKeys: QueryKey[]) {
   const tableKey = tables.join(",");
 
   useEffect(() => {
-    if (!tableKey) return;
+    if (!tableKey || SUPABASE_OFFLINE) return;
     const channel = supabase.channel(`live:${tableKey}:${id}`);
     for (const table of tables) {
       channel.on("postgres_changes", { event: "*", schema: "public", table }, () => {

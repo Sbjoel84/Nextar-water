@@ -43,17 +43,16 @@ import {
   FileDown,
   Printer,
   Eye,
-  Receipt as ReceiptIcon,
   HandCoins,
   History,
   ShoppingCart,
   Check,
   X,
   Ban,
-  PiggyBank,
   Pencil,
   Search,
   Gift,
+  Send,
 } from "lucide-react";
 import { money, num } from "@/lib/format";
 import { toast } from "sonner";
@@ -81,6 +80,17 @@ export const Route = createFileRoute("/_app/sales")({
 });
 
 type PaymentMethod = "cash" | "transfer" | "pos" | "card" | "cheque" | "credit";
+
+// Who the sales person is capturing the order for. Stored on sales.customer_type.
+type CustomerType = "walk_in" | "marketer" | "distributor" | "other";
+const CUSTOMER_TYPES: { value: CustomerType; label: string }[] = [
+  { value: "walk_in", label: "Walk-in customer" },
+  { value: "marketer", label: "Marketer" },
+  { value: "distributor", label: "Distributor" },
+  { value: "other", label: "Other" },
+];
+const customerTypeLabel = (t: string | null | undefined) =>
+  CUSTOMER_TYPES.find((c) => c.value === t)?.label ?? "Walk-in customer";
 
 type Product = {
   id: string;
@@ -115,6 +125,7 @@ type SaleRow = {
   created_by: string | null;
   rejected_reason: string | null;
   sales_person: string | null;
+  customer_type: CustomerType;
   // Only fetched for search matching — not rendered as a column.
   sale_items?: { products: { name: string } | null }[];
 };
@@ -141,6 +152,7 @@ type EditingSaleData = {
   is_pr: boolean;
   sales_person: string | null;
   sales_rep_id: string | null;
+  customer_type: CustomerType;
   remarks: string | null;
   pending_payments: { amount: number; method: PaymentMethod }[] | null;
   amount_paid: number;
@@ -180,7 +192,6 @@ function SalesPage() {
   const isSuperAdmin = useIsSuperAdmin().data ?? false;
   const [posOpen, setPosOpen] = useState(false);
   const [presetCustomerId, setPresetCustomerId] = useState<string | undefined>(undefined);
-  const [advanceOpen, setAdvanceOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<SaleRow | null>(null);
   const [historyTarget, setHistoryTarget] = useState<{ id: string; name: string } | null>(null);
   const [approveTarget, setApproveTarget] = useState<SaleRow | null>(null);
@@ -207,7 +218,7 @@ function SalesPage() {
           supabase
             .from("sales")
             .select(
-              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,subtotal,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,deleted_at,created_by,rejected_reason,sales_person,sale_items(products(name))",
+              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,subtotal,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,deleted_at,created_by,rejected_reason,sales_person,customer_type,sale_items(products(name))",
             )
             .eq("factory_id", factoryId!)
             .order("created_at", { ascending: false })
@@ -329,7 +340,7 @@ function SalesPage() {
     const { data, error } = await supabase
       .from("sales")
       .select(
-        "id,invoice_number,sale_date,customer_id,customer_name,customer_phone,customer_address,discount,vat,is_pr,sales_person,sales_rep_id,remarks,pending_payments,amount_paid,payment_method,sale_items(product_id,quantity,unit_price)",
+        "id,invoice_number,sale_date,customer_id,customer_name,customer_phone,customer_address,discount,vat,is_pr,sales_person,sales_rep_id,customer_type,remarks,pending_payments,amount_paid,payment_method,sale_items(product_id,quantity,unit_price)",
       )
       .eq("id", saleId)
       .single();
@@ -352,6 +363,7 @@ function SalesPage() {
       is_pr: s.is_pr,
       sales_person: s.sales_person,
       sales_rep_id: s.sales_rep_id,
+      customer_type: s.customer_type ?? "walk_in",
       remarks: s.remarks,
       pending_payments: s.pending_payments,
       amount_paid: Number(s.amount_paid),
@@ -424,10 +436,12 @@ function SalesPage() {
       return input;
     },
     onSuccess: ({ sale }) => {
-      toast.success(`Sale ${sale.invoice_number} approved and posted`);
+      toast.success(`Order ${sale.invoice_number} approved — printing receipt`);
       logAudit({ action: "approve", entity: "sales", entityId: sale.id, factoryId });
       invalidateAfterApproval();
       setApproveTarget(null);
+      // The accountant prints the customer's receipt as part of approving.
+      openInvoice(sale.id, "print");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -492,16 +506,12 @@ function SalesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales & POS</h1>
           <p className="text-sm text-muted-foreground">
-            Create invoices — a manager must approve each sale before it decrements stock and counts
-            toward the customer's balance.
+            Sales persons capture orders from walk-in customers, marketers, distributors and others,
+            then post them to the accountant. The accountant approves each order and prints the
+            receipt — only then does it decrement stock and count toward the customer's balance.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {write && (
-            <Button variant="outline" className="gap-2" onClick={() => setAdvanceOpen(true)}>
-              <PiggyBank className="h-4 w-4" /> Record Advance Payment
-            </Button>
-          )}
           {write && (
             <Dialog
               open={posOpen}
@@ -512,7 +522,7 @@ function SalesPage() {
             >
               <DialogTrigger asChild>
                 <Button className="gap-2" onClick={() => setPresetCustomerId(undefined)}>
-                  <Plus className="h-4 w-4" /> New Sale
+                  <Plus className="h-4 w-4" /> New Order
                 </Button>
               </DialogTrigger>
               {posOpen && factoryId && (
@@ -693,6 +703,9 @@ function SalesPage() {
                       ) : (
                         (s.customer_name ?? "Walk-in")
                       )}
+                      <div className="text-xs text-muted-foreground">
+                        {customerTypeLabel(s.customer_type)}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       {money(Number(s.grand_total))}
@@ -738,7 +751,7 @@ function SalesPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Approve & post"
+                            title="Approve & print receipt"
                             onClick={() => setApproveTarget(s)}
                           >
                             <Check className="h-4 w-4 text-success" />
@@ -802,22 +815,27 @@ function SalesPage() {
                             <History className="h-4 w-4" /> History
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1"
-                          onClick={() => openInvoice(s.id, "print")}
-                        >
-                          <Printer className="h-4 w-4" /> Print
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1"
-                          onClick={() => openInvoice(s.id, "download")}
-                        >
-                          <FileDown className="h-4 w-4" /> PDF
-                        </Button>
+                        {/* A receipt only exists once the accountant has approved the order. */}
+                        {s.status === "posted" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => openInvoice(s.id, "print")}
+                            >
+                              <Printer className="h-4 w-4" /> Print
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => openInvoice(s.id, "download")}
+                            >
+                              <FileDown className="h-4 w-4" /> PDF
+                            </Button>
+                          </>
+                        )}
                         {s.status === "pending_approval" && canEditSale && (
                           <Button
                             variant="ghost"
@@ -916,18 +934,6 @@ function SalesPage() {
         onConfirm={(reason) => deleteTarget && deleteSale.mutate({ sale: deleteTarget, reason })}
       />
 
-      <Dialog open={advanceOpen} onOpenChange={setAdvanceOpen}>
-        {advanceOpen && factoryId && (
-          <AdvancePaymentDialog
-            factoryId={factoryId}
-            onDone={() => {
-              setAdvanceOpen(false);
-              qc.invalidateQueries({ queryKey: ["customers"] });
-              qc.invalidateQueries({ queryKey: ["customer-account"] });
-            }}
-          />
-        )}
-      </Dialog>
 
       <Dialog
         open={editOpen}
@@ -1099,16 +1105,18 @@ function ApproveSaleDialog({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Approve & Post Sale</DialogTitle>
+        <DialogTitle>Approve Order & Print Receipt</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
-          {sale.invoice_number} · {sale.customer_name ?? "Walk-in"} ·{" "}
-          {money(Number(sale.grand_total))}
+          {sale.invoice_number} · {sale.customer_name ?? "Walk-in"} (
+          {customerTypeLabel(sale.customer_type)}) · {money(Number(sale.grand_total))}
+          {sale.sales_person && ` · posted by ${sale.sales_person}`}
         </p>
         <p className="text-sm text-muted-foreground">
-          This decrements stock, records any payment taken at the register, and — if there's a
-          balance — adds it to the customer's account. It can't be undone from here.
+          This decrements stock, records any payment taken with the order, and — if there's a
+          balance — adds it to the customer's account, then opens the receipt to print. It can't be
+          undone from here.
         </p>
         <div>
           <Label>Comment (optional)</Label>
@@ -1118,7 +1126,7 @@ function ApproveSaleDialog({
       </div>
       <DialogFooter>
         <Button disabled={saving} onClick={() => onSubmit(comment)}>
-          {saving ? "Approving…" : "Approve & Post"}
+          {saving ? "Approving…" : "Approve & Print Receipt"}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1191,188 +1199,6 @@ function CancelSaleDialog({
       <DialogFooter>
         <Button variant="destructive" disabled={saving} onClick={onConfirm}>
           {saving ? "Cancelling…" : "Cancel Sale"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-// Records money a registered customer pays. The server settles the customer's
-// oldest debts first and only the excess becomes advance (record_customer_advance
-// -> _customer_receive_money), so this dialog shows that split before saving.
-function AdvancePaymentDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
-  const customers = useQuery({
-    queryKey: ["customers-brief", factoryId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("id,name,phone,address")
-        .eq("factory_id", factoryId)
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as Customer[];
-    },
-  });
-
-  const [customerId, setCustomerId] = useState("");
-  const [amount, setAmount] = useState(0);
-  const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [reference, setReference] = useState("");
-  const [remarks, setRemarks] = useState("");
-  // One key per opening of this dialog: a double-click or a retry after a
-  // dropped connection is recognised by the server and never posts twice.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
-
-  const account = useCustomerAccount(customerId || undefined);
-  const availableAdvance = account.data?.summary.available_advance ?? 0;
-  const debt = account.data?.summary.outstanding_debt ?? 0;
-  const settlesDebt = Math.min(amount, debt);
-  const becomesAdvance = Math.max(amount - debt, 0);
-
-  const submit = useMutation({
-    mutationFn: async () => {
-      if (!customerId) throw new Error("Select a customer");
-      if (amount <= 0) throw new Error("Amount must be greater than 0");
-      const { data, error } = await supabase.rpc("record_customer_advance", {
-        payload: {
-          factory_id: factoryId,
-          customer_id: customerId,
-          amount,
-          payment_method: method,
-          reference: reference || null,
-          remarks: remarks || null,
-          idempotency_key: idempotencyKey,
-        } as any,
-      });
-      if (error) throw error;
-      return data as {
-        receipt_number: string;
-        settled_debt?: number;
-        credit_added?: number;
-        duplicate?: boolean;
-      };
-    },
-    onSuccess: (data) => {
-      const settled = Number(data.settled_debt ?? 0);
-      const added = Number(data.credit_added ?? 0);
-      const parts = [
-        settled > 0 ? `${money(settled)} cleared debt` : null,
-        added > 0 ? `${money(added)} added to advance` : null,
-      ].filter(Boolean);
-      toast.success(
-        `${data.duplicate ? "Already recorded" : "Payment recorded"} — receipt ${data.receipt_number}${
-          parts.length ? ` (${parts.join(", ")})` : ""
-        }`,
-      );
-      onDone();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Record Advance Payment</DialogTitle>
-      </DialogHeader>
-      <div className="grid gap-3">
-        <p className="text-sm text-muted-foreground">
-          For a customer paying ahead of picking up products. If they owe money, the oldest debts
-          are settled first and only the excess becomes advance to draw on in New Sale.
-        </p>
-        <div>
-          <Label>Customer</Label>
-          <Select value={customerId} onValueChange={setCustomerId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a customer…" />
-            </SelectTrigger>
-            <SelectContent>
-              {(customers.data ?? []).map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {customerId && account.data && (
-          <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-sm">
-            <div>
-              <span className="block text-muted-foreground">Available Advance</span>
-              <span className={availableAdvance > 0 ? "font-medium text-success" : "font-medium"}>
-                {money(availableAdvance)}
-              </span>
-            </div>
-            <div>
-              <span className="block text-muted-foreground">Outstanding Debt</span>
-              <span className={debt > 0 ? "font-medium text-destructive" : "font-medium"}>
-                {money(debt)}
-              </span>
-            </div>
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Amount</Label>
-            <MoneyInput value={amount} onChange={setAmount} />
-          </div>
-          <div>
-            <Label>Payment method</Label>
-            <Select value={method} onValueChange={(v) => setMethod(v as PaymentMethod)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(["cash", "transfer", "pos", "card", "cheque"] as PaymentMethod[]).map((m) => (
-                  <SelectItem key={m} value={m} className="capitalize">
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {customerId && amount > 0 && (
-          <div className="space-y-1 rounded-md border p-3 text-sm">
-            {debt > 0 && (
-              <div className="flex justify-between">
-                <span>Clears existing debt</span>
-                <span className="text-success">{money(settlesDebt)}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span>Added to advance</span>
-              <span className={becomesAdvance > 0 ? "font-medium text-success" : ""}>
-                {money(becomesAdvance)}
-              </span>
-            </div>
-            <div className="flex justify-between border-t pt-1 text-xs text-muted-foreground">
-              <span>Advance after this payment</span>
-              <span>{money(availableAdvance + becomesAdvance)}</span>
-            </div>
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Reference (optional)</Label>
-            <Input
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="Transfer / POS / cheque no."
-            />
-          </div>
-          <div>
-            <Label>Date</Label>
-            <Input value={new Date().toLocaleDateString()} disabled />
-          </div>
-        </div>
-        <div>
-          <Label>Notes (optional)</Label>
-          <Textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
-          {submit.isPending ? "Saving…" : "Record Payment"}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1501,9 +1327,8 @@ export function PosDialog({
         .select("id,name,sku,unit,unit_price,current_stock,category_id")
         .eq("factory_id", factoryId)
         .eq("active", true)
-        // Don't require a category: the Nylon factory has no product categories,
-        // so every Nylon finished product is uncategorized. Semi-finished items
-        // are kept out by being inactive instead.
+        // Don't require a category: uncategorized finished products still sell.
+        // Semi-finished items are kept out by being inactive instead.
         .order("name");
       if (error) throw error;
       return (data ?? []) as Product[];
@@ -1575,6 +1400,9 @@ export function PosDialog({
   const availableCredit = customerAccount.data?.summary.available_advance ?? 0;
   const existingDebt = customerAccount.data?.summary.outstanding_debt ?? 0;
   const [salesPerson, setSalesPerson] = useState(editingSale?.sales_person ?? "");
+  const [customerType, setCustomerType] = useState<CustomerType>(
+    editingSale?.customer_type ?? "walk_in",
+  );
   const [remarks, setRemarks] = useState(editingSale?.remarks ?? "");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [pickerId, setPickerId] = useState<string>("");
@@ -1792,6 +1620,7 @@ export function PosDialog({
         vat: totals.vat,
         payments: isPr ? [] : payments.filter((p) => p.amount > 0),
         sales_person: salesPerson || null,
+        customer_type: customerType,
         sales_rep_id: repMode ? salesRepId : null,
         is_pr: isPr,
         remarks: remarks || null,
@@ -1816,8 +1645,8 @@ export function PosDialog({
     onSuccess: (res) => {
       toast.success(
         editingSale
-          ? `${res.invoice_number} updated — awaiting manager approval`
-          : `${res.invoice_number} submitted — awaiting manager approval`,
+          ? `${res.invoice_number} updated — awaiting accountant approval`
+          : `${res.invoice_number} posted to the accountant for approval`,
       );
       logAudit({
         action: editingSale ? "edit" : "sale",
@@ -1882,7 +1711,7 @@ export function PosDialog({
     <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-6xl flex-col gap-0 overflow-hidden p-0">
       <DialogHeader className="shrink-0 border-b px-6 py-4">
         <DialogTitle>
-          {editingSale ? `Edit Sale — ${editingSale.invoice_number}` : "New Sale"}
+          {editingSale ? `Edit Order — ${editingSale.invoice_number}` : "New Order"}
         </DialogTitle>
       </DialogHeader>
       <div className="grid flex-1 gap-6 overflow-y-auto px-6 py-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -1999,6 +1828,21 @@ export function PosDialog({
         </div>
 
         <div className="min-w-0 space-y-2.5">
+          <div>
+            <Label className="text-xs">Order from</Label>
+            <Select value={customerType} onValueChange={(v) => setCustomerType(v as CustomerType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CUSTOMER_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Sales date</Label>
@@ -2270,8 +2114,8 @@ export function PosDialog({
           onClick={() => submit.mutate()}
           className="gap-2"
         >
-          <ReceiptIcon className="h-4 w-4" />
-          {submit.isPending ? "Processing…" : editingSale ? "Save Changes" : "Save Sale"}
+          <Send className="h-4 w-4" />
+          {submit.isPending ? "Posting…" : editingSale ? "Save & Re-post" : "Post"}
         </Button>
       </DialogFooter>
     </DialogContent>

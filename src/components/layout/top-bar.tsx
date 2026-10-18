@@ -18,9 +18,9 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FactorySwitcher } from "./factory-switcher";
 import { GlobalSearch } from "./global-search";
 import { useTheme } from "@/lib/theme";
+import { AUTH_DISABLED, DEMO_EMAIL, demoSignOut } from "@/lib/auth-bypass";
 import { Moon, Sun, LogOut, User as UserIcon, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -170,11 +170,13 @@ export function TopBar() {
   const [email, setEmail] = useState<string>("");
 
   useEffect(() => {
+    if (AUTH_DISABLED) return setEmail(DEMO_EMAIL);
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (AUTH_DISABLED) demoSignOut();
+    else await supabase.auth.signOut();
     toast.success("Signed out");
     navigate({ to: "/", replace: true });
   };
@@ -184,7 +186,6 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b bg-background/80 px-3 backdrop-blur">
       <SidebarTrigger className="h-9 w-9 shrink-0 border" title="Collapse / expand menu (Ctrl+B)" />
-      <FactorySwitcher />
       <div className="ml-2 hidden md:flex items-center gap-2 max-w-sm w-full">
         <GlobalSearch />
       </div>

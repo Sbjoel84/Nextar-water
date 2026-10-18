@@ -20,7 +20,7 @@ const createUserInput = z.object({
   department: z.string().trim().optional(),
   role: z.string().trim().min(1, "Select a role"),
   factory_id: z.string().uuid().optional(),
-  production_scope: z.enum(["NYLON", "WATER", "BOTH"]).optional(),
+  production_scope: z.enum(["WATER", "BOTH"]).optional(),
 });
 
 export type AdminCreateUserInput = z.infer<typeof createUserInput>;

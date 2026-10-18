@@ -185,8 +185,8 @@ type PendingCorrection = {
   } | null;
 };
 
-// A product linked to a raw material it supplies (e.g. Nylon's Malula pure
-// water rolls -> Water's raw materials). mode "auto": confirmed batches skip
+// A product linked to a raw material it supplies (e.g. an in-house made
+// packaging item -> raw materials). mode "auto": confirmed batches skip
 // finished-goods stock and go straight into the material (see
 // confirm_production_batch()). mode "on_demand": the product is also sold, so
 // batches enter finished goods and Store moves stock across with Transfer
@@ -658,7 +658,7 @@ function FinishedGoodsPage() {
             <Dialog open={posOpen} onOpenChange={setPosOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2">
-                  <ShoppingCart className="h-4 w-4" /> New Sale
+                  <ShoppingCart className="h-4 w-4" /> New Order
                 </Button>
               </DialogTrigger>
               {posOpen && factoryId && (

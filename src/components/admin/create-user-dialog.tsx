@@ -28,9 +28,8 @@ import { Copy, Eye, EyeOff, RefreshCw, UserPlus } from "lucide-react";
 type Factory = { id: string; name: string };
 
 const SCOPES: { value: ProductionScope; label: string }[] = [
-  { value: "BOTH", label: "Both factories" },
+  { value: "BOTH", label: "All factories" },
   { value: "WATER", label: "Water only" },
-  { value: "NYLON", label: "Nylon only" },
 ];
 
 // Avoids look-alike characters (0/O, 1/l/I) so a password read off a screen and

@@ -132,7 +132,7 @@ function rangeBounds(
 // is optional when production is recorded, so a record's type is worked out
 // from what was produced — product name, its category and the production type
 // name — matched against these keywords (first match wins, in order).
-type ProductionLine = "water" | "nylon";
+type ProductionLine = "water";
 const PRODUCTION_TYPE_GROUPS: {
   line: ProductionLine;
   label: string;
@@ -151,14 +151,6 @@ const PRODUCTION_TYPE_GROUPS: {
       { key: "sachet_water", label: "Sachet Water", match: /sachet|pure\s*water/i },
     ],
   },
-  {
-    line: "nylon",
-    label: "Nylon Production",
-    types: [
-      { key: "nylon_bag", label: "Nylon Bag", match: /bag|carrier|shopping/i },
-      { key: "nylon_film", label: "Nylon Film / Roll", match: /film|roll|sheet|wrap/i },
-    ],
-  },
 ];
 const PRODUCTION_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   PRODUCTION_TYPE_GROUPS.flatMap((g) => g.types.map((t) => [t.key, t.label])),
@@ -174,9 +166,8 @@ function productionLineOf(
   scope?: string | null,
 ): ProductionLine | null {
   const line = product?.product_categories?.product_line;
-  if (line === "water" || line === "nylon") return line;
+  if (line === "water") return line;
   if (scope === "WATER") return "water";
-  if (scope === "NYLON") return "nylon";
   return null;
 }
 
@@ -197,7 +188,7 @@ function productionTypeOf(
   return null;
 }
 
-// "all" | "line:water" | "line:nylon" | a type key
+// "all" | "line:water" | a type key
 function matchesProductionType(
   filter: string | undefined,
   product: ProductForType | null | undefined,
@@ -678,8 +669,7 @@ function ReportsPage() {
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-01"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [prodType, setProdType] = useState("all");
-  // Water and Nylon are separate factories: each factory's report only offers
-  // its own production types.
+  // The report only offers production types for the factory's own line.
   const factoryLine = useQuery({
     queryKey: ["report-factory-line", factoryId],
     enabled: !!factoryId,
@@ -691,7 +681,7 @@ function ReportsPage() {
         .maybeSingle();
       if (error) throw error;
       const code = (data?.code ?? "").toLowerCase();
-      return code === "water" || code === "nylon" ? (code as ProductionLine) : null;
+      return code === "water" ? (code as ProductionLine) : null;
     },
   });
   const typeGroups = useMemo(

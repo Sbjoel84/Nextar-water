@@ -362,7 +362,7 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Finance"
+        title="Account Overview"
         hint="Cash position by period and payment channel, receivables, and commitments — the single view across every finance page."
       />
 
