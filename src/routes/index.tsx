@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAllRoles, type Role } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
@@ -115,8 +115,7 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "FMIS — Factory Management & Inventory System" },
       {
         property: "og:description",
-        content:
-          "One platform for your water factory. Secure roles, real-time dashboards.",
+        content: "One platform for your water factory. Secure roles, real-time dashboards.",
       },
       { property: "og:type", content: "website" },
     ],
@@ -243,7 +242,7 @@ function Landing() {
 
         <div className="relative mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:py-20">
           <div className="grid items-center gap-8 lg:grid-cols-[1fr_400px] lg:gap-16">
-            <div className="text-center text-white lg:pl-8 lg:text-left">
+            <div className="text-center text-white duration-700 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none lg:pl-8 lg:text-left">
               <div className="mx-auto h-24 w-64 overflow-hidden rounded-xl bg-white px-3 py-2 shadow-lg sm:h-28 sm:w-72 lg:mx-0 lg:h-36 lg:w-96">
                 <img
                   src="/assets/nextar%20logo.jpeg"
@@ -260,7 +259,7 @@ function Landing() {
               </p>
             </div>
 
-            <div className="w-full rounded-2xl bg-white p-6 text-slate-900 shadow-2xl shadow-black/20">
+            <div className="w-full rounded-2xl bg-white p-6 text-slate-900 shadow-2xl shadow-black/20 delay-150 duration-700 animate-in fade-in slide-in-from-bottom-6 fill-mode-both motion-reduce:animate-none">
               <Tabs value={mode} onValueChange={(v) => setMode(v as "signin" | "signup")}>
                 <TabsContent value="signin" className="mt-0">
                   <form onSubmit={signIn} className="space-y-3.5">
@@ -399,7 +398,9 @@ function Landing() {
                     <div>
                       <Label className="sr-only">Role requested</Label>
                       <Select value={suRole} onValueChange={(v) => setSuRole(v as Role)}>
-                        <SelectTrigger className={`${FIELD_CLASS} data-[placeholder]:text-slate-400`}>
+                        <SelectTrigger
+                          className={`${FIELD_CLASS} data-[placeholder]:text-slate-400`}
+                        >
                           <SelectValue placeholder="Role requested" />
                         </SelectTrigger>
                         <SelectContent>
@@ -517,43 +518,142 @@ function Landing() {
   );
 }
 
-// Layered light-blue "silk" curves along the bottom of the hero.
+// Layered light-blue "silk" slopes along the bottom of the hero. Each layer
+// slowly morphs between three shapes so the hills look like they roll in the
+// wind. SMIL keeps the morph working in Safari, where CSS `d` animation does not.
+const EASE = "0.45 0 0.55 1;0.45 0 0.55 1;0.45 0 0.55 1";
+
+const WAVES = [
+  {
+    fill: "url(#wave-a)",
+    dur: "18s",
+    shapes: [
+      "M0 420 C 220 330, 380 140, 620 90 C 820 50, 900 160, 1100 260 C 1260 340, 1360 330, 1440 300 L1440 600 L0 600 Z",
+      "M0 400 C 240 300, 420 170, 680 110 C 860 70, 960 190, 1140 270 C 1280 330, 1370 310, 1440 280 L1440 600 L0 600 Z",
+      "M0 440 C 200 360, 340 120, 580 80 C 780 45, 880 140, 1060 240 C 1240 345, 1350 345, 1440 320 L1440 600 L0 600 Z",
+    ],
+  },
+  {
+    fill: "url(#wave-b)",
+    dur: "14s",
+    shapes: [
+      "M0 520 C 160 470, 300 400, 440 300 C 560 210, 640 130, 760 150 C 900 175, 980 330, 1120 420 C 1240 495, 1360 470, 1440 430 L1440 600 L0 600 Z",
+      "M0 500 C 180 450, 330 380, 480 290 C 600 205, 690 145, 820 165 C 950 190, 1030 340, 1160 420 C 1270 485, 1370 455, 1440 415 L1440 600 L0 600 Z",
+      "M0 535 C 150 490, 280 420, 410 320 C 530 225, 610 120, 720 140 C 860 165, 950 315, 1090 410 C 1220 500, 1350 485, 1440 445 L1440 600 L0 600 Z",
+    ],
+  },
+  {
+    fill: "url(#wave-c)",
+    dur: "11s",
+    shapes: [
+      "M0 600 L0 560 C 200 540, 360 520, 520 470 C 700 410, 860 380, 1040 440 C 1180 490, 1320 470, 1440 440 L1440 600 Z",
+      "M0 600 L0 550 C 220 535, 400 505, 580 460 C 760 415, 900 395, 1080 450 C 1210 490, 1330 460, 1440 430 L1440 600 Z",
+      "M0 600 L0 570 C 180 545, 330 530, 480 480 C 650 420, 820 370, 1000 430 C 1150 485, 1300 480, 1440 450 L1440 600 Z",
+    ],
+  },
+];
+
+// Thin gusts that sweep left to right across the hero (see .wind-streak in styles.css).
+const GUSTS = [
+  { d: "M-80 120 C 260 90, 520 160, 840 120 S 1300 80, 1520 130", dur: "7s", delay: "0s", o: 0.45 },
+  {
+    d: "M-80 230 C 300 200, 560 260, 900 220 S 1320 190, 1520 240",
+    dur: "9s",
+    delay: "2.5s",
+    o: 0.3,
+  },
+  {
+    d: "M-80 330 C 240 300, 600 370, 920 320 S 1340 290, 1520 340",
+    dur: "8s",
+    delay: "5s",
+    o: 0.4,
+  },
+  { d: "M-80 60 C 320 40, 640 100, 980 60 S 1360 30, 1520 70", dur: "10s", delay: "1.2s", o: 0.25 },
+  {
+    d: "M-80 420 C 280 390, 620 450, 960 410 S 1340 380, 1520 420",
+    dur: "8.5s",
+    delay: "3.8s",
+    o: 0.35,
+  },
+  {
+    d: "M-80 180 C 220 150, 480 210, 780 170 S 1260 140, 1520 185",
+    dur: "11s",
+    delay: "6.5s",
+    o: 0.2,
+  },
+];
+
 function LoginWave() {
+  const ref = useRef<SVGSVGElement>(null);
+
+  // SMIL ignores prefers-reduced-motion, so freeze it on the first shape here.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      ref.current?.pauseAnimations();
+    }
+  }, []);
+
   return (
-    <svg
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[70%] w-full"
-      viewBox="0 0 1440 600"
-      preserveAspectRatio="none"
-    >
-      <defs>
-        <linearGradient id="wave-a" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#1d6fd1" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#0b4697" stopOpacity="0" />
-        </linearGradient>
-        <linearGradient id="wave-b" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="#3f9be8" stopOpacity="0.9" />
-          <stop offset="55%" stopColor="#7cc4f5" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#1d6fd1" stopOpacity="0.4" />
-        </linearGradient>
-        <linearGradient id="wave-c" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#0e57b5" stopOpacity="0.95" />
-          <stop offset="50%" stopColor="#5fb2f0" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#0e57b5" stopOpacity="0.9" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M0 420 C 220 330, 380 140, 620 90 C 820 50, 900 160, 1100 260 C 1260 340, 1360 330, 1440 300 L1440 600 L0 600 Z"
-        fill="url(#wave-a)"
-      />
-      <path
-        d="M0 520 C 160 470, 300 400, 440 300 C 560 210, 640 130, 760 150 C 900 175, 980 330, 1120 420 C 1240 495, 1360 470, 1440 430 L1440 600 L0 600 Z"
-        fill="url(#wave-b)"
-      />
-      <path
-        d="M0 600 L0 560 C 200 540, 360 520, 520 470 C 700 410, 860 380, 1040 440 C 1180 490, 1320 470, 1440 440 L1440 600 Z"
-        fill="url(#wave-c)"
-      />
-    </svg>
+    <>
+      <svg
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 h-full w-full"
+        viewBox="0 0 1440 600"
+        preserveAspectRatio="none"
+      >
+        {GUSTS.map((g) => (
+          <path
+            key={g.d}
+            d={g.d}
+            pathLength={100}
+            className="wind-streak"
+            style={
+              {
+                "--dur": g.dur,
+                "--delay": g.delay,
+                "--o": g.o,
+              } as React.CSSProperties
+            }
+          />
+        ))}
+      </svg>
+      <svg
+        ref={ref}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[70%] w-full"
+        viewBox="0 0 1440 600"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id="wave-a" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#1d6fd1" stopOpacity="0.55" />
+            <stop offset="100%" stopColor="#0b4697" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="wave-b" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stopColor="#3f9be8" stopOpacity="0.9" />
+            <stop offset="55%" stopColor="#7cc4f5" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#1d6fd1" stopOpacity="0.4" />
+          </linearGradient>
+          <linearGradient id="wave-c" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#0e57b5" stopOpacity="0.95" />
+            <stop offset="50%" stopColor="#5fb2f0" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#0e57b5" stopOpacity="0.9" />
+          </linearGradient>
+        </defs>
+        {WAVES.map((w) => (
+          <path key={w.fill} d={w.shapes[0]} fill={w.fill}>
+            <animate
+              attributeName="d"
+              dur={w.dur}
+              repeatCount="indefinite"
+              calcMode="spline"
+              keyTimes="0;0.33;0.66;1"
+              keySplines={EASE}
+              values={[...w.shapes, w.shapes[0]].join(";")}
+            />
+          </path>
+        ))}
+      </svg>
+    </>
   );
 }

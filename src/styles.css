@@ -160,3 +160,37 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* Login hero: wind gusts sweeping across the background (src/routes/index.tsx). */
+.wind-streak {
+  fill: none;
+  stroke: #cfe8ff;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 22 200;
+  stroke-dashoffset: 22;
+  opacity: 0;
+  animation: wind-gust var(--dur, 8s) linear var(--delay, 0s) infinite;
+}
+
+@keyframes wind-gust {
+  0% {
+    stroke-dashoffset: 22;
+    opacity: 0;
+  }
+  15%,
+  80% {
+    opacity: var(--o, 0.4);
+  }
+  100% {
+    stroke-dashoffset: -100;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wind-streak {
+    animation: none;
+  }
+}
