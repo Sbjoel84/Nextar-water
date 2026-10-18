@@ -3,7 +3,7 @@
 // credentials below instead of Supabase, the app shell only requires that
 // local demo session, and every permission hook grants full access.
 // Set to false to restore normal authentication.
-export const AUTH_DISABLED = true;
+export const AUTH_DISABLED = false;
 
 // Local-only demo account. Not a real user: nothing is stored in a database.
 export const DEMO_EMAIL = "admin@nextar.demo";
