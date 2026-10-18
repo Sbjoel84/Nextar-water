@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { AUTH_DISABLED } from "@/lib/auth-bypass";
 
 // Roles are real data (public.roles), not a fixed enum, so a super_admin can
 // create/rename/describe roles from the UI without a code deploy. `Role` is
@@ -33,7 +32,6 @@ export function useIsSuperAdmin() {
   return useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
-      if (AUTH_DISABLED) return true;
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return false;
       // Deliberately not maybeSingle(): user_roles is UNIQUE(user_id, role,
@@ -59,7 +57,6 @@ export function useIsAdmin() {
   return useQuery({
     queryKey: ["is-admin"],
     queryFn: async () => {
-      if (AUTH_DISABLED) return true;
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return false;
       const { data, error } = await supabase
@@ -213,11 +210,6 @@ export function useMyPermissions() {
   return useQuery({
     queryKey: ["my-permissions"],
     queryFn: async (): Promise<{ access: Record<string, Set<Action>>; signedIn: boolean }> => {
-      if (AUTH_DISABLED) {
-        const access: Record<string, Set<Action>> = {};
-        for (const m of ALL_MODULES) access[m] = new Set(ALL_ACTIONS);
-        return { access, signedIn: true };
-      }
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return { access: {}, signedIn: false };
 
@@ -243,7 +235,6 @@ export function useMyRoles() {
   return useQuery({
     queryKey: ["my-roles"],
     queryFn: async (): Promise<Role[]> => {
-      if (AUTH_DISABLED) return ["super_admin"];
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return [];
       const { data, error } = await supabase
@@ -267,7 +258,6 @@ export function useMyProductionScope() {
   return useQuery({
     queryKey: ["my-production-scope"],
     queryFn: async (): Promise<ProductionScope> => {
-      if (AUTH_DISABLED) return "BOTH";
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return "BOTH";
       const { data, error } = await supabase

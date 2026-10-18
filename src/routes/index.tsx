@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAllRoles, type Role } from "@/lib/permissions";
-import { AUTH_DISABLED, demoSignIn, isDemoSignedIn } from "@/lib/auth-bypass";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,10 +144,6 @@ function Landing() {
   const requestableRoles = roles.data ?? [];
 
   useEffect(() => {
-    if (AUTH_DISABLED) {
-      if (isDemoSignedIn()) navigate({ to: "/dashboard" });
-      return;
-    }
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) navigate({ to: "/dashboard" });
     });
@@ -165,14 +160,6 @@ function Landing() {
     const signInPassword = String(formData.get("password") ?? "");
     if (!signInEmail || !signInPassword) {
       return toast.error("Enter your email and password");
-    }
-
-    if (AUTH_DISABLED) {
-      if (!demoSignIn(signInEmail, signInPassword)) {
-        return toast.error("Invalid demo email or password");
-      }
-      toast.success("Welcome back");
-      return navigate({ to: "/dashboard" });
     }
 
     setLoading(true);

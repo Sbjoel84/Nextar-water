@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GlobalSearch } from "./global-search";
 import { useTheme } from "@/lib/theme";
-import { AUTH_DISABLED, DEMO_EMAIL, demoSignOut } from "@/lib/auth-bypass";
 import { Moon, Sun, LogOut, User as UserIcon, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -170,13 +169,11 @@ export function TopBar() {
   const [email, setEmail] = useState<string>("");
 
   useEffect(() => {
-    if (AUTH_DISABLED) return setEmail(DEMO_EMAIL);
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
   }, []);
 
   const signOut = async () => {
-    if (AUTH_DISABLED) demoSignOut();
-    else await supabase.auth.signOut();
+    await supabase.auth.signOut();
     toast.success("Signed out");
     navigate({ to: "/", replace: true });
   };

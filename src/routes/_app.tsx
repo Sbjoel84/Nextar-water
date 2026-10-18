@@ -7,7 +7,6 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { useIsAdmin } from "@/lib/permissions";
 import { purgeRecycleBin } from "@/lib/recycle-bin";
-import { AUTH_DISABLED, isDemoSignedIn } from "@/lib/auth-bypass";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -26,12 +25,6 @@ function AppLayout() {
   useEffect(() => {
     let active = true;
     const goToLogin = () => navigate({ to: "/", replace: true });
-
-    if (AUTH_DISABLED) {
-      if (isDemoSignedIn()) setReady(true);
-      else goToLogin();
-      return;
-    }
 
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
@@ -88,7 +81,7 @@ function RecycleBinAutoPurge() {
   const isAdmin = useIsAdmin();
   const done = useRef(false);
   useEffect(() => {
-    if (AUTH_DISABLED || !isAdmin.data || done.current) return;
+    if (!isAdmin.data || done.current) return;
     done.current = true;
     purgeRecycleBin().catch(() => {
       // Retried on the next visit; nothing for the user to do.
