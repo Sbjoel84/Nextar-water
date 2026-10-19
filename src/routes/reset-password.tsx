@@ -22,8 +22,16 @@ function ResetPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // supabase-js parses hash automatically on load
-    supabase.auth.getSession().then(({ data }) => setReady(!!data.session));
+    // supabase-js reads the recovery token from the link asynchronously, so a
+    // getSession() on mount can run before it lands. Listen for the session
+    // too, or the button stays disabled for someone who did use the link.
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) setReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) setReady(true);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const submit = async (e: React.FormEvent) => {

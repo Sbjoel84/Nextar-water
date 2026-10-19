@@ -50,8 +50,8 @@ export const MoneyInput = React.forwardRef<
   // would stomp on an in-progress edit.
   React.useEffect(() => {
     if (focused) return;
-    setDisplay(value ? format(String(value)) : "");
-  }, [value, focused]);
+    setDisplay(value ? (groupThousands ? formatWithCommas : String)(String(value)) : "");
+  }, [value, focused, groupThousands]);
 
   React.useLayoutEffect(() => {
     if (pendingCaret.current === null || !innerRef.current) return;

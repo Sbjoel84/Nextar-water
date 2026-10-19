@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -26,11 +27,37 @@ function AppLayout() {
     let active = true;
     const goToLogin = () => navigate({ to: "/", replace: true });
 
+    // A valid session is not enough: a suspended, deactivated or deleted
+    // account keeps its session until it expires. Re-checked on every sign-in
+    // and hourly token refresh, so a suspension takes effect mid-session too.
+    // Local sign-out never needs the network, so a bad connection can't leave
+    // the user bouncing between "/" and the shell.
+    const admit = async (uid: string) => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("status")
+        .eq("id", uid)
+        .maybeSingle();
+      if (!active) return;
+      // Couldn't check (e.g. offline): let them in; the database still refuses
+      // inactive accounts.
+      if (error) return setReady(true);
+      if (data?.status !== "active") {
+        toast.error("Your account is not active. Contact an administrator.");
+        userId.current = null;
+        qc.clear();
+        setReady(false);
+        await supabase.auth.signOut({ scope: "local" });
+        return goToLogin();
+      }
+      setReady(true);
+    };
+
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       if (!data.session) return goToLogin();
       userId.current = data.session.user.id;
-      setReady(true);
+      admit(data.session.user.id);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
@@ -49,7 +76,9 @@ function AppLayout() {
         userId.current = session.user.id;
         qc.clear();
       }
-      setReady(true);
+      // Supabase calls made inside this callback can deadlock the auth client,
+      // so the status check runs on the next tick.
+      setTimeout(() => admit(session.user.id), 0);
     });
 
     return () => {

@@ -1,4 +1,4 @@
-﻿-- ============================================================================
+-- ============================================================================
 -- WORKFLOW ENGINE RETROFIT â€” wire the 6 maker-checker flows into the engine
 -- ----------------------------------------------------------------------------
 -- Every submit/approve/reject/confirm/post/cancel/reverse RPC now calls
