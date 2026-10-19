@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAllRoles, type Role } from "@/lib/permissions";
+import { DEPARTMENT_OPTIONS } from "@/lib/departments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -385,13 +386,21 @@ function Landing() {
                         <Label htmlFor="su-department" className="sr-only">
                           Department
                         </Label>
-                        <Input
-                          id="su-department"
-                          placeholder="Department"
-                          value={suDepartment}
-                          onChange={(e) => setSuDepartment(e.target.value)}
-                          className={FIELD_CLASS}
-                        />
+                        <Select value={suDepartment} onValueChange={setSuDepartment}>
+                          <SelectTrigger
+                            id="su-department"
+                            className={`${FIELD_CLASS} data-[placeholder]:text-slate-400`}
+                          >
+                            <SelectValue placeholder="Department" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DEPARTMENT_OPTIONS.map((d) => (
+                              <SelectItem key={d} value={d}>
+                                {d}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 

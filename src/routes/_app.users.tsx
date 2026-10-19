@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { RequireAccess } from "@/components/layout/require-access";
 import { CreateUserDialog } from "@/components/admin/create-user-dialog";
 import { adminUpdateUser } from "@/lib/admin-users";
+import { DEPARTMENT_OPTIONS } from "@/lib/departments";
 import { useAllRoles, usePermissions, type Role } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,19 +66,8 @@ export const Route = createFileRoute("/_app/users")({
   ),
 });
 
-// No departments table exists yet -- this mirrors the "Sales", "Production",
-// "Finance" already used on Employees/Production Requests, plus the two
-// factories, so the dropdown reflects how the business is actually organized.
-// "Other…" (below) covers anything that doesn't fit, and keeps this list from
-// blocking an edit just because it's incomplete.
-const DEPARTMENT_OPTIONS = [
-  "Admin",
-  "Sales",
-  "Production",
-  "Finance & Accounts",
-  "Inventory / Store",
-  "Water Factory",
-];
+// "Other…" (below) covers anything not in DEPARTMENT_OPTIONS, and keeps that
+// list from blocking an edit just because it's incomplete.
 
 type ProductionScope = "WATER" | "BOTH";
 type Profile = {
