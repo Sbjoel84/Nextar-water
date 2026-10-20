@@ -36,6 +36,43 @@ export type InvoiceData = {
 
 export type PdfAction = "download" | "print" | "preview";
 
+// "print" opens the browser's print dialog for the PDF, where the user picks
+// a printer or "Save as PDF" -- nothing is downloaded straight away. The PDF
+// is loaded into a hidden same-page frame rather than a new tab, so pop-up
+// blockers and "always download PDFs" browser settings can't get in the way.
+let printFrame: HTMLIFrameElement | null = null;
+
+function printPdf(doc: jsPDF) {
+  const url = URL.createObjectURL(doc.output("blob"));
+  printFrame?.remove();
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  frame.onload = () => {
+    // Give the browser's PDF viewer a moment to render before printing.
+    setTimeout(() => {
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+      } catch {
+        // Browsers that can't print a framed PDF: show it in a tab with its
+        // own print prompt instead.
+        doc.autoPrint();
+        window.open(doc.output("bloburl"), "_blank");
+      }
+    }, 300);
+  };
+  frame.src = url;
+  document.body.appendChild(frame);
+  printFrame = frame;
+}
+
+function outputPdf(doc: jsPDF, filename: string, action: PdfAction) {
+  if (action === "download") doc.save(filename);
+  else if (action === "print") printPdf(doc);
+  else window.open(doc.output("bloburl"), "_blank");
+}
+
 // Bundled brand logo (public/assets/), served same-origin so it never taints
 // the canvas. Used on every receipt/print when a factory hasn't uploaded its
 // own logo in Settings, so nothing prints logo-less.
@@ -259,12 +296,7 @@ export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = 
   const doc = new jsPDF({ unit: "pt", format: [W, Math.max(A4_H, finalY + M)] });
   draw(doc);
 
-  if (action === "download") {
-    doc.save(`${data.invoice_number}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `${data.invoice_number}.pdf`, action);
 }
 
 export async function generateReceiptPdf(
@@ -335,12 +367,7 @@ export async function generateReceiptPdf(
   }
   if (opts.remarks) doc.text(`Remarks: ${opts.remarks}`, 40, y);
 
-  if (action === "download") {
-    doc.save(`${opts.receipt_number}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `${opts.receipt_number}.pdf`, action);
 }
 
 export async function generateProductionSlipPdf(
@@ -361,9 +388,7 @@ export async function generateProductionSlipPdf(
     batch_number?: string | null;
     remarks?: string | null;
     currency?: string;
-    production_type?: string | null;
     department?: string | null;
-    production_scope?: string | null;
     status?: string;
     packaging_unit?: string | null;
     packaging_quantity?: number | null;
@@ -393,7 +418,6 @@ export async function generateProductionSlipPdf(
   let y = top + 80;
   const rows: [string, string][] = [
     ["Product", opts.product_name],
-    ["Production type", opts.production_type || "—"],
     ...(opts.packaging_unit && opts.packaging_quantity != null
       ? [
           [
@@ -404,7 +428,6 @@ export async function generateProductionSlipPdf(
       : [["Quantity produced", `${opts.quantity_produced} ${opts.unit}`] as [string, string]]),
     ["Production cost", money(opts.production_cost, currency)],
     ["Department", opts.department || "—"],
-    ["Production scope", opts.production_scope || "—"],
     ["Status / Approval", (opts.status ?? "").replace(/_/g, " ").toUpperCase() || "—"],
     ["User", opts.supervisor || "—"],
     ["Batch number", opts.batch_number || "—"],
@@ -446,36 +469,34 @@ export async function generateProductionSlipPdf(
   doc.text("Prepared by / Date", 40, y);
   doc.text("Store Confirmed by / Date", 260, y);
 
-  if (action === "download") {
-    doc.save(`${opts.production_number}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `${opts.production_number}.pdf`, action);
 }
 
-export async function generateDebtStatementPdf(opts: {
-  company: {
-    name: string;
-    address?: string | null;
-    phone?: string | null;
-    logo_url?: string | null;
-  };
-  customer: { name: string; phone?: string | null; address?: string | null };
-  invoice_number?: string | null;
-  products?: { name: string; quantity: number; unit_price: number; line_total: number }[];
-  total_amount: number;
-  amount_paid: number;
-  outstanding: number;
-  status: string;
-  payments: {
-    amount: number;
-    payment_method: string;
-    payment_date: string;
-    received_by?: string | null;
-  }[];
-  currency?: string;
-}) {
+export async function generateDebtStatementPdf(
+  opts: {
+    company: {
+      name: string;
+      address?: string | null;
+      phone?: string | null;
+      logo_url?: string | null;
+    };
+    customer: { name: string; phone?: string | null; address?: string | null };
+    invoice_number?: string | null;
+    products?: { name: string; quantity: number; unit_price: number; line_total: number }[];
+    total_amount: number;
+    amount_paid: number;
+    outstanding: number;
+    status: string;
+    payments: {
+      amount: number;
+      payment_method: string;
+      payment_date: string;
+      received_by?: string | null;
+    }[];
+    currency?: string;
+  },
+  action: PdfAction = "print",
+) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const currency = opts.currency ?? "NGN";
 
@@ -549,34 +570,37 @@ export async function generateDebtStatementPdf(opts: {
     });
   }
 
-  doc.save(`Statement-${opts.customer.name.replace(/\s+/g, "-")}.pdf`);
+  outputPdf(doc, `Statement-${opts.customer.name.replace(/\s+/g, "-")}.pdf`, action);
 }
 
-export async function generateStockCardPdf(opts: {
-  company: {
-    name: string;
-    address?: string | null;
-    phone?: string | null;
-    logo_url?: string | null;
-  };
-  title: string;
-  item_name: string;
-  unit: string;
-  current_stock: number;
-  unit_cost: number;
-  total_value: number;
-  reorder_level?: number | null;
-  extra?: [string, string][];
-  movements: {
-    date: string;
-    type: string;
-    quantity: number;
-    reference?: string | null;
-    reason?: string | null;
-    user?: string | null;
-  }[];
-  currency?: string;
-}) {
+export async function generateStockCardPdf(
+  opts: {
+    company: {
+      name: string;
+      address?: string | null;
+      phone?: string | null;
+      logo_url?: string | null;
+    };
+    title: string;
+    item_name: string;
+    unit: string;
+    current_stock: number;
+    unit_cost: number;
+    total_value: number;
+    reorder_level?: number | null;
+    extra?: [string, string][];
+    movements: {
+      date: string;
+      type: string;
+      quantity: number;
+      reference?: string | null;
+      reason?: string | null;
+      user?: string | null;
+    }[];
+    currency?: string;
+  },
+  action: PdfAction = "print",
+) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const currency = opts.currency ?? "NGN";
 
@@ -631,7 +655,11 @@ export async function generateStockCardPdf(opts: {
     });
   }
 
-  doc.save(`${opts.title.replace(/\s+/g, "-")}-${opts.item_name.replace(/\s+/g, "-")}.pdf`);
+  outputPdf(
+    doc,
+    `${opts.title.replace(/\s+/g, "-")}-${opts.item_name.replace(/\s+/g, "-")}.pdf`,
+    action,
+  );
 }
 
 export async function generateExpenseVoucherPdf(
@@ -706,12 +734,7 @@ export async function generateExpenseVoucherPdf(
   }
   if (opts.remarks) doc.text(`Remarks: ${opts.remarks}`, 40, y);
 
-  if (action === "download") {
-    doc.save(`Expense-${opts.receipt_number || opts.expense_date}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `Expense-${opts.receipt_number || opts.expense_date}.pdf`, action);
 }
 
 export async function generatePayslipPdf(
@@ -829,12 +852,7 @@ export async function generatePayslipPdf(
   doc.setFont("helvetica", "normal");
   if (opts.payment_method) doc.text(`Payment method: ${opts.payment_method}`, 40, endY + 20);
 
-  if (action === "download") {
-    doc.save(`Payslip-${opts.employee.name.replace(/\s+/g, "-")}-${opts.period}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `Payslip-${opts.employee.name.replace(/\s+/g, "-")}-${opts.period}.pdf`, action);
 }
 
 export async function generateProductionRequestPdf(
@@ -952,12 +970,7 @@ export async function generateProductionRequestPdf(
   doc.text("Materials issued by: ____________________", 40, endY);
   doc.text("Received by: ____________________", 320, endY);
 
-  if (action === "download") {
-    doc.save(`${opts.request_number}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `${opts.request_number}.pdf`, action);
 }
 
 export async function generatePurchaseOrderPdf(
@@ -1065,12 +1078,7 @@ export async function generatePurchaseOrderPdf(
   doc.text("Authorized by: ____________________", 40, endY);
   doc.text("Supplier acknowledgement: ____________________", 320, endY);
 
-  if (action === "download") {
-    doc.save(`${opts.po_number}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `${opts.po_number}.pdf`, action);
 }
 
 export async function generateReportPdf(
@@ -1107,12 +1115,92 @@ export async function generateReportPdf(
     headStyles: { fillColor: [30, 41, 59] },
   });
 
-  if (action === "download") {
-    doc.save(`${title.replace(/\s+/g, "-")}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
+  outputPdf(doc, `${title.replace(/\s+/g, "-")}.pdf`, action);
+}
+
+// A titled statement made of sections of "label ...... value" lines, for the
+// Executive Summary and the Profit & Loss statement.
+export type StatementLine = {
+  label: string;
+  value: string;
+  // total: bold with a rule above; sub: indented detail line
+  kind?: "total" | "sub" | "grand";
+};
+export type StatementSection = { heading: string; lines: StatementLine[] };
+
+export async function generateStatementPdf(
+  opts: {
+    title: string;
+    period: string;
+    company?: { name?: string | null; logo_url?: string | null } | null;
+    sections: StatementSection[];
+    note?: string;
+  },
+  action: PdfAction = "print",
+) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const top = await drawLogoHeader(doc, opts.company?.logo_url, 40);
+  let y = top;
+  if (opts.company?.name) {
+    doc.setFontSize(11);
+    doc.text(opts.company.name, 40, y);
+    y += 18;
   }
+  doc.setFontSize(18);
+  doc.text(opts.title, 40, y);
+  y += 18;
+  doc.setFontSize(10);
+  doc.text(`Period: ${opts.period}`, 40, y);
+  y += 14;
+  doc.setFontSize(8);
+  doc.setTextColor(110);
+  doc.text(`Generated ${new Date().toLocaleString()}`, 40, y);
+  doc.setTextColor(0);
+  y += 14;
+
+  opts.sections.forEach((section) => {
+    autoTable(doc, {
+      startY: y + 8,
+      head: [[section.heading, ""]],
+      body: section.lines.map((l) => [l.kind === "sub" ? `    ${l.label}` : l.label, l.value]),
+      theme: "plain",
+      styles: { fontSize: 10, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 } },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: "bold" },
+      columnStyles: { 1: { halign: "right", cellWidth: 160 } },
+      didParseCell: (data) => {
+        if (data.section !== "body") return;
+        const line = section.lines[data.row.index];
+        if (line?.kind === "total" || line?.kind === "grand") data.cell.styles.fontStyle = "bold";
+        if (line?.kind === "sub") data.cell.styles.textColor = 80;
+        if (line?.kind === "grand") {
+          data.cell.styles.fillColor = [241, 245, 249];
+          data.cell.styles.fontSize = 11;
+        }
+      },
+      didDrawCell: (data) => {
+        const line = section.lines[data.row.index];
+        if (data.section === "body" && (line?.kind === "total" || line?.kind === "grand")) {
+          doc.setDrawColor(150);
+          doc.line(data.cell.x, data.cell.y, data.cell.x + data.cell.width, data.cell.y);
+        }
+      },
+    });
+    // @ts-expect-error autoTable augments doc
+    y = doc.lastAutoTable.finalY + 6;
+  });
+
+  if (opts.note) {
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(doc.splitTextToSize(opts.note, 515), 40, y + 14);
+    doc.setTextColor(0);
+  }
+
+  outputPdf(
+    doc,
+    `${opts.title.replace(/\s+/g, "-")}-${opts.period.replace(/\s+/g, "-")}.pdf`,
+    action,
+  );
 }
 
 // Customer account statement: advance / debt position for a period, with every
@@ -1273,10 +1361,5 @@ export async function generateCustomerStatementPdf(
     { maxWidth: pageW - 80 },
   );
 
-  if (action === "download") {
-    doc.save(`Statement-${opts.customer.name.replace(/\s+/g, "-")}.pdf`);
-  } else {
-    if (action === "print") doc.autoPrint();
-    window.open(doc.output("bloburl"), "_blank");
-  }
+  outputPdf(doc, `Statement-${opts.customer.name.replace(/\s+/g, "-")}.pdf`, action);
 }

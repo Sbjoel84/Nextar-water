@@ -425,7 +425,7 @@ export function AccountApprovalsPage() {
                             </Button>
                           </>
                         )}
-                        {a.status === "active" && (
+                        {a.status === "active" && !currentRoles(a.id).includes("chairman") && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -447,7 +447,7 @@ export function AccountApprovalsPage() {
                             <RotateCcw className="h-4 w-4 text-success" />
                           </Button>
                         )}
-                        {a.status !== "deactivated" && (
+                        {a.status !== "deactivated" && !currentRoles(a.id).includes("chairman") && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -465,28 +465,30 @@ export function AccountApprovalsPage() {
                         >
                           <KeyRound className="h-4 w-4" />
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" title="Delete account">
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete this account?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This removes {a.full_name ?? a.email}'s profile and role
-                                assignments. This cannot be undone from here.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => remove.mutate(a.id)}>
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        {!currentRoles(a.id).includes("chairman") && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" title="Delete account">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete this account?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This removes {a.full_name ?? a.email}'s profile and role
+                                  assignments. This cannot be undone from here.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => remove.mutate(a.id)}>
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

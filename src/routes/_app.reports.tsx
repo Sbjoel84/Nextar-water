@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RequireAccess } from "@/components/layout/require-access";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
@@ -11,10 +11,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -26,8 +23,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileDown, FileSpreadsheet, Printer, FileText } from "lucide-react";
-import { generateReportPdf } from "@/lib/pdf";
+import { FileDown, FileSpreadsheet, Printer, FileText, Scale } from "lucide-react";
+import {
+  buildStatement,
+  ExecutivePrintDialog,
+  STATEMENT_NOTE,
+  STATEMENT_TITLES,
+  type ExecutiveDoc,
+} from "@/components/reports/executive-print";
+import { generateReportPdf, generateStatementPdf, type StatementSection } from "@/lib/pdf";
+import { dayKey } from "@/lib/metrics";
 import { exportCsv, exportExcel, type ReportColumn } from "@/lib/export";
 import { logAudit } from "@/lib/audit";
 import {
@@ -57,6 +62,8 @@ export const Route = createFileRoute("/_app/reports")({
 });
 
 type ReportKey =
+  | "executive_summary"
+  | "profit_loss"
   | "sales"
   | "production"
   | "inventory"
@@ -74,6 +81,8 @@ type ReportKey =
   | CustomerReportKey;
 
 const REPORTS: { key: ReportKey; label: string }[] = [
+  { key: "executive_summary", label: "Executive Summary" },
+  { key: "profit_loss", label: "Profit & Loss" },
   { key: "sales", label: "Sales" },
   { key: "production", label: "Production" },
   { key: "inventory", label: "Inventory (Finished Products Movements)" },
@@ -128,87 +137,7 @@ function rangeBounds(
   return { start: null, end: null };
 }
 
-// Production types for the report filter, grouped by line. Production type
-// is optional when production is recorded, so a record's type is worked out
-// from what was produced — product name, its category and the production type
-// name — matched against these keywords (first match wins, in order).
-type ProductionLine = "water";
-const PRODUCTION_TYPE_GROUPS: {
-  line: ProductionLine;
-  label: string;
-  types: { key: string; label: string; match: RegExp }[];
-}[] = [
-  {
-    line: "water",
-    label: "Water Production",
-    types: [
-      {
-        key: "dispenser_water",
-        label: "Dispenser Water",
-        match: /dispenser|gallon|keg|(18\.9|19|20)\s*(l|lt|ltr|litre|liter)s?\b/i,
-      },
-      { key: "bottle_water", label: "Bottle Water", match: /bottle|\d+\s*cl\b|\bpet\b/i },
-      { key: "sachet_water", label: "Sachet Water", match: /sachet|pure\s*water/i },
-    ],
-  },
-];
-const PRODUCTION_TYPE_LABEL: Record<string, string> = Object.fromEntries(
-  PRODUCTION_TYPE_GROUPS.flatMap((g) => g.types.map((t) => [t.key, t.label])),
-);
-
-type ProductForType = {
-  name?: string | null;
-  product_categories?: { name?: string | null; product_line?: string | null } | null;
-};
-
-function productionLineOf(
-  product: ProductForType | null | undefined,
-  scope?: string | null,
-): ProductionLine | null {
-  const line = product?.product_categories?.product_line;
-  if (line === "water") return line;
-  if (scope === "WATER") return "water";
-  return null;
-}
-
-function productionTypeOf(
-  product: ProductForType | null | undefined,
-  scope?: string | null,
-  typeName?: string | null,
-): string | null {
-  const text = [product?.name, product?.product_categories?.name, typeName]
-    .filter(Boolean)
-    .join(" ");
-  if (!text) return null;
-  const line = productionLineOf(product, scope);
-  for (const g of PRODUCTION_TYPE_GROUPS) {
-    if (line && g.line !== line) continue;
-    for (const t of g.types) if (t.match.test(text)) return t.key;
-  }
-  return null;
-}
-
-// "all" | "line:water" | a type key
-function matchesProductionType(
-  filter: string | undefined,
-  product: ProductForType | null | undefined,
-  scope?: string | null,
-  typeName?: string | null,
-) {
-  if (!filter || filter === "all") return true;
-  if (filter.startsWith("line:")) {
-    const line =
-      productionLineOf(product, scope) ??
-      PRODUCTION_TYPE_GROUPS.find((g) =>
-        g.types.some((t) => t.key === productionTypeOf(product, scope, typeName)),
-      )?.line;
-    return line === filter.slice(5);
-  }
-  return productionTypeOf(product, scope, typeName) === filter;
-}
-
 type ProductionReportFilters = {
-  productionType?: string;
   department?: string;
   supervisor?: string;
   status?: string;
@@ -223,7 +152,36 @@ async function fetchReport(
   start: string | null,
   end: string | null,
   productionFilters?: ProductionReportFilters,
-): Promise<{ columns: ReportColumn[]; rows: Record<string, unknown>[] }> {
+  currency = "NGN",
+): Promise<{
+  columns: ReportColumn[];
+  rows: Record<string, unknown>[];
+  sections?: StatementSection[];
+}> {
+  if (key === "executive_summary" || key === "profit_loss") {
+    const sections = await buildStatement(
+      key === "profit_loss" ? "pnl" : "executive",
+      factoryId,
+      start ? dayKey(new Date(start)) : "2000-01-01",
+      end ? dayKey(new Date(end)) : dayKey(new Date()),
+      currency,
+    );
+    return {
+      columns: [
+        { key: "section", label: "Section" },
+        { key: "item", label: "Item" },
+        { key: "amount", label: "Amount" },
+      ],
+      rows: sections.flatMap((sec) =>
+        sec.lines.map((l) => ({
+          section: sec.heading,
+          item: l.kind === "sub" ? `   ${l.label}` : l.label,
+          amount: l.value,
+        })),
+      ),
+      sections,
+    };
+  }
   if (isCustomerReport(key)) return fetchCustomerReport(key, factoryId, start, end);
 
   const applyRange = <T,>(q: T): T => {
@@ -263,7 +221,7 @@ async function fetchReport(
       let q = supabase
         .from("production")
         .select(
-          "production_number,production_date,created_at,quantity_produced,unit,production_cost,supervisor,batch_number,department,production_scope,status,product_id,production_type_id,products(name,product_categories(name,product_line)),production_types(name)",
+          "production_number,production_date,created_at,quantity_produced,unit,production_cost,supervisor,batch_number,department,status,product_id,products(name)",
         )
         .eq("factory_id", factoryId);
       if (productionFilters?.department)
@@ -276,22 +234,12 @@ async function fetchReport(
         q = q.ilike("batch_number", `%${productionFilters.batchNumber}%`) as any;
       const { data, error } = await applyRange(q.order("production_date", { ascending: false }));
       if (error) throw error;
-      const typed = (data ?? []).filter((r: any) =>
-        matchesProductionType(
-          productionFilters?.productionType,
-          r.products,
-          r.production_scope,
-          r.production_types?.name,
-        ),
-      );
       return {
         columns: [
           { key: "production_number", label: "Reference" },
-          { key: "production_type", label: "Production Type" },
           { key: "product", label: "Product" },
           { key: "quantity_produced", label: "Qty" },
           { key: "unit", label: "Unit" },
-          { key: "production_scope", label: "Scope" },
           { key: "production_date", label: "Production Date" },
           { key: "supervisor", label: "Production Manager" },
           { key: "created_at", label: "Created" },
@@ -299,15 +247,9 @@ async function fetchReport(
           { key: "batch_number", label: "Batch/Ref" },
           { key: "production_cost", label: "Cost" },
         ],
-        rows: typed.map((r: any) => ({
+        rows: (data ?? []).map((r: any) => ({
           ...r,
           product: r.products?.name ?? "—",
-          production_type:
-            PRODUCTION_TYPE_LABEL[
-              productionTypeOf(r.products, r.production_scope, r.production_types?.name) ?? ""
-            ] ??
-            r.production_types?.name ??
-            "—",
           created_at: new Date(r.created_at).toLocaleString(),
           status: String(r.status ?? "").replace(/_/g, " "),
         })),
@@ -637,6 +579,9 @@ async function fetchReport(
 }
 
 const DATE_FIELDS: Record<ReportKey, string> = {
+  // Statements use each source's own business date (see finance-summary.ts).
+  executive_summary: "",
+  profit_loss: "",
   sales: "sale_date",
   production: "production_date",
   inventory: "created_at",
@@ -668,42 +613,12 @@ function ReportsPage() {
   const [range, setRange] = useState<RangeKey>("monthly");
   const [customFrom, setCustomFrom] = useState(format(new Date(), "yyyy-MM-01"));
   const [customTo, setCustomTo] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [prodType, setProdType] = useState("all");
-  // The report only offers production types for the factory's own line.
-  const factoryLine = useQuery({
-    queryKey: ["report-factory-line", factoryId],
-    enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("factories")
-        .select("code")
-        .eq("id", factoryId!)
-        .maybeSingle();
-      if (error) throw error;
-      const code = (data?.code ?? "").toLowerCase();
-      return code === "water" ? (code as ProductionLine) : null;
-    },
-  });
-  const typeGroups = useMemo(
-    () =>
-      factoryLine.data
-        ? PRODUCTION_TYPE_GROUPS.filter((g) => g.line === factoryLine.data)
-        : PRODUCTION_TYPE_GROUPS,
-    [factoryLine.data],
-  );
-  // Switching factory drops a type that belongs to the other line.
-  useEffect(() => {
-    if (prodType === "all") return;
-    const visible = typeGroups.some(
-      (g) => prodType === `line:${g.line}` || g.types.some((t) => t.key === prodType),
-    );
-    if (!visible) setProdType("all");
-  }, [typeGroups, prodType]);
   const [prodDepartment, setProdDepartment] = useState("");
   const [prodUser, setProdUser] = useState("");
   const [prodStatus, setProdStatus] = useState("all");
   const [prodProduct, setProdProduct] = useState("all");
   const [prodBatch, setProdBatch] = useState("");
+  const [execDoc, setExecDoc] = useState<ExecutiveDoc | null>(null);
 
   const bounds = useMemo(
     () => rangeBounds(range, customFrom, customTo),
@@ -711,14 +626,13 @@ function ReportsPage() {
   );
   const productionFilters: ProductionReportFilters = useMemo(
     () => ({
-      productionType: prodType === "all" ? undefined : prodType,
       department: prodDepartment || undefined,
       supervisor: prodUser || undefined,
       status: prodStatus === "all" ? undefined : prodStatus,
       productId: prodProduct === "all" ? undefined : prodProduct,
       batchNumber: prodBatch || undefined,
     }),
-    [prodType, prodDepartment, prodUser, prodStatus, prodProduct, prodBatch],
+    [prodDepartment, prodUser, prodStatus, prodProduct, prodBatch],
   );
 
   const productsForFilter = useQuery({
@@ -727,31 +641,13 @@ function ReportsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id,name,product_categories(name,product_line)")
+        .select("id,name")
         .eq("factory_id", factoryId!)
         .order("name");
       if (error) throw error;
-      return (data ?? []) as unknown as ({ id: string; name: string } & ProductForType)[];
+      return (data ?? []) as { id: string; name: string }[];
     },
   });
-  // The Product list only offers products of the chosen production type.
-  const productOptions = useMemo(
-    () =>
-      (productsForFilter.data ?? []).filter((p) => matchesProductionType(prodType, p, null, null)),
-    [productsForFilter.data, prodType],
-  );
-  const onProdTypeChange = (v: string) => {
-    setProdType(v);
-    if (
-      prodProduct !== "all" &&
-      !(productsForFilter.data ?? []).some(
-        (p) => p.id === prodProduct && matchesProductionType(v, p, null, null),
-      )
-    ) {
-      setProdProduct("all");
-    }
-  };
-
   const report = useQuery({
     queryKey: [
       "report",
@@ -770,6 +666,7 @@ function ReportsPage() {
         bounds.start,
         bounds.end,
         reportKey === "production" ? productionFilters : undefined,
+        settings.data?.currency ?? "NGN",
       ),
   });
 
@@ -778,11 +675,27 @@ function ReportsPage() {
   const columns = report.data?.columns ?? [];
   const rows = report.data?.rows ?? [];
 
+  const periodLabel =
+    range === "custom"
+      ? `${customFrom} to ${customTo}`
+      : (RANGES.find((r) => r.key === range)?.label ?? "");
+
   const doExport = (type: "csv" | "excel" | "pdf" | "print") => {
     if (columns.length === 0) return;
     const name = `${reportLabel}-${format(new Date(), "yyyy-MM-dd")}`;
     if (type === "csv") exportCsv(name, columns, rows);
     else if (type === "excel") exportExcel(name, columns, rows);
+    else if ((type === "pdf" || type === "print") && report.data?.sections)
+      generateStatementPdf(
+        {
+          title: STATEMENT_TITLES[reportKey === "profit_loss" ? "pnl" : "executive"],
+          period: periodLabel,
+          company: { name: settings.data?.company_name, logo_url: settings.data?.logo_url },
+          sections: report.data.sections,
+          note: STATEMENT_NOTE,
+        },
+        type === "pdf" ? "download" : "print",
+      );
     else if (type === "pdf")
       generateReportPdf(reportLabel, columns, rows, "download", {
         name: settings.data?.company_name,
@@ -809,6 +722,25 @@ function ReportsPage() {
           Cross-module reports with Excel, PDF, and CSV export.
         </p>
       </div>
+
+      <Card className="rounded-2xl">
+        <CardContent className="flex flex-wrap items-center gap-3 p-4">
+          <div className="mr-auto">
+            <div className="text-sm font-medium">Print for management</div>
+            <p className="text-xs text-muted-foreground">
+              One-page summaries across all reports — today, this week, this month, this year or
+              custom dates.
+            </p>
+          </div>
+          <Button className="gap-2" onClick={() => setExecDoc("executive")}>
+            <Printer className="h-4 w-4" /> Executive Summary
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => setExecDoc("pnl")}>
+            <Scale className="h-4 w-4" /> Profit &amp; Loss
+          </Button>
+        </CardContent>
+      </Card>
+      <ExecutivePrintDialog doc={execDoc} factoryId={factoryId} onClose={() => setExecDoc(null)} />
 
       <Card className="rounded-2xl">
         <CardContent className="p-4 flex flex-wrap items-end gap-3">
@@ -882,33 +814,6 @@ function ReportsPage() {
         {reportKey === "production" && (
           <CardContent className="p-4 pt-0 flex flex-wrap items-end gap-3 border-t">
             <div>
-              <Label className="mb-1 block text-xs">Production Type</Label>
-              <Select value={prodType} onValueChange={onProdTypeChange}>
-                <SelectTrigger className="w-[190px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {typeGroups.map((g) => (
-                    <SelectGroup key={g.line}>
-                      <SelectSeparator />
-                      <SelectLabel>{g.label}</SelectLabel>
-                      {typeGroups.length > 1 && (
-                        <SelectItem value={`line:${g.line}`}>
-                          All {g.label.toLowerCase()}
-                        </SelectItem>
-                      )}
-                      {g.types.map((t) => (
-                        <SelectItem key={t.key} value={t.key} className="pl-10">
-                          {t.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
               <Label className="mb-1 block text-xs">Product</Label>
               <Select value={prodProduct} onValueChange={setProdProduct}>
                 <SelectTrigger className="w-[160px]">
@@ -916,7 +821,7 @@ function ReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All products</SelectItem>
-                  {productOptions.map((p) => (
+                  {(productsForFilter.data ?? []).map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>

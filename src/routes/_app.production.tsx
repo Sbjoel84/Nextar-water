@@ -95,12 +95,10 @@ type ProductionRow = {
   confirmed_by: string | null;
   confirmed_at: string | null;
   department: string | null;
-  production_scope: string | null;
   packaging_unit: string | null;
   packaging_quantity: number | null;
   products: { name: string; unit: string } | null;
   production_requests: { request_number: string } | null;
-  production_types: { name: string } | null;
 };
 type ProductUnit = { id: string; packaging_unit: string; conversion_factor: number };
 
@@ -164,7 +162,7 @@ function ProductionPage() {
       const { data, error } = await supabase
         .from("production")
         .select(
-          "id,production_number,production_date,product_id,quantity_produced,unit,production_cost,supervisor,batch_number,remarks,status,accepted_quantity,damaged_quantity,rejected_quantity,confirmed_by,confirmed_at,department,production_scope,packaging_unit,packaging_quantity,products(name,unit),production_requests!production_production_request_id_fkey(request_number),production_types(name)",
+          "id,production_number,production_date,product_id,quantity_produced,unit,production_cost,supervisor,batch_number,remarks,status,accepted_quantity,damaged_quantity,rejected_quantity,confirmed_by,confirmed_at,department,packaging_unit,packaging_quantity,products(name,unit),production_requests!production_production_request_id_fkey(request_number)",
         )
         .eq("factory_id", factoryId!)
         .order("created_at", { ascending: false })
@@ -258,9 +256,7 @@ function ProductionPage() {
         batch_number: row.batch_number,
         remarks: row.remarks,
         currency: settings.data?.currency ?? "NGN",
-        production_type: row.production_types?.name ?? null,
         department: row.department,
-        production_scope: row.production_scope,
         status: row.status,
         packaging_unit: row.packaging_unit,
         packaging_quantity: row.packaging_quantity != null ? Number(row.packaging_quantity) : null,
@@ -363,12 +359,10 @@ function ProductionPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Number</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
                 <TableHead>Product</TableHead>
                 <TableHead className="text-right">Qty Produced</TableHead>
                 <TableHead className="text-right">Damaged</TableHead>
                 <TableHead className="text-right">Cost</TableHead>
-                <TableHead>Scope</TableHead>
                 <TableHead>Supervisor</TableHead>
                 <TableHead>Batch</TableHead>
                 <TableHead>Request</TableHead>
@@ -386,7 +380,6 @@ function ProductionPage() {
                     </TableCell>
                     <TableCell className="font-mono text-xs">{row.production_number}</TableCell>
                     <TableCell>{row.production_date}</TableCell>
-                    <TableCell>{row.production_types?.name ?? "—"}</TableCell>
                     <TableCell className="font-medium">
                       {row.products?.name ?? "—"}
                       {row.packaging_unit && row.packaging_quantity != null && (
@@ -409,15 +402,6 @@ function ProductionPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       {money(Number(row.production_cost ?? 0))}
-                    </TableCell>
-                    <TableCell>
-                      {row.production_scope ? (
-                        <Badge variant="outline" className="capitalize">
-                          {row.production_scope.toLowerCase()}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
                     </TableCell>
                     <TableCell>{row.supervisor ?? "—"}</TableCell>
                     <TableCell>{row.batch_number ?? "—"}</TableCell>
@@ -526,7 +510,7 @@ function ProductionPage() {
                 ))}
               {(list.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                     No production runs yet.
                   </TableCell>
                 </TableRow>

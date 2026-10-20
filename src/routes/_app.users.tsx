@@ -69,7 +69,6 @@ export const Route = createFileRoute("/_app/users")({
 // "Other…" (below) covers anything not in DEPARTMENT_OPTIONS, and keeps that
 // list from blocking an edit just because it's incomplete.
 
-type ProductionScope = "WATER" | "BOTH";
 type Profile = {
   id: string;
   full_name: string | null;
@@ -77,7 +76,6 @@ type Profile = {
   phone: string | null;
   username: string | null;
   department: string | null;
-  production_scope: ProductionScope;
 };
 type UserRoleRow = { id: string; user_id: string; role: Role; factory_id: string | null };
 type Factory = { id: string; name: string };
@@ -112,7 +110,7 @@ export function UsersPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id,full_name,email,phone,username,department,production_scope")
+        .select("id,full_name,email,phone,username,department")
         .order("full_name");
       if (error) throw error;
       return (data ?? []) as Profile[];
@@ -174,21 +172,6 @@ export function UsersPage() {
     onSuccess: () => {
       toast.success("Role grant submitted for approval");
       invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const setScope = useMutation({
-    mutationFn: async ({ userId, scope }: { userId: string; scope: ProductionScope }) => {
-      const { error } = await supabase.rpc("set_production_scope", {
-        p_user_id: userId,
-        p_scope: scope,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Production scope updated");
-      qc.invalidateQueries({ queryKey: ["all-profiles"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -415,7 +398,6 @@ export function UsersPage() {
                 <TableHead></TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Roles</TableHead>
-                <TableHead className="w-[200px]">Production Scope</TableHead>
                 <TableHead className="w-[260px]">Assign role</TableHead>
               </TableRow>
             </TableHeader>
@@ -478,26 +460,6 @@ export function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={p.production_scope}
-                        onValueChange={(v) =>
-                          setScope.mutate({ userId: p.id, scope: v as ProductionScope })
-                        }
-                        disabled={!write || setScope.isPending}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="BOTH">All factories</SelectItem>
-                          <SelectItem value="WATER">Water only</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Only isolates the Production module.
-                      </p>
-                    </TableCell>
-                    <TableCell>
                       {write && (
                         <div className="flex gap-2">
                           <Select
@@ -546,7 +508,7 @@ export function UsersPage() {
                 ))}
               {(profiles.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                     No accounts yet — they appear here once someone signs in.
                   </TableCell>
                 </TableRow>

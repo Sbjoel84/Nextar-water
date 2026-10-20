@@ -226,11 +226,170 @@ ok(
   !chApprove.error && (await role(cashier)).includes("super_admin"),
   chApprove.error,
 );
+
+console.log("\n[chairman cannot be removed]");
 const chSus = await as(admin, "SELECT set_user_status($1, 'suspended')", [chair]);
 ok(
-  "super_admin CAN suspend chairman",
-  !chSus.error && (await status(chair)) === "suspended",
+  "super_admin cannot suspend chairman",
+  !!chSus.error && (await status(chair)) === "active",
   chSus.error,
+);
+ok(
+  "super_admin cannot delete chairman",
+  !!(await as(admin, "SELECT delete_user_account($1)", [chair])).error &&
+    (await status(chair)) === "active",
+);
+ok(
+  "super_admin cannot demote chairman",
+  !!(await as(admin, "SELECT admin_set_user_role($1, 'cashier')", [chair])).error &&
+    (await role(chair)).includes("chairman"),
+);
+ok(
+  "super_admin cannot strip the chairman role directly",
+  denied(await as(admin, "DELETE FROM user_roles WHERE user_id=$1 AND role='chairman'", [chair])) &&
+    (await role(chair)).includes("chairman"),
+);
+ok(
+  "super_admin cannot edit the chairman's profile",
+  !!(await as(admin, "SELECT admin_update_profile($1, 'Renamed')", [chair])).error,
+);
+ok(
+  "super_admin cannot make someone chairman",
+  !!(await as(admin, "SELECT admin_set_user_role($1, 'chairman')", [mgr])).error &&
+    !(await role(mgr)).includes("chairman"),
+);
+ok(
+  "chairman cannot delete own account either",
+  !!(await as(chair, "SELECT delete_user_account($1)", [chair])).error,
+);
+const chEditSelf = await as(chair, "SELECT admin_update_profile($1, 'The Chairman')", [chair]);
+ok("chairman CAN edit own profile", !chEditSelf.error, chEditSelf.error);
+
+console.log("\n[chairman needs no approvals]");
+const prod = (
+  await q(
+    "INSERT INTO products(factory_id, name, unit, unit_price, cost_price, current_stock) VALUES ($1,'Test water','pack',100,60,50) RETURNING id",
+    [F],
+  )
+)[0].id;
+const chSale = await as(chair, "SELECT create_sale($1)", [
+  JSON.stringify({
+    factory_id: F,
+    customer_name: "Walk-in",
+    payments: [{ method: "cash", amount: 300 }],
+    items: [{ product_id: prod, quantity: 3, unit_price: 100 }],
+  }),
+]);
+const saleId = chSale.rows?.[0]?.create_sale?.sale_id ?? chSale.rows?.[0]?.create_sale?.id;
+const saleRow = saleId ? (await q("SELECT status FROM sales WHERE id=$1", [saleId]))[0] : null;
+ok(
+  "chairman's sale is posted on save",
+  saleRow?.status === "posted",
+  chSale.error ?? saleRow?.status,
+);
+ok(
+  "chairman's sale took stock",
+  Number((await q("SELECT current_stock FROM products WHERE id=$1", [prod]))[0].current_stock) ===
+    47,
+);
+const salePay = saleId
+  ? await q("SELECT status FROM payments_received WHERE sale_id=$1", [saleId])
+  : [];
+ok(
+  "chairman's sale payment is confirmed",
+  salePay.length > 0 && salePay.every((p) => p.status === "confirmed"),
+  JSON.stringify(salePay),
+);
+
+const staffSale = await as(admin, "SELECT create_sale($1)", [
+  JSON.stringify({
+    factory_id: F,
+    customer_name: "Walk-in",
+    items: [{ product_id: prod, quantity: 1, unit_price: 100 }],
+  }),
+]);
+const staffSaleId =
+  staffSale.rows?.[0]?.create_sale?.sale_id ?? staffSale.rows?.[0]?.create_sale?.id;
+ok(
+  "someone else's sale still waits for approval",
+  staffSaleId &&
+    (await q("SELECT status FROM sales WHERE id=$1", [staffSaleId]))[0].status ===
+      "pending_approval",
+  staffSale.error,
+);
+
+// Make posting fail for one marked sale, to check the chairman's entry is
+// kept (pending, with a notification) rather than lost.
+await q(`CREATE FUNCTION pg_temp_fail_post() RETURNS trigger LANGUAGE plpgsql AS $$
+  BEGIN IF NEW.remarks = 'FAILTEST' AND NEW.status = 'posted' THEN RAISE EXCEPTION 'forced failure'; END IF; RETURN NEW; END $$`);
+await q(
+  "CREATE TRIGGER zz_fail_post BEFORE UPDATE ON sales FOR EACH ROW EXECUTE FUNCTION pg_temp_fail_post()",
+);
+const failing = await as(chair, "SELECT create_sale($1)", [
+  JSON.stringify({
+    factory_id: F,
+    customer_name: "Walk-in",
+    remarks: "FAILTEST",
+    items: [{ product_id: prod, quantity: 1, unit_price: 100 }],
+  }),
+]);
+await q("DROP TRIGGER zz_fail_post ON sales");
+const failId = failing.rows?.[0]?.create_sale?.sale_id ?? failing.rows?.[0]?.create_sale?.id;
+const failNote = await q(
+  "SELECT body FROM notifications WHERE user_id=$1 AND title='Saved but not completed'",
+  [chair],
+);
+ok(
+  "chairman's sale is kept (pending) and notified when posting fails",
+  !failing.error &&
+    !!failId &&
+    (await q("SELECT status FROM sales WHERE id=$1", [failId]))[0].status === "pending_approval" &&
+    failNote.some((n) => n.body.includes("forced failure")),
+  failing.error ?? JSON.stringify(failNote),
+);
+
+const adj = await as(chair, "SELECT request_stock_adjustment($1)", [
+  JSON.stringify({
+    entity_type: "finished_good",
+    product_id: prod,
+    factory_id: F,
+    quantity_delta: -2,
+    movement_type: "damaged",
+    reason: "Burst packs",
+  }),
+]);
+const adjRow = (
+  await q("SELECT status FROM stock_adjustment_requests WHERE product_id=$1", [prod])
+)[0];
+ok(
+  "chairman's stock write-off is posted",
+  adjRow?.status === "posted",
+  adj.error ?? adjRow?.status,
+);
+
+await q("UPDATE workflow_configs SET required_approvals = 2 WHERE module = 'expenses'");
+// Fund the Expenses cash book so the cash-float check isn't what's tested.
+await q(
+  "INSERT INTO cash_transactions(factory_id, transaction_number, transaction_date, transaction_type, category, description, amount, payment_method, recorded_by_name) VALUES ($1,'RCT-TEST',CURRENT_DATE,'receipt','other_inflow','Float',100000000,'cash','Test')",
+  [F],
+);
+const exp = await as(
+  chair,
+  "INSERT INTO expenses(factory_id, description, amount, expense_date, submitted_by, recorded_by) VALUES ($1,'Diesel',500,CURRENT_DATE,$2,$2) RETURNING id",
+  [F, chair],
+);
+const expRow = exp.rows
+  ? (await q("SELECT status FROM expenses WHERE id=$1", [exp.rows[0].id]))[0]
+  : null;
+const expNote = (
+  await q("SELECT body FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", [
+    chair,
+  ])
+)[0];
+ok(
+  "chairman's expense is posted even when 2 approvals are required",
+  expRow?.status === "posted",
+  exp.error ?? `${expRow?.status} ${expNote?.body ?? ""}`,
 );
 
 console.log("\n[audit log]");

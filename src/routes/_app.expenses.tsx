@@ -71,6 +71,7 @@ import { ApprovalHistory } from "@/components/workflow/approval-history";
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
+import { usePrefillFromProfile } from "@/lib/use-my-profile";
 
 export const Route = createFileRoute("/_app/expenses")({
   head: () => ({ meta: [{ title: "Expenses — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -1235,6 +1236,8 @@ function EntryForm({
   // Cash-in fields
   const [payerPayee, setPayerPayee] = useState(editingCashIn?.payer_payee ?? "");
   const [recordedBy, setRecordedBy] = useState(editingCashIn?.recorded_by_name ?? currentUserName);
+  usePrefillFromProfile("name", requestedBy, setRequestedBy, !editingExpense);
+  usePrefillFromProfile("name", recordedBy, setRecordedBy, !editingCashIn);
 
   const save = useMutation({
     mutationFn: async () => {

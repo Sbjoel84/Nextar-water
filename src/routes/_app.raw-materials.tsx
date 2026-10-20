@@ -68,6 +68,7 @@ import { useRealtimeInvalidate } from "@/lib/realtime";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
+import { usePrefillFromProfile } from "@/lib/use-my-profile";
 
 export const Route = createFileRoute("/_app/raw-materials")({
   head: () => ({
@@ -1552,6 +1553,7 @@ function RequestPurchaseDialog({ material, onDone }: { material: Material; onDon
     Math.max(Number(material.reorder_level ?? 0) * 2 - Number(material.current_stock), 0),
   );
   const [requestedByName, setRequestedByName] = useState("");
+  usePrefillFromProfile("name", requestedByName, setRequestedByName);
   const [remarks, setRemarks] = useState("");
 
   const submit = useMutation({

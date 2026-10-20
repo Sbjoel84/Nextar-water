@@ -67,6 +67,7 @@ import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { usePrefillFromProfile } from "@/lib/use-my-profile";
 
 export const Route = createFileRoute("/_app/production-requests")({
   head: () => ({
@@ -455,6 +456,8 @@ function RequestForm({
   const canAddMaterial = canSubmit("raw-materials");
   const [requestedBy, setRequestedBy] = useState("");
   const [department, setDepartment] = useState("");
+  usePrefillFromProfile("name", requestedBy, setRequestedBy);
+  usePrefillFromProfile("department", department, setDepartment);
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<{ materialId: string; quantity: number }[]>([
     { materialId: "", quantity: 0 },
@@ -851,6 +854,7 @@ function AddMaterialDialog({
 
 function ApproveDialog({ row, onDone }: { row: RequestRow; onDone: () => void }) {
   const [name, setName] = useState("");
+  usePrefillFromProfile("name", name, setName);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -906,6 +910,7 @@ function ApproveDialog({ row, onDone }: { row: RequestRow; onDone: () => void })
 
 function RejectDialog({ row, onDone }: { row: RequestRow; onDone: () => void }) {
   const [name, setName] = useState("");
+  usePrefillFromProfile("name", name, setName);
   const [reason, setReason] = useState("");
 
   const submit = useMutation({
@@ -969,6 +974,7 @@ function IssueDialog({
   onDone: () => void;
 }) {
   const [name, setName] = useState("");
+  usePrefillFromProfile("name", name, setName);
 
   const items = useQuery({
     queryKey: ["production-request-items", row.id],

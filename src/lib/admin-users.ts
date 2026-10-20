@@ -191,6 +191,22 @@ export const adminUpdateUser = createServerFn({ method: "POST" })
     const newEmail = data.email?.trim() || undefined;
     const newPassword = data.password?.trim() || undefined;
 
+    // The chairman's account belongs to the chairman alone. The database
+    // refuses the profile update too, but the email/password change below
+    // goes to the Admin API first, so it has to be stopped here.
+    if (data.target_id !== context.userId) {
+      const [targetCh, callerCh] = await Promise.all([
+        supabase.rpc("is_chairman_account", { _user_id: data.target_id }),
+        supabase.rpc("has_role", { _user_id: context.userId, _role: "chairman" }),
+      ]);
+      if (targetCh.error || callerCh.error) {
+        return { ok: false, error: (targetCh.error ?? callerCh.error)!.message };
+      }
+      if (targetCh.data && !callerCh.data) {
+        return { ok: false, error: "Only the Chairman can change the Chairman's account" };
+      }
+    }
+
     if (newEmail || newPassword) {
       // Changing a login is account takeover if misused: only a top-level
       // account (admin/chairman) may reset another top-level account's
@@ -269,6 +285,14 @@ export const adminDeleteUser = createServerFn({ method: "POST" })
         (g.action === "create" || g.action === "edit" || g.action === "delete"),
     );
     if (!allowed) return { ok: false, error: "You don't have permission to delete user accounts" };
+
+    // delete_user_account refuses this too; checked first so the login
+    // credential below is never touched for the chairman.
+    const { data: isChairman, error: chairmanError } = await supabase.rpc("is_chairman_account", {
+      _user_id: data.target_id,
+    });
+    if (chairmanError) return { ok: false, error: chairmanError.message };
+    if (isChairman) return { ok: false, error: "The Chairman account cannot be deleted" };
 
     // Cleans profiles/user_roles and writes the audit row as the calling
     // admin. Safe to call even if the profile is already gone (an orphaned

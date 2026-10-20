@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAccountsAdmin, type Account } from "@/lib/use-accounts-admin";
-import { useAllRoles, usePermissions, type ProductionScope, type Role } from "@/lib/permissions";
+import { useAllRoles, useIsChairman, usePermissions, type Role } from "@/lib/permissions";
 import { adminUpdateUser } from "@/lib/admin-users";
 import { useMutation } from "@tanstack/react-query";
 import { CreateUserDialog } from "@/components/admin/create-user-dialog";
@@ -54,11 +54,6 @@ const statusVariant = (status: string): "default" | "secondary" | "outline" | "d
   return "destructive";
 };
 
-const SCOPES: { value: ProductionScope; label: string }[] = [
-  { value: "BOTH", label: "All Factories" },
-  { value: "WATER", label: "Water Factory" },
-];
-
 const PASSWORD_ALPHABET = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";
 function generatePassword(length = 14): string {
   const bytes = new Uint32Array(length);
@@ -74,6 +69,10 @@ export function UsersTab() {
   const canRemove =
     canWrite("account-approvals") || canEdit("account-approvals") || canDelete("account-approvals");
   const [editTarget, setEditTarget] = useState<Account | null>(null);
+  const viewerIsChairman = useIsChairman().data ?? false;
+  // Nobody can delete the chairman, and only the chairman can edit it.
+  const isChairmanAccount = (userId: string) => rolesFor(userId).some((r) => r.role === "chairman");
+  const canEditAccount = (userId: string) => !isChairmanAccount(userId) || viewerIsChairman;
 
   const roleLabel = (slug: string | null) =>
     slug ? (allRoles.data?.find((r) => r.slug === slug)?.label ?? slug) : "—";
@@ -104,7 +103,6 @@ export function UsersTab() {
                 <TableHead></TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Factory</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last Login</TableHead>
                 <TableHead></TableHead>
@@ -129,9 +127,13 @@ export function UsersTab() {
                     <TableCell>
                       <button
                         type="button"
-                        onClick={() => setEditTarget(a)}
+                        onClick={() => canEditAccount(a.id) && setEditTarget(a)}
                         className="group text-left"
-                        title="Edit user"
+                        title={
+                          canEditAccount(a.id)
+                            ? "Edit user"
+                            : "Only the Chairman can edit this account"
+                        }
                       >
                         <div className="flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">
                           {a.full_name ?? "—"}
@@ -144,10 +146,6 @@ export function UsersTab() {
                       <Badge variant="outline" className="gap-1">
                         <ShieldCheck className="h-3 w-3" /> {roleLabel(primaryRole(a.id))}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {SCOPES.find((s) => s.value === a.production_scope)?.label ??
-                        a.production_scope}
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(a.status)} className="capitalize">
@@ -167,15 +165,17 @@ export function UsersTab() {
                         >
                           <KeyRound className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Edit user"
-                          onClick={() => setEditTarget(a)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {canRemove && (
+                        {canEditAccount(a.id) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edit user"
+                            onClick={() => setEditTarget(a)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canRemove && !isChairmanAccount(a.id) && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="ghost" size="icon" title="Delete user permanently">
@@ -208,7 +208,7 @@ export function UsersTab() {
                 ))}
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     No users yet.
                   </TableCell>
                 </TableRow>
@@ -226,15 +226,16 @@ export function UsersTab() {
 }
 
 function EditUserDialog({ account, onDone }: { account: Account; onDone: () => void }) {
-  const { rolesFor, setProductionScope, setRole, setStatus } = useAccountsAdmin();
+  const { rolesFor, setRole, setStatus } = useAccountsAdmin();
   const allRoles = useAllRoles();
   const currentRole = rolesFor(account.id).find((r) => !r.factory_id)?.role ?? "";
+  // The Chairman role and active status are permanent.
+  const isChairman = rolesFor(account.id).some((r) => r.role === "chairman");
 
   const [fullName, setFullName] = useState(account.full_name ?? "");
   const [email, setEmail] = useState(account.email ?? "");
   const [phone, setPhone] = useState(account.phone ?? "");
   const [role, setRoleValue] = useState<Role>(currentRole);
-  const [scope, setScope] = useState<ProductionScope>(account.production_scope);
   const [status, setStatusValue] = useState(account.status);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -255,9 +256,6 @@ function EditUserDialog({ account, onDone }: { account: Account; onDone: () => v
 
       if (role && role !== currentRole) {
         await setRole.mutateAsync({ userId: account.id, role });
-      }
-      if (scope !== account.production_scope) {
-        await setProductionScope.mutateAsync({ userId: account.id, scope });
       }
       if (
         status !== account.status &&
@@ -361,7 +359,7 @@ function EditUserDialog({ account, onDone }: { account: Account; onDone: () => v
             </div>
             <div className="space-y-1.5">
               <Label>Role</Label>
-              <Select value={role} onValueChange={(v) => setRoleValue(v)}>
+              <Select value={role} onValueChange={(v) => setRoleValue(v)} disabled={isChairman}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
@@ -375,23 +373,8 @@ function EditUserDialog({ account, onDone }: { account: Account; onDone: () => v
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Factory</Label>
-              <Select value={scope} onValueChange={(v) => setScope(v as ProductionScope)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCOPES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
               <Label>Status</Label>
-              <Select value={status} onValueChange={setStatusValue}>
+              <Select value={status} onValueChange={setStatusValue} disabled={isChairman}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

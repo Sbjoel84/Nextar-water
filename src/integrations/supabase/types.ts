@@ -227,6 +227,8 @@ export type Database = {
       }
       costing_sheets: {
         Row: {
+          logistics_cost: number
+          product_type: string | null
           apply_to_product: boolean
           approved_at: string | null
           approved_by: string | null
@@ -253,6 +255,8 @@ export type Database = {
           yield_quantity: number
         }
         Insert: {
+          logistics_cost?: number
+          product_type?: string | null
           apply_to_product?: boolean
           approved_at?: string | null
           approved_by?: string | null
@@ -279,6 +283,8 @@ export type Database = {
           yield_quantity: number
         }
         Update: {
+          logistics_cost?: number
+          product_type?: string | null
           apply_to_product?: boolean
           approved_at?: string | null
           approved_by?: string | null
@@ -4175,6 +4181,7 @@ export type Database = {
         Returns: Json
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_chairman_account: { Args: { _user_id: string }; Returns: boolean }
       issue_production_request_materials: {
         Args: { payload: Json }
         Returns: Json

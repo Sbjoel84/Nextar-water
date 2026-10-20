@@ -5,8 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId } from "@/lib/use-factory";
 import { useMyRoles, type Role } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
-import { KPI, PageHeader, usePendingConfirmationsCount } from "@/lib/dashboard-kit";
-import { usePendingAttention } from "@/lib/pending-attention";
+import { KPI, PageHeader } from "@/lib/dashboard-kit";
 import {
   COUNTED_STATUSES,
   dayKey,
@@ -16,9 +15,26 @@ import {
   sum,
 } from "@/lib/metrics";
 import { postedSalesRows } from "@/lib/metric-queries";
+import {
+  EMPTY_DAY,
+  financeSummary,
+  operatingCostsOf,
+  profitOf,
+  revenueOf,
+  sumDays,
+  type DayMoney,
+} from "@/lib/finance-summary";
 import { FinanceOverview } from "@/components/dashboards/finance-overview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -44,12 +60,13 @@ import {
   Trophy,
   Activity,
   CheckSquare,
-  Inbox,
   ClipboardList,
   Truck,
   PackageMinus,
   Package,
   ScrollText,
+  Wallet,
+  Scale,
 } from "lucide-react";
 import { format, startOfDay, startOfMonth, subDays } from "date-fns";
 
@@ -109,6 +126,23 @@ function DashboardRouter() {
   }
 }
 
+// ---------- chart choices for the admin dashboard ----------
+type ChartMetric = "sales" | "expenses" | "profit" | "revenue";
+const CHART_METRICS: { key: ChartMetric; label: string; color: string }[] = [
+  { key: "sales", label: "Sales", color: "var(--color-primary)" },
+  { key: "expenses", label: "Expenses", color: "var(--color-destructive)" },
+  { key: "profit", label: "Profit & Loss", color: "var(--color-success)" },
+  { key: "revenue", label: "Total Revenue", color: "var(--color-warning)" },
+];
+function metricOf(d: DayMoney, m: ChartMetric) {
+  if (m === "sales") return d.sales;
+  if (m === "expenses") return operatingCostsOf(d);
+  if (m === "profit") return profitOf(d);
+  return revenueOf(d);
+}
+
+const lastSevenDays = () => Array.from({ length: 7 }, (_, i) => dayKey(subDays(new Date(), 6 - i)));
+
 // ============================================================================
 // ADMIN — super_admin / chairman: everything, factory-wide
 // ============================================================================
@@ -128,20 +162,17 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
       "stock_adjustment_requests",
       "role_grant_requests",
       "payments_received",
+      "cash_transactions",
     ],
     [
       ["total-sales-month"],
       ["sales-today"],
-      ["production-today"],
       ["raw-stock"],
-      ["finished-goods-units"],
       ["low-stock"],
       ["outstanding-debts"],
-      ["sales-trend"],
+      ["dashboard-finance"],
       ["recent-activity"],
       ["dashboard-system-activity"],
-      ["pending-approvals-count"],
-      ["pending-confirmations-count"],
     ],
   );
 
@@ -161,22 +192,6 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
         await postedSalesRows(factoryId, "grand_total", todayDay, todayDay),
         (r) => r.grand_total,
       ),
-  });
-  // Units reported by production runs dated today (cancelled/rejected runs
-  // don't count).
-  const productionToday = useQuery({
-    queryKey: ["production-today", factoryId],
-    enabled: !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("production")
-        .select("quantity_produced")
-        .eq("factory_id", factoryId)
-        .eq("production_date", todayDay)
-        .in("status", ["pending_confirmation", "posted"]);
-      if (error) throw error;
-      return sum(data ?? [], (r) => r.quantity_produced);
-    },
   });
   // Active raw materials, valued the way the Raw Materials page does
   // (moving-average current_value).
@@ -206,25 +221,6 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
   const lowStock = {
     data: (rawMaterials.data ?? []).filter((r) => isLowStock(r.current_stock, r.reorder_level)),
   };
-  // Active finished-goods stock, as on the Finished Goods page.
-  const finishedGoods = useQuery({
-    queryKey: ["finished-goods-units", factoryId],
-    enabled: !!factoryId,
-    queryFn: async () =>
-      sum(
-        await fetchAll<{ current_stock: number }>(
-          (a, b) =>
-            supabase
-              .from("products")
-              .select("current_stock")
-              .eq("factory_id", factoryId)
-              .eq("active", true)
-              .order("id")
-              .range(a, b) as any,
-        ),
-        (r) => r.current_stock,
-      ),
-  });
   const outstandingPayments = useQuery({
     queryKey: ["outstanding-debts", factoryId],
     enabled: !!factoryId,
@@ -243,31 +239,24 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
         (r) => r.outstanding,
       ),
   });
-  // Same count as the Approval Center / notification bell: what is waiting on
-  // this user, excluding their own submissions.
-  const pendingApprovals = { data: usePendingAttention().total };
-  const pendingConfirmations = usePendingConfirmationsCount(factoryId);
-
-  const salesTrend = useQuery({
-    queryKey: ["sales-trend", factoryId],
+  // Day-by-day money figures behind the Total Revenue / Profit & Loss cards
+  // and the chart. Covers this month and the last 7 days (which can reach
+  // back into last month).
+  const sevenDaysAgo = dayKey(subDays(new Date(), 6));
+  const financeFrom = sevenDaysAgo < monthStartDay ? sevenDaysAgo : monthStartDay;
+  const finance = useQuery({
+    queryKey: ["dashboard-finance", factoryId, financeFrom, todayDay],
     enabled: !!factoryId,
-    queryFn: async () => {
-      const rows = await postedSalesRows(
-        factoryId,
-        "sale_date,grand_total",
-        dayKey(subDays(new Date(), 6)),
-      );
-      const bucket: Record<string, number> = {};
-      for (let i = 6; i >= 0; i--) bucket[dayKey(subDays(new Date(), i))] = 0;
-      rows.forEach((r) => {
-        if (r.sale_date in bucket) bucket[r.sale_date] += Number(r.grand_total ?? 0);
-      });
-      return Object.entries(bucket).map(([date, total]) => ({
-        date: format(new Date(`${date}T00:00:00`), "MMM d"),
-        total,
-      }));
-    },
+    queryFn: async () => (await financeSummary(factoryId, financeFrom, todayDay)).days,
   });
+  const monthTotals = sumDays(finance.data, monthStartDay, todayDay);
+  const monthProfit = profitOf(monthTotals);
+  const [chartMetric, setChartMetric] = useState<ChartMetric>("sales");
+  const chartData = lastSevenDays().map((day) => ({
+    date: format(new Date(day + "T00:00:00"), "MMM d"),
+    total: metricOf(finance.data?.[day] ?? EMPTY_DAY, chartMetric),
+  }));
+  const chartOption = CHART_METRICS.find((m) => m.key === chartMetric)!;
 
   const recentActivity = useQuery({
     queryKey: ["recent-activity", factoryId],
@@ -365,32 +354,25 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
           tone="success"
         />
         <KPI
-          icon={FactoryIcon}
-          label="Production Today"
-          value={num(productionToday.data)}
+          icon={Wallet}
+          label="Total Revenue (this month)"
+          value={money(revenueOf(monthTotals))}
+          hint="Approved sales + other income"
           tone="success"
         />
+        <KPI
+          icon={Scale}
+          label={monthProfit >= 0 ? "Profit (this month)" : "Loss (this month)"}
+          value={money(monthProfit)}
+          hint="Revenue − cost of goods sold − expenses − salaries"
+          tone={monthProfit >= 0 ? "success" : "destructive"}
+        />
         <KPI icon={Boxes} label="Raw Material Stock" value={money(rawStockValue.data)} />
-        <KPI icon={Package} label="Finished Products (units)" value={num(finishedGoods.data)} />
         <KPI
           icon={AlertTriangle}
           label="Low Stock"
           value={String(lowStock.data?.length ?? 0)}
           tone={(lowStock.data?.length ?? 0) > 0 ? "destructive" : "success"}
-        />
-        <KPI
-          icon={CheckSquare}
-          label="Pending Approvals"
-          value={String(pendingApprovals.data ?? 0)}
-          tone={(pendingApprovals.data ?? 0) > 0 ? "warning" : "success"}
-          hint="Waiting on you — see Approval Center"
-        />
-        <KPI
-          icon={Inbox}
-          label="Pending Confirmations"
-          value={String(pendingConfirmations.data ?? 0)}
-          tone={(pendingConfirmations.data ?? 0) > 0 ? "warning" : "success"}
-          hint="Payments awaiting review"
         />
         <KPI
           icon={HandCoins}
@@ -402,12 +384,24 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="rounded-2xl lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Sales — last 7 days</CardTitle>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+            <CardTitle>{chartOption.label} — last 7 days</CardTitle>
+            <Select value={chartMetric} onValueChange={(v) => setChartMetric(v as ChartMetric)}>
+              <SelectTrigger className="h-8 w-[170px]" aria-label="Chart to show">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CHART_METRICS.map((m) => (
+                  <SelectItem key={m.key} value={m.key}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={salesTrend.data ?? []}>
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={12} />
                 <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
@@ -422,7 +416,8 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
                 <Line
                   type="monotone"
                   dataKey="total"
-                  stroke="var(--color-primary)"
+                  name={chartOption.label}
+                  stroke={chartOption.color}
                   strokeWidth={2.5}
                   dot={false}
                 />
@@ -507,7 +502,9 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
                     className="flex items-center justify-between rounded-md border p-2"
                   >
                     <span className="capitalize">
-                      {String(a.action).replace(/^record_/, "").replace(/_/g, " ")}
+                      {String(a.action)
+                        .replace(/^record_/, "")
+                        .replace(/_/g, " ")}
                       {a.entity ? ` · ${String(a.entity).replace(/_/g, " ")}` : ""}
                     </span>
                     <span className="text-xs text-muted-foreground">

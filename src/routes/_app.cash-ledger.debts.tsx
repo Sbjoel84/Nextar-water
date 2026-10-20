@@ -262,22 +262,25 @@ function DebtsPage() {
     },
     onSuccess: ({ res, input }) => {
       toast.success(`Receipt ${res.receipt_number}`);
-      generateReceiptPdf({
-        company: {
-          name: settings.data?.company_name ?? "FMIS",
-          address: settings.data?.address,
-          phone: settings.data?.phone,
-          logo_url: settings.data?.logo_url,
+      generateReceiptPdf(
+        {
+          company: {
+            name: settings.data?.company_name ?? "FMIS",
+            address: settings.data?.address,
+            phone: settings.data?.phone,
+            logo_url: settings.data?.logo_url,
+          },
+          receipt_number: res.receipt_number,
+          payment_date: new Date().toISOString().slice(0, 10),
+          customer_name: input.debt.customers?.name,
+          invoice_number: input.debt.sales?.invoice_number,
+          amount: input.amount,
+          payment_method: input.method,
+          remarks: input.remarks,
+          currency: settings.data?.currency ?? "NGN",
         },
-        receipt_number: res.receipt_number,
-        payment_date: new Date().toISOString().slice(0, 10),
-        customer_name: input.debt.customers?.name,
-        invoice_number: input.debt.sales?.invoice_number,
-        amount: input.amount,
-        payment_method: input.method,
-        remarks: input.remarks,
-        currency: settings.data?.currency ?? "NGN",
-      });
+        "print",
+      );
       invalidateAll();
     },
     onError: (e: Error) => toast.error(e.message),

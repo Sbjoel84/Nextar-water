@@ -56,6 +56,7 @@ import { generateReceiptPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
+import { usePrefillFromProfile } from "@/lib/use-my-profile";
 
 export const Route = createFileRoute("/_app/cash-ledger/ledger")({
   head: () => ({ meta: [{ title: "Cash Ledger — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -370,22 +371,25 @@ function LedgerPage() {
           method: input.method,
         },
       });
-      generateReceiptPdf({
-        company: {
-          name: settings.data?.company_name ?? "FMIS",
-          address: settings.data?.address,
-          phone: settings.data?.phone,
-          logo_url: settings.data?.logo_url,
+      generateReceiptPdf(
+        {
+          company: {
+            name: settings.data?.company_name ?? "FMIS",
+            address: settings.data?.address,
+            phone: settings.data?.phone,
+            logo_url: settings.data?.logo_url,
+          },
+          receipt_number: res.receipt_number,
+          payment_date: input.date,
+          customer_name: input.customer_name,
+          invoice_number: input.invoice_number || undefined,
+          amount: input.amount,
+          payment_method: input.method,
+          remarks: input.remarks,
+          currency: settings.data?.currency ?? "NGN",
         },
-        receipt_number: res.receipt_number,
-        payment_date: input.date,
-        customer_name: input.customer_name,
-        invoice_number: input.invoice_number || undefined,
-        amount: input.amount,
-        payment_method: input.method,
-        remarks: input.remarks,
-        currency: settings.data?.currency ?? "NGN",
-      });
+        "print",
+      );
       invalidateAll();
       setPayOpen(false);
     },
@@ -1022,6 +1026,7 @@ function CashOutDialog({
   const [receivedFrom, setReceivedFrom] = useState("");
   const [notes, setNotes] = useState("");
   const [recordedBy, setRecordedBy] = useState("");
+  usePrefillFromProfile("name", recordedBy, setRecordedBy);
   const [collector, setCollector] = useState<string | null>(null);
   const holder = collector ?? currentUserId;
   const isSelf = !collector || collector === currentUserId;
@@ -1206,6 +1211,7 @@ function TransactionForm({ factoryId, onDone }: { factoryId: string; onDone: () 
   const [payerPayee, setPayerPayee] = useState("");
   const [reference, setReference] = useState("");
   const [recordedBy, setRecordedBy] = useState("");
+  usePrefillFromProfile("name", recordedBy, setRecordedBy);
 
   const categoryOptions =
     type === "receipt"

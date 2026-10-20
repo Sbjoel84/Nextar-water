@@ -59,6 +59,7 @@ import { QuickAddMaterialDialog, ADD_NEW_ITEM } from "@/components/shared/quick-
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { usePrefillFromProfile } from "@/lib/use-my-profile";
 
 export const Route = createFileRoute("/_app/procurement")({
   head: () => ({
@@ -513,6 +514,8 @@ function RequestForm({
   // Row index that asked for "+ Add new material…" (null = dialog closed).
   const [addingMaterialFor, setAddingMaterialFor] = useState<number | null>(null);
   const [department, setDepartment] = useState("");
+  usePrefillFromProfile("name", requestedBy, setRequestedBy);
+  usePrefillFromProfile("department", department, setDepartment);
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<
     { materialId: string; quantity: number; supplierId: string }[]
@@ -689,6 +692,7 @@ function ApproveDialog({
   onDone: () => void;
 }) {
   const [name, setName] = useState("");
+  usePrefillFromProfile("name", name, setName);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -738,6 +742,7 @@ function ApproveDialog({
 
 function RejectDialog({ row, onDone }: { row: RequestRow; onDone: () => void }) {
   const [name, setName] = useState("");
+  usePrefillFromProfile("name", name, setName);
   const [reason, setReason] = useState("");
 
   const submit = useMutation({
@@ -1101,6 +1106,7 @@ function CreatePoDialog({
 }) {
   const [requestId, setRequestId] = useState("");
   const [issuedByName, setIssuedByName] = useState("");
+  usePrefillFromProfile("name", issuedByName, setIssuedByName);
   const [quantity, setQuantity] = useState<number | "">("");
   const [unitCost, setUnitCost] = useState<number | "">("");
   const [expectedDate, setExpectedDate] = useState("");

@@ -37,7 +37,7 @@ import { matchesSearch, useSearchQuery } from "@/lib/search";
 export function AuthUsersTab() {
   const [q, setQ] = useSearchQuery();
   const qc = useQueryClient();
-  const { accounts, remove } = useAccountsAdmin();
+  const { accounts, remove, rolesFor } = useAccountsAdmin();
   const { canWrite, canEdit, canDelete } = usePermissions();
   const canRemove =
     canWrite("account-approvals") || canEdit("account-approvals") || canDelete("account-approvals");
@@ -125,7 +125,7 @@ export function AuthUsersTab() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {canRemove && (
+                        {canRemove && !rolesFor(u.id).some((r) => r.role === "chairman") && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="ghost" size="icon" title="Delete permanently">

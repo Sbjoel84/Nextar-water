@@ -53,6 +53,7 @@ import {
   Search,
   Gift,
   Send,
+  AlertTriangle,
 } from "lucide-react";
 import { money, num } from "@/lib/format";
 import { toast } from "sonner";
@@ -127,8 +128,33 @@ type SaleRow = {
   sales_person: string | null;
   customer_type: CustomerType;
   // Only fetched for search matching — not rendered as a column.
-  sale_items?: { products: { name: string } | null }[];
+  sales_rep_id?: string | null;
+  sale_items?: {
+    product_id?: string;
+    quantity?: number;
+    products: { name: string; current_stock?: number } | null;
+  }[];
 };
+
+// Products on a waiting store sale that now ask for more than the store holds
+// (stock can move between ordering and approval). Van sales draw on the
+// rep's van stock instead, so they aren't checked against the store.
+function shortStock(s: SaleRow): string[] {
+  if (s.status !== "pending_approval" || s.sales_rep_id) return [];
+  const need: Record<string, { name: string; qty: number; have: number }> = {};
+  for (const it of s.sale_items ?? []) {
+    if (!it.product_id || !it.products) continue;
+    const row = (need[it.product_id] ??= {
+      name: it.products.name,
+      qty: 0,
+      have: Number(it.products.current_stock ?? 0),
+    });
+    row.qty += Number(it.quantity ?? 0);
+  }
+  return Object.values(need)
+    .filter((r) => r.qty > r.have)
+    .map((r) => `${r.name}: ordered ${num(r.qty)}, store has ${num(r.have)}`);
+}
 type CartItem = {
   product_id: string;
   name: string;
@@ -218,7 +244,7 @@ function SalesPage() {
           supabase
             .from("sales")
             .select(
-              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,subtotal,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,deleted_at,created_by,rejected_reason,sales_person,customer_type,sale_items(products(name))",
+              "id,invoice_number,sale_date,customer_id,customer_name,grand_total,subtotal,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,deleted_at,created_by,rejected_reason,sales_person,customer_type,sales_rep_id,sale_items(product_id,quantity,products(name,current_stock))",
             )
             .eq("factory_id", factoryId!)
             .order("created_at", { ascending: false })
@@ -553,9 +579,7 @@ function SalesPage() {
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Summary · {periodLabel}
-          </h2>
+          <h2 className="text-sm font-medium text-muted-foreground">Summary · {periodLabel}</h2>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
               <SelectTrigger className="h-9 w-40">
@@ -736,6 +760,15 @@ function SalesPage() {
                       <Badge variant={saleStatusBadge(s.status)} className="capitalize">
                         {s.status.replace(/_/g, " ")}
                       </Badge>
+                      {shortStock(s).length > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="mt-1 gap-1 whitespace-nowrap"
+                          title={shortStock(s).join("; ")}
+                        >
+                          <AlertTriangle className="h-3 w-3" /> More than in store
+                        </Badge>
+                      )}
                       {s.status === "rejected" && s.rejected_reason && (
                         <div
                           className="mt-1 max-w-[160px] truncate text-xs text-muted-foreground"
@@ -934,7 +967,6 @@ function SalesPage() {
         onConfirm={(reason) => deleteTarget && deleteSale.mutate({ sale: deleteTarget, reason })}
       />
 
-
       <Dialog
         open={editOpen}
         onOpenChange={(v) => {
@@ -1022,6 +1054,7 @@ function PaymentLinesEditor({
 }
 
 const PAY_DIALOG_METHODS: PaymentMethod[] = ["cash", "transfer", "pos", "card", "cheque"];
+const PAYMENT_TYPES = ["Full Payment", "Part Payment"];
 
 function PayDialog({
   sale,
@@ -1533,6 +1566,9 @@ export function PosDialog({
   // What actually gets sold -- excludes lines the user has cleared to 0
   // while editing but hasn't removed or refilled yet.
   const sellableCart = useMemo(() => cart.filter((c) => c.quantity > 0), [cart]);
+  // Lines asking for more than the store (or van) holds. They stay as typed
+  // and are flagged, rather than being quietly cut down to what's available.
+  const overStock = useMemo(() => cart.filter((c) => c.quantity > c.stock), [cart]);
 
   // Ticking PR clears anything that implies money changed hands, so the form
   // can't show a half-billed, half-free sale.
@@ -1556,8 +1592,7 @@ export function PosDialog({
       const existing = prev.find((c) => c.product_id === id);
       if (existing) {
         if (existing.quantity + 1 > avail) {
-          toast.error(`Only ${avail} ${p.unit} ${repMode ? "on the van" : "in stock"}`);
-          return prev;
+          toast.warning(`Only ${avail} ${p.unit} ${repMode ? "on the van" : "in the store"}`);
         }
         return prev.map((c) => (c.product_id === id ? { ...c, quantity: c.quantity + 1 } : c));
       }
@@ -1589,7 +1624,7 @@ export function PosDialog({
     setCart((prev) =>
       prev.map((c) => {
         if (c.product_id !== id) return c;
-        const q = Math.max(0, Math.min(qty, c.stock));
+        const q = Math.max(0, qty);
         return { ...c, quantity: q };
       }),
     );
@@ -1603,6 +1638,10 @@ export function PosDialog({
   const submit = useMutation({
     mutationFn: async () => {
       if (sellableCart.length === 0) throw new Error("Cart is empty");
+      if (overStock.length > 0)
+        throw new Error(
+          `${overStock.map((c) => c.name).join(", ")}: more than ${repMode ? "is on the van" : "is in the store"}`,
+        );
       const finalCustomer = customerId === "walkin" ? null : customerId;
       let displayName = customerName;
       if (finalCustomer) {
@@ -1777,44 +1816,56 @@ export function PosDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cart.map((c) => (
-                  <TableRow key={c.product_id}>
-                    <TableCell>
-                      <div className="font-medium">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        stock {num(c.stock)} {c.unit}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <MoneyInput
-                        min={0}
-                        max={c.stock}
-                        value={c.quantity}
-                        onChange={(v) => updateQty(c.product_id, v)}
-                        className="h-8"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <MoneyInput
-                        value={c.unit_price}
-                        onChange={(v) => updatePrice(c.product_id, v)}
-                        className="h-8"
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">{money(c.quantity * c.unit_price)}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setCart((prev) => prev.filter((x) => x.product_id !== c.product_id))
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {cart.map((c) => {
+                  const over = c.quantity > c.stock;
+                  return (
+                    <TableRow key={c.product_id} className={over ? "bg-destructive/10" : undefined}>
+                      <TableCell>
+                        <div className="font-medium">{c.name}</div>
+                        {over ? (
+                          <div className="flex items-center gap-1 text-xs font-medium text-destructive">
+                            <AlertTriangle className="h-3 w-3" />
+                            Only {num(c.stock)} {c.unit} {repMode ? "on the van" : "in the store"} —{" "}
+                            {num(c.quantity - c.stock)} too many
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            stock {num(c.stock)} {c.unit}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <MoneyInput
+                          min={0}
+                          value={c.quantity}
+                          onChange={(v) => updateQty(c.product_id, v)}
+                          className={over ? "h-8 border-destructive text-destructive" : "h-8"}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <MoneyInput
+                          value={c.unit_price}
+                          onChange={(v) => updatePrice(c.product_id, v)}
+                          className="h-8"
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {money(c.quantity * c.unit_price)}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setCart((prev) => prev.filter((x) => x.product_id !== c.product_id))
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
                 {cart.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
@@ -1949,9 +2000,7 @@ export function PosDialog({
           </label>
           {!isPr && (
             <div>
-              <Label className="text-xs">
-                Paid — {payments.length > 1 ? "payments" : "payment"}
-              </Label>
+              <Label className="text-xs">Amount Paid</Label>
               <PaymentLinesEditor
                 payments={payments}
                 onChange={setPayments}
@@ -1990,8 +2039,24 @@ export function PosDialog({
               <Input value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs">Remarks</Label>
-              <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+              <Label className="text-xs">Type of Payment</Label>
+              {/* Saved in the sale's remarks field. */}
+              <Select value={remarks || undefined} onValueChange={setRemarks}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                  {/* Keep an older sale's free-text remark selectable when editing it. */}
+                  {remarks && !PAYMENT_TYPES.includes(remarks) && (
+                    <SelectItem value={remarks}>{remarks}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -2101,6 +2166,15 @@ export function PosDialog({
       </div>
 
       <DialogFooter className="shrink-0 border-t px-6 py-4">
+        {overStock.length > 0 && (
+          <p className="mr-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            {overStock.length === 1
+              ? "1 item is more than"
+              : `${overStock.length} items are more than`}{" "}
+            {repMode ? "the van holds" : "the store holds"} — reduce the quantity to post.
+          </p>
+        )}
         <Button
           variant="outline"
           disabled={sellableCart.length === 0}
@@ -2110,7 +2184,7 @@ export function PosDialog({
           <Eye className="h-4 w-4" /> Preview
         </Button>
         <Button
-          disabled={submit.isPending || sellableCart.length === 0}
+          disabled={submit.isPending || sellableCart.length === 0 || overStock.length > 0}
           onClick={() => submit.mutate()}
           className="gap-2"
         >

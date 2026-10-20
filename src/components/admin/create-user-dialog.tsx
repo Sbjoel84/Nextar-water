@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adminCreateUser } from "@/lib/admin-users";
-import { useAllRoles, usePermissions, type ProductionScope } from "@/lib/permissions";
+import { useAllRoles, usePermissions } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,11 +27,6 @@ import { Copy, Eye, EyeOff, RefreshCw, UserPlus } from "lucide-react";
 
 type Factory = { id: string; name: string };
 
-const SCOPES: { value: ProductionScope; label: string }[] = [
-  { value: "BOTH", label: "All factories" },
-  { value: "WATER", label: "Water only" },
-];
-
 // Avoids look-alike characters (0/O, 1/l/I) so a password read off a screen and
 // typed by hand doesn't bounce.
 const PASSWORD_ALPHABET = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%";
@@ -51,7 +46,6 @@ const EMPTY = {
   department: "",
   role: "",
   factory_id: "",
-  production_scope: "BOTH" as ProductionScope,
 };
 
 export function CreateUserDialog() {
@@ -89,7 +83,6 @@ export function CreateUserDialog() {
           department: form.department.trim() || undefined,
           role: form.role,
           factory_id: form.factory_id || undefined,
-          production_scope: form.production_scope,
         },
       });
     },
@@ -239,25 +232,6 @@ export function CreateUserDialog() {
                   {(factories.data ?? []).map((f) => (
                     <SelectItem key={f.id} value={f.id}>
                       {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-scope">Production scope</Label>
-              <Select
-                value={form.production_scope}
-                onValueChange={(v) => set("production_scope", v as ProductionScope)}
-              >
-                <SelectTrigger id="cu-scope">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCOPES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

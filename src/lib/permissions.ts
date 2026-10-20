@@ -51,6 +51,26 @@ export function useIsSuperAdmin() {
   });
 }
 
+// The chairman owns the business: their account can't be deleted, suspended,
+// demoted or edited by anyone else (see 20261019100000).
+export function useIsChairman() {
+  return useQuery({
+    queryKey: ["is-chairman"],
+    queryFn: async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return false;
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userData.user.id)
+        .eq("role", "chairman")
+        .limit(1);
+      if (error) throw error;
+      return (data ?? []).length > 0;
+    },
+  });
+}
+
 // Super admin or chairman — the roles the database treats as admins
 // (has_role(..., 'super_admin') OR has_role(..., 'chairman')).
 export function useIsAdmin() {

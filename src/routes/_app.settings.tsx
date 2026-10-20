@@ -305,9 +305,7 @@ export function SettingsPage() {
               <CardTitle>Factory Management</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Rename the factory.
-              </p>
+              <p className="text-sm text-muted-foreground">Rename the factory.</p>
               {(factories.data ?? []).map((f) => (
                 <FactoryRow
                   key={f.id}
@@ -320,7 +318,6 @@ export function SettingsPage() {
             </CardContent>
           </Card>
 
-          <ProductionTypesCard />
           <UnitsOfMeasureCard />
 
           <BackupRestoreCard factoryId={factoryId} />
@@ -663,193 +660,6 @@ function BackupRestoreCard({ factoryId }: { factoryId: string }) {
   );
 }
 
-type ProductionTypeRow = {
-  id: string;
-  name: string;
-  code: string;
-  department: string | null;
-  production_scope: string;
-  unit_of_measure: string | null;
-  active: boolean;
-};
-
-// Configurable production types (spec §5): Production's "type" dropdown reads
-// straight from this table, so adding a new product type next quarter is a data
-// entry here, never a code change or deploy.
-function ProductionTypesCard() {
-  const qc = useQueryClient();
-  const { canWrite } = usePermissions();
-  const write = canWrite("settings");
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [department, setDepartment] = useState("Production");
-  const [scope, setScope] = useState<"WATER" | "BOTH">("BOTH");
-  const [uom, setUom] = useState("");
-
-  const types = useQuery({
-    queryKey: ["production-types-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("production_types")
-        .select("id,name,code,department,production_scope,unit_of_measure,active")
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as ProductionTypeRow[];
-    },
-  });
-
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["production-types-all"] });
-
-  const add = useMutation({
-    mutationFn: async () => {
-      if (!name.trim()) throw new Error("Name is required");
-      if (!code.trim()) throw new Error("Code is required");
-      const { error } = await supabase.from("production_types").insert({
-        name: name.trim(),
-        code: code.trim().toUpperCase().replace(/\s+/g, "_"),
-        department: department || null,
-        production_scope: scope,
-        unit_of_measure: uom || null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Production type added");
-      setName("");
-      setCode("");
-      setUom("");
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const toggleActive = useMutation({
-    mutationFn: async (t: ProductionTypeRow) => {
-      const { error } = await supabase
-        .from("production_types")
-        .update({ active: !t.active })
-        .eq("id", t.id);
-      if (error) throw error;
-    },
-    onSuccess: invalidate,
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <Card className="rounded-2xl">
-      <CardHeader>
-        <CardTitle>Production Types</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Configurable list Production picks from when recording a new batch — add a type here
-          instead of changing code.
-        </p>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Code</TableHead>
-              <TableHead>Scope</TableHead>
-              <TableHead>Unit</TableHead>
-              <TableHead>Status</TableHead>
-              {write && <TableHead></TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(types.data ?? []).map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="font-medium">{t.name}</TableCell>
-                <TableCell className="font-mono text-xs">{t.code}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="capitalize">
-                    {t.production_scope.toLowerCase()}
-                  </Badge>
-                </TableCell>
-                <TableCell>{t.unit_of_measure ?? "—"}</TableCell>
-                <TableCell>
-                  <Badge variant={t.active ? "secondary" : "outline"}>
-                    {t.active ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                {write && (
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => toggleActive.mutate(t)}>
-                      {t.active ? "Deactivate" : "Activate"}
-                    </Button>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-            {(types.data ?? []).length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={write ? 6 : 5}
-                  className="text-center text-muted-foreground py-6"
-                >
-                  No production types configured yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        {write && (
-          <div className="grid grid-cols-2 gap-3 border-t pt-4 md:grid-cols-5 md:items-end">
-            <div>
-              <Label>Name</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Sachet Water"
-              />
-            </div>
-            <div>
-              <Label>Code</Label>
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. SACHET_WATER"
-              />
-            </div>
-            <div>
-              <Label>Scope</Label>
-              <Select value={scope} onValueChange={(v) => setScope(v as typeof scope)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BOTH">Both</SelectItem>
-                  <SelectItem value="WATER">Water</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Department</Label>
-              <Input value={department} onChange={(e) => setDepartment(e.target.value)} />
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={uom}
-                onChange={(e) => setUom(e.target.value)}
-                placeholder="Unit (optional)"
-              />
-              <Button
-                size="sm"
-                disabled={add.isPending}
-                onClick={() => add.mutate()}
-                className="shrink-0 gap-1"
-              >
-                <Plus className="h-4 w-4" /> Add
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 type UnitOfMeasureRow = { id: string; name: string; code: string; active: boolean };
 
 // Configurable units of measure (spec §20): Raw Materials / Finished Goods /
@@ -917,8 +727,8 @@ function UnitsOfMeasureCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Every unit picker in Raw Materials, Finished Products, and Production reads from this list —
-          add a unit here instead of changing code.
+          Every unit picker in Raw Materials, Finished Products, and Production reads from this list
+          — add a unit here instead of changing code.
         </p>
         <div className="flex flex-wrap gap-2">
           {(units.data ?? []).map((u) => (
