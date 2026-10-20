@@ -76,7 +76,7 @@ function outputPdf(doc: jsPDF, filename: string, action: PdfAction) {
 // Bundled brand logo (public/assets/), served same-origin so it never taints
 // the canvas. Used on every receipt/print when a factory hasn't uploaded its
 // own logo in Settings, so nothing prints logo-less.
-const FALLBACK_LOGO_URL = "/assets/nextar%20logo.jpeg";
+const FALLBACK_LOGO_URL = "/assets/nextar-logo.jpeg";
 
 // jsPDF's built-in fonts have no glyph for the Naira sign (₦) -- it prints as
 // a broken box on thermal/receipt output. Use a plain currency-code prefix
@@ -1362,4 +1362,257 @@ export async function generateCustomerStatementPdf(
   );
 
   outputPdf(doc, `Statement-${opts.customer.name.replace(/\s+/g, "-")}.pdf`, action);
+}
+
+export type GoodsReceivedNoteLine = {
+  description: string;
+  quantity_ordered: number | null;
+  quantity_received: number;
+  quantity_rejected: number;
+  condition?: string | null;
+  remark?: string | null;
+  unit: string;
+};
+
+// Laid out like the printed Nextar GRN booklet: delivery details, items,
+// quality inspection, discrepancies and the four signatory boxes.
+export async function generateGoodsReceivedNotePdf(
+  opts: {
+    company: {
+      name: string;
+      address?: string | null;
+      phone?: string | null;
+      email?: string | null;
+      logo_url?: string | null;
+    };
+    grn_number: string;
+    date_received: string;
+    time_received?: string | null;
+    lpo_number?: string | null;
+    supplier_name: string;
+    supplier_phone?: string | null;
+    vehicle_number?: string | null;
+    driver_name?: string | null;
+    delivery_note_number?: string | null;
+    items: GoodsReceivedNoteLine[];
+    overall_condition?: string | null;
+    packaging_condition?: string | null;
+    expiry_date?: string | null;
+    discrepancies?: string | null;
+    received_by_name: string;
+    received_by_designation?: string | null;
+    inspected_by_name?: string | null;
+    inspected_by_designation?: string | null;
+    delivered_by_name?: string | null;
+    verified_by_name?: string | null;
+    verified_by_designation?: string | null;
+    status?: string | null;
+  },
+  action: PdfAction = "download",
+) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const left = 40;
+  const right = pageW - 40;
+  const navy: [number, number, number] = [16, 42, 112];
+
+  const top = await drawLogoHeader(doc, opts.company.logo_url, 40, 150, 46);
+  doc.setFontSize(9);
+  doc.setTextColor(60);
+  const contact = [opts.company.address, opts.company.phone, opts.company.email]
+    .filter(Boolean)
+    .join(" | ");
+  if (contact) doc.text(contact, pageW / 2, top - 8, { align: "center" });
+  doc.setTextColor(0);
+
+  // Title band
+  let y = top;
+  doc.setFillColor(250, 204, 21);
+  doc.rect(left, y, right - left, 24, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("GOODS RECEIVED NOTE (GRN)", pageW / 2, y + 16, { align: "center" });
+  doc.setFontSize(10);
+  doc.text(`GRN No. ${opts.grn_number}`, right - 8, y + 16, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  y += 40;
+
+  const field = (label: string, value: string | null | undefined, x: number, w: number) => {
+    doc.setFontSize(8);
+    doc.setTextColor(90);
+    doc.text(label, x, y);
+    doc.setTextColor(0);
+    doc.setDrawColor(170);
+    doc.roundedRect(x, y + 4, w, 20, 3, 3);
+    doc.setFontSize(10);
+    doc.text(value || "", x + 6, y + 18, { maxWidth: w - 12 });
+  };
+
+  const third = (right - left - 20) / 3;
+  field("Date Received", opts.date_received, left, third);
+  field("LPO No.", opts.lpo_number, left + third + 10, third);
+  field("Time Received", opts.time_received, left + 2 * (third + 10), third);
+  y += 40;
+
+  const section = (title: string) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...navy);
+    doc.text(title, left, y);
+    doc.setTextColor(0);
+    doc.setFont("helvetica", "normal");
+    y += 10;
+  };
+
+  section("SUPPLIER DETAILS");
+  const half = (right - left - 10) / 2;
+  field("Supplier Name", opts.supplier_name, left, half);
+  field("Phone", opts.supplier_phone, left + half + 10, half);
+  y += 34;
+  field("Vehicle No.", opts.vehicle_number, left, third);
+  field("Driver / Delivery Person", opts.driver_name, left + third + 10, third);
+  field("Delivery Note / Invoice No.", opts.delivery_note_number, left + 2 * (third + 10), third);
+  y += 40;
+
+  section("ITEMS RECEIVED");
+  const qty = (n: number | null) => (n == null ? "" : n.toLocaleString());
+  autoTable(doc, {
+    startY: y,
+    margin: { left, right: pageW - right },
+    head: [
+      [
+        "S/No.",
+        "Item Description",
+        "Qty Ordered",
+        "Qty Received",
+        "Qty Rejected",
+        "Condition",
+        "Remark",
+        "Unit",
+      ],
+    ],
+    body: opts.items.map((it, i) => [
+      String(i + 1),
+      it.description,
+      qty(it.quantity_ordered),
+      qty(it.quantity_received),
+      qty(it.quantity_rejected),
+      it.condition ?? "",
+      it.remark ?? "",
+      it.unit,
+    ]),
+    styles: { fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: navy, fontSize: 8 },
+    columnStyles: {
+      0: { cellWidth: 34 },
+      2: { halign: "right" },
+      3: { halign: "right" },
+      4: { halign: "right" },
+    },
+  });
+  // @ts-expect-error autoTable augments doc
+  y = doc.lastAutoTable.finalY + 20;
+
+  const checkboxes = (
+    label: string,
+    options: string[],
+    selected: string | null | undefined,
+    x: number,
+  ) => {
+    doc.setFontSize(9);
+    doc.text(label, x, y);
+    let cx = x;
+    options.forEach((o) => {
+      doc.setDrawColor(90);
+      doc.rect(cx, y + 6, 9, 9);
+      if (selected && selected.toLowerCase() === o.toLowerCase()) {
+        doc.line(cx + 1.5, y + 7.5, cx + 7.5, y + 13.5);
+        doc.line(cx + 7.5, y + 7.5, cx + 1.5, y + 13.5);
+      }
+      doc.text(o, cx + 13, y + 14);
+      cx += doc.getTextWidth(o) + 28;
+    });
+  };
+
+  section("QUALITY INSPECTION");
+  checkboxes(
+    "Overall Condition",
+    ["Excellent", "Good", "Fair", "Poor"],
+    opts.overall_condition,
+    left,
+  );
+  checkboxes(
+    "Packaging Condition",
+    ["Intact", "Damaged", "Open"],
+    opts.packaging_condition,
+    left + 230,
+  );
+  doc.setFontSize(9);
+  doc.text("Expiry Date", left + 420, y);
+  doc.setFontSize(10);
+  doc.text(opts.expiry_date || "DD / MM / YYYY", left + 420, y + 14);
+  y += 34;
+
+  section("DISCREPANCIES / OBSERVATIONS");
+  doc.setFontSize(9);
+  const notes = doc.splitTextToSize(opts.discrepancies || "", right - left - 12) as string[];
+  const boxH = Math.max(36, notes.length * 12 + 12);
+  doc.setDrawColor(170);
+  doc.roundedRect(left, y, right - left, boxH, 3, 3);
+  doc.text(notes, left + 6, y + 14);
+  y += boxH + 16;
+
+  // Signatories: two rows of two boxes, like the booklet.
+  const sigBox = (
+    title: string,
+    name: string | null | undefined,
+    designation: string | null | undefined,
+    x: number,
+  ) => {
+    const h = 62;
+    doc.setDrawColor(170);
+    doc.roundedRect(x, y, half, h, 3, 3);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(title, x + 6, y + 13);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Name & Designation:", x + 6, y + 29);
+    doc.setFontSize(9);
+    doc.text([name, designation].filter(Boolean).join(" — "), x + 92, y + 29, {
+      maxWidth: half - 98,
+    });
+    doc.setFontSize(8);
+    doc.text("Sign / Date:", x + 6, y + 50);
+    doc.line(x + 60, y + 51, x + half - 10, y + 51);
+  };
+  if (y + 140 > doc.internal.pageSize.getHeight() - 30) {
+    doc.addPage();
+    y = 40;
+  }
+  sigBox("Received by (Store Keeper)", opts.received_by_name, opts.received_by_designation, left);
+  sigBox(
+    "Inspected by (Internal Control)",
+    opts.inspected_by_name,
+    opts.inspected_by_designation,
+    left + half + 10,
+  );
+  y += 72;
+  sigBox("Delivered by (Supplier / Driver)", opts.delivered_by_name, null, left);
+  sigBox(
+    "Verified by (Security)",
+    opts.verified_by_name,
+    opts.verified_by_designation,
+    left + half + 10,
+  );
+  y += 80;
+
+  if (opts.status) {
+    doc.setFontSize(8);
+    doc.setTextColor(110);
+    doc.text(`System status: ${opts.status}`, left, y);
+    doc.setTextColor(0);
+  }
+
+  outputPdf(doc, `GRN-${opts.grn_number}.pdf`, action);
 }

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adminDeleteUser } from "@/lib/admin-users";
-import type { ProductionScope, Role } from "@/lib/permissions";
+import type { Role } from "@/lib/permissions";
 import { toast } from "sonner";
 
 // Shared data/mutations behind the Admin Panel's Users and Pending tabs --
@@ -18,7 +18,6 @@ export type Account = {
   department: string | null;
   role_requested: Role | null;
   requested_factory_id: string | null;
-  production_scope: ProductionScope;
   status: string;
   created_at: string;
   avatar_url: string | null;
@@ -142,20 +141,6 @@ export function useAccountsAdmin() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const setProductionScope = useMutation({
-    mutationFn: async ({ userId, scope }: { userId: string; scope: ProductionScope }) => {
-      const { error } = await supabase.rpc("set_production_scope", {
-        p_user_id: userId,
-        p_scope: scope,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      invalidateAll();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   // Bypasses the request/approve/post maker-checker chain on purpose -- see
   // supabase/migrations/20260915090000_admin_direct_role_assign.sql. Only a
   // super_admin can call this; the RPC itself enforces that.
@@ -203,7 +188,6 @@ export function useAccountsAdmin() {
     approve,
     reject,
     setStatus,
-    setProductionScope,
     setRole,
     remove,
     resetPassword,

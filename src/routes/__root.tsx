@@ -124,7 +124,7 @@ function RootShell({ children }: { children: ReactNode }) {
         >
           <div className="h-28 w-56 overflow-hidden rounded-2xl bg-white p-3 shadow-lg animate-pulse">
             <img
-              src="/assets/nextar%20logo.jpeg"
+              src="/assets/nextar-logo.jpeg"
               alt="Nextar"
               className="h-full w-full object-contain"
             />

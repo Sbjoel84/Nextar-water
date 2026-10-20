@@ -31,7 +31,7 @@ export function AppSidebar() {
           {collapsed ? (
             <div className="h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-white">
               <img
-                src="/assets/nextar%20logo.jpeg"
+                src="/assets/nextar-logo.jpeg"
                 alt="Nextar"
                 className="h-full w-full object-cover object-left"
               />
@@ -39,7 +39,7 @@ export function AppSidebar() {
           ) : (
             <div className="h-10 w-full overflow-hidden rounded-lg bg-white">
               <img
-                src="/assets/nextar%20logo.jpeg"
+                src="/assets/nextar-logo.jpeg"
                 alt="Nextar"
                 className="h-full w-full object-contain"
               />

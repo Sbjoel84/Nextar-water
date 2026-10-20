@@ -1036,8 +1036,7 @@ function CashOutDialog({
   );
 
   // `factory` is the cash held for this factory (what's shown); `total` is all
-  // the cash the person holds, which the database guard checks — a Cash Out
-  // may also hand over cash collected for the other factory. null when the
+  // the cash the person holds, which the database guard checks. null when the
   // cash-in-hand migrations aren't applied yet; the guard is the real check.
   const cashInHand = useQuery({
     queryKey: ["my-cash-in-hand", factoryId, holder],
@@ -1068,7 +1067,6 @@ function CashOutDialog({
   const holderName = isSelf ? "Your" : `${staff[holder!] ?? "Their"}'s`;
   const available = cashInHand.data?.factory ?? null;
   const total = cashInHand.data?.total ?? null;
-  const otherFactories = available !== null && total !== null ? total - Math.max(available, 0) : 0;
   const overCash = method === "cash" && total !== null && amount > Math.max(total, 0);
 
   const submit = useMutation({
@@ -1133,12 +1131,6 @@ function CashOutDialog({
           <p className={`text-sm ${overCash ? "text-destructive" : "text-muted-foreground"}`}>
             {holderName} cash in hand: <strong>{money(Math.max(available, 0), currency)}</strong>
             {overCash && " — a cash Cash Out can't exceed the cash collected."}
-          </p>
-        )}
-        {otherFactories > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Plus {money(otherFactories, currency)} collected for another factory, which can also be
-            handed over here.
           </p>
         )}
         {total !== null && total < 0 && (

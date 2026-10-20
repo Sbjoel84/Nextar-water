@@ -20,7 +20,6 @@ const createUserInput = z.object({
   department: z.string().trim().optional(),
   role: z.string().trim().min(1, "Select a role"),
   factory_id: z.string().uuid().optional(),
-  production_scope: z.enum(["WATER", "BOTH"]).optional(),
 });
 
 export type AdminCreateUserInput = z.infer<typeof createUserInput>;
@@ -137,7 +136,6 @@ export const adminCreateUser = createServerFn({ method: "POST" })
       p_role: data.role,
       p_department: data.department || undefined,
       p_factory_id: data.factory_id || undefined,
-      p_production_scope: data.production_scope || undefined,
     });
 
     if (provisionError) {

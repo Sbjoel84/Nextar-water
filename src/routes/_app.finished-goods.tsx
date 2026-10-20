@@ -95,7 +95,6 @@ type Product = {
   product_type: string;
   product_categories: { name: string } | null;
 };
-type Factory = { id: string; code: string; name: string };
 type Category = { id: string; name: string };
 type Movement = {
   id: string;
@@ -189,21 +188,19 @@ type PendingCorrection = {
 // packaging item -> raw materials). mode "auto": confirmed batches skip
 // finished-goods stock and go straight into the material (see
 // confirm_production_batch()). mode "on_demand": the product is also sold, so
-// batches enter finished goods and Store moves stock across with Transfer
-// (transfer_product_to_material()).
+// batches enter finished goods and Store moves stock across with "Move to raw
+// material" (transfer_product_to_material()).
 type SupplyMode = "auto" | "on_demand";
 type SupplyLink = {
   materialId: string;
   materialName: string;
   unit: string;
-  factoryName: string;
   mode: SupplyMode;
 };
 type MaterialOption = {
   id: string;
   name: string;
   unit: string;
-  factories: { name: string } | null;
 };
 
 // Only "auto" links reroute a confirmed batch away from finished goods.
@@ -313,15 +310,6 @@ function FinishedGoodsPage() {
     },
   });
 
-  const factories = useQuery({
-    queryKey: ["factories-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("factories").select("id,code,name").order("name");
-      if (error) throw error;
-      return (data ?? []) as Factory[];
-    },
-  });
-
   const pendingAdjustments = useQuery({
     queryKey: ["stock-adjustment-requests", "finished_good", factoryId],
     enabled: !!factoryId,
@@ -370,8 +358,7 @@ function FinishedGoodsPage() {
           .select(cols)
           .eq("factory_id", factoryId!)
           .not("transfer_to_material_id", "is", null);
-      const material =
-        "raw_materials!products_transfer_to_material_id_fkey(id,name,unit,factories(name))";
+      const material = "raw_materials!products_transfer_to_material_id_fkey(id,name,unit)";
       // supply_mode arrives with a later migration than the link itself.
       let { data, error } = await query(`id,supply_mode,${material}`);
       if (error) ({ data, error } = await query(`id,${material}`));
@@ -383,7 +370,6 @@ function FinishedGoodsPage() {
           materialId: m.id,
           materialName: m.name,
           unit: m.unit,
-          factoryName: m.factories?.name ?? "other factory",
           mode: row.supply_mode === "on_demand" ? "on_demand" : "auto",
         };
       }
@@ -824,11 +810,11 @@ function FinishedGoodsPage() {
                             <PackageX className="h-4 w-4 text-destructive" />
                           </Button>
                         )}
-                        {write && (
+                        {write && supplyLinks.data?.[p.id] && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Transfer"
+                            title="Move to raw material"
                             onClick={() => setTransferTarget(p)}
                           >
                             <ArrowLeftRight className="h-4 w-4" />
@@ -1029,7 +1015,7 @@ function FinishedGoodsPage() {
                           {b.products?.name ?? "—"}
                           {autoSupply(supplyLinks.data?.[b.product_id]) && (
                             <div className="text-xs font-normal text-muted-foreground">
-                              → {supplyLinks.data?.[b.product_id]?.factoryName} raw materials
+                              → raw material: {supplyLinks.data?.[b.product_id]?.materialName}
                             </div>
                           )}
                         </TableCell>
@@ -1115,8 +1101,8 @@ function FinishedGoodsPage() {
                           {c.production &&
                             autoSupply(supplyLinks.data?.[c.production.product_id]) && (
                               <div className="text-xs font-normal text-muted-foreground">
-                                Adjusts {supplyLinks.data?.[c.production.product_id]?.factoryName}{" "}
-                                raw material
+                                Adjusts raw material:{" "}
+                                {supplyLinks.data?.[c.production.product_id]?.materialName}
                               </div>
                             )}
                         </TableCell>
@@ -1295,11 +1281,10 @@ function FinishedGoodsPage() {
         )}
       </Dialog>
       <Dialog open={!!transferTarget} onOpenChange={(v) => !v && setTransferTarget(null)}>
-        {transferTarget && (
+        {transferTarget && supplyLinks.data?.[transferTarget.id] && (
           <TransferDialog
             product={transferTarget}
-            supplyTo={supplyLinks.data?.[transferTarget.id]}
-            factories={(factories.data ?? []).filter((f) => f.id !== factoryId)}
+            supplyTo={supplyLinks.data[transferTarget.id]}
             onDone={() => {
               setTransferTarget(null);
               invalidateAll();
@@ -1361,7 +1346,8 @@ function ProductForm({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("raw_materials")
-        .select("id,name,unit,factories(name)")
+        .select("id,name,unit")
+        .eq("factory_id", factoryId)
         .eq("active", true)
         .order("name");
       if (error) throw error;
@@ -1564,7 +1550,7 @@ function ProductForm({
                   <SelectItem value="none">— Not used as a raw material —</SelectItem>
                   {(materials.data ?? []).map((m) => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.name} ({m.unit}) · {m.factories?.name ?? "—"}
+                      {m.name} ({m.unit})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1585,7 +1571,7 @@ function ProductForm({
                 <p className="mt-1 text-xs text-muted-foreground">
                   {supplyMode === "auto"
                     ? "Every batch Store confirms goes straight into this raw material, not finished products."
-                    : "Confirmed batches enter finished products so they can be sold. Move what's needed with Transfer."}
+                    : "Confirmed batches enter finished products so they can be sold. Move what's needed with Move to raw material."}
                 </p>
               </div>
             )}
@@ -1772,7 +1758,7 @@ function ConfirmBatchDialog({
     onSuccess: () => {
       toast.success(
         supplyTo
-          ? `Confirmed — ${num(accepted)} ${unit} sent to ${supplyTo.factoryName} raw materials (${supplyTo.materialName})`
+          ? `Confirmed — ${num(accepted)} ${unit} sent to raw material ${supplyTo.materialName}`
           : `Confirmed — ${num(accepted)} ${unit} posted to stock`,
       );
       onDone();
@@ -1813,7 +1799,7 @@ function ConfirmBatchDialog({
         <div className="rounded-md border bg-muted/30 p-3">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
             {supplyTo
-              ? `Accepted Quantity (goes to ${supplyTo.factoryName} raw materials)`
+              ? `Accepted Quantity (goes to raw material ${supplyTo.materialName})`
               : "Accepted Quantity (enters stock)"}
           </div>
           <div className="mt-1 text-xl font-semibold">
@@ -1822,10 +1808,9 @@ function ConfirmBatchDialog({
         </div>
         {supplyTo && (
           <p className="text-xs text-muted-foreground">
-            This product supplies another factory, so it bypasses finished-products stock here. On
-            confirmation the accepted quantity is received into{" "}
-            <span className="font-medium text-foreground">{supplyTo.materialName}</span> for{" "}
-            {supplyTo.factoryName} production.
+            This product is made for use as a raw material, so it bypasses finished-products stock.
+            On confirmation the accepted quantity is received into{" "}
+            <span className="font-medium text-foreground">{supplyTo.materialName}</span>.
           </p>
         )}
       </div>
@@ -1939,54 +1924,33 @@ function RejectCorrectionDialog({
   );
 }
 
-// Destination value for "the raw material this product supplies" — factory
-// ids are uuids, so this can't collide.
-const TO_RAW_MATERIAL = "__raw_material__";
-
+// Moves "produced to sell and use" stock out of finished products into the
+// raw material it supplies.
 function TransferDialog({
   product,
-  factories,
   supplyTo,
   onDone,
 }: {
   product: Product;
-  factories: Factory[];
-  supplyTo?: SupplyLink;
+  supplyTo: SupplyLink;
   onDone: () => void;
 }) {
-  const [toFactory, setToFactory] = useState(supplyTo ? TO_RAW_MATERIAL : (factories[0]?.id ?? ""));
   const [quantity, setQuantity] = useState(0);
   const [reason, setReason] = useState("");
-  const toMaterial = toFactory === TO_RAW_MATERIAL && !!supplyTo;
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!toFactory) throw new Error("Select a destination factory");
       if (quantity <= 0) throw new Error("Quantity must be > 0");
-      if (toMaterial) {
-        const { error } = await (supabase as any).rpc("transfer_product_to_material", {
-          p_product_id: product.id,
-          p_quantity: quantity,
-          p_reason: reason || null,
-        });
-        if (error) throw error;
-        return;
-      }
-      const { error } = await supabase.rpc("transfer_finished_stock", {
-        payload: {
-          product_id: product.id,
-          to_factory_id: toFactory,
-          quantity,
-          reason: reason || null,
-        } as any,
+      const { error } = await (supabase as any).rpc("transfer_product_to_material", {
+        p_product_id: product.id,
+        p_quantity: quantity,
+        p_reason: reason || null,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success(
-        toMaterial
-          ? `${num(quantity)} ${product.unit} moved to ${supplyTo!.factoryName} raw materials (${supplyTo!.materialName})`
-          : "Stock transferred",
+        `${num(quantity)} ${product.unit} moved to raw material ${supplyTo.materialName}`,
       );
       onDone();
     },
@@ -1996,39 +1960,14 @@ function TransferDialog({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Transfer — {product.name}</DialogTitle>
+        <DialogTitle>Move to raw material — {product.name}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
-          Available: {num(Number(product.current_stock))} {product.unit}
+          Available: {num(Number(product.current_stock))} {product.unit}. Leaves finished products
+          and is received into{" "}
+          <span className="font-medium text-foreground">{supplyTo.materialName}</span>.
         </p>
-        <div>
-          <Label>Destination</Label>
-          <Select value={toFactory} onValueChange={setToFactory}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {supplyTo && (
-                <SelectItem value={TO_RAW_MATERIAL}>
-                  {supplyTo.factoryName} raw materials — {supplyTo.materialName}
-                </SelectItem>
-              )}
-              {factories.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {toMaterial && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Leaves finished products here and is received into{" "}
-              <span className="font-medium text-foreground">{supplyTo!.materialName}</span> for{" "}
-              {supplyTo!.factoryName} production.
-            </p>
-          )}
-        </div>
         <div>
           <Label>Quantity</Label>
           <MoneyInput
@@ -2045,11 +1984,8 @@ function TransferDialog({
         </div>
       </div>
       <DialogFooter>
-        <Button
-          disabled={submit.isPending || quantity <= 0 || !toFactory}
-          onClick={() => submit.mutate()}
-        >
-          {submit.isPending ? "Transferring…" : "Transfer stock"}
+        <Button disabled={submit.isPending || quantity <= 0} onClick={() => submit.mutate()}>
+          {submit.isPending ? "Moving…" : "Move stock"}
         </Button>
       </DialogFooter>
     </DialogContent>

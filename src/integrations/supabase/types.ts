@@ -1102,8 +1102,11 @@ export type Database = {
           damaged_quantity: number
           delivery_reference: string | null
           factory_id: string
+          grn_id: string | null
           id: string
+          item_condition: string | null
           material_id: string
+          ordered_quantity: number | null
           purchase_order_id: string | null
           purchase_request_id: string | null
           quantity: number
@@ -1124,8 +1127,11 @@ export type Database = {
           damaged_quantity?: number
           delivery_reference?: string | null
           factory_id: string
+          grn_id?: string | null
           id?: string
+          item_condition?: string | null
           material_id: string
+          ordered_quantity?: number | null
           purchase_order_id?: string | null
           purchase_request_id?: string | null
           quantity: number
@@ -1146,8 +1152,11 @@ export type Database = {
           damaged_quantity?: number
           delivery_reference?: string | null
           factory_id?: string
+          grn_id?: string | null
           id?: string
+          item_condition?: string | null
           material_id?: string
+          ordered_quantity?: number | null
           purchase_order_id?: string | null
           purchase_request_id?: string | null
           quantity?: number
@@ -1192,6 +1201,109 @@ export type Database = {
           },
           {
             foreignKeyName: "goods_receipts_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goods_receipts_grn_id_fkey"
+            columns: ["grn_id"]
+            isOneToOne: false
+            referencedRelation: "goods_received_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      goods_received_notes: {
+        Row: {
+          created_at: string
+          date_received: string
+          delivered_by_name: string | null
+          delivery_note_number: string | null
+          discrepancies: string | null
+          driver_name: string | null
+          expiry_date: string | null
+          factory_id: string
+          grn_number: string
+          id: string
+          inspected_by_designation: string | null
+          inspected_by_name: string | null
+          lpo_number: string | null
+          overall_condition: string | null
+          packaging_condition: string | null
+          received_by_designation: string | null
+          received_by_name: string
+          submitted_by: string
+          supplier_id: string
+          supplier_phone: string | null
+          time_received: string | null
+          vehicle_number: string | null
+          verified_by_designation: string | null
+          verified_by_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          date_received?: string
+          delivered_by_name?: string | null
+          delivery_note_number?: string | null
+          discrepancies?: string | null
+          driver_name?: string | null
+          expiry_date?: string | null
+          factory_id: string
+          grn_number: string
+          id?: string
+          inspected_by_designation?: string | null
+          inspected_by_name?: string | null
+          lpo_number?: string | null
+          overall_condition?: string | null
+          packaging_condition?: string | null
+          received_by_designation?: string | null
+          received_by_name: string
+          submitted_by: string
+          supplier_id: string
+          supplier_phone?: string | null
+          time_received?: string | null
+          vehicle_number?: string | null
+          verified_by_designation?: string | null
+          verified_by_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          date_received?: string
+          delivered_by_name?: string | null
+          delivery_note_number?: string | null
+          discrepancies?: string | null
+          driver_name?: string | null
+          expiry_date?: string | null
+          factory_id?: string
+          grn_number?: string
+          id?: string
+          inspected_by_designation?: string | null
+          inspected_by_name?: string | null
+          lpo_number?: string | null
+          overall_condition?: string | null
+          packaging_condition?: string | null
+          received_by_designation?: string | null
+          received_by_name?: string
+          submitted_by?: string
+          supplier_id?: string
+          supplier_phone?: string | null
+          time_received?: string | null
+          vehicle_number?: string | null
+          verified_by_designation?: string | null
+          verified_by_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goods_received_notes_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goods_received_notes_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
@@ -4096,6 +4208,10 @@ export type Database = {
         Args: { p_comment?: string; p_id: string }
         Returns: Json
       }
+      confirm_goods_received_note: {
+        Args: { p_comment?: string; p_id: string }
+        Returns: Json
+      }
       confirm_payment: {
         Args: { p_id: string; p_note?: string }
         Returns: Json
@@ -4243,6 +4359,10 @@ export type Database = {
         Args: { p_id: string; p_reason: string }
         Returns: Json
       }
+      reject_goods_received_note: {
+        Args: { p_id: string; p_reason: string }
+        Returns: Json
+      }
       reject_new_material: {
         Args: { p_id: string; p_reason?: string }
         Returns: Json
@@ -4357,6 +4477,7 @@ export type Database = {
       }
       submit_costing_sheet: { Args: { payload: Json }; Returns: Json }
       submit_goods_receipt: { Args: { payload: Json }; Returns: Json }
+      submit_goods_received_note: { Args: { payload: Json }; Returns: Json }
       transfer_finished_stock: { Args: { payload: Json }; Returns: Json }
       transfer_raw_material: { Args: { payload: Json }; Returns: Json }
       update_costing_sheet: { Args: { payload: Json }; Returns: Json }

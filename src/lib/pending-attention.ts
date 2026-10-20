@@ -25,9 +25,7 @@ type PendingCountResult = { count: number | null; error: unknown };
 // this from inside a .map() over a defs array would violate that rule even
 // though the array is always the same length/order, so each category below
 // gets its own explicit call instead of being generated in a loop.)
-// Counts are scoped to the factory selected in the top bar, like the pages
-// they link to -- otherwise a badge can point at an item that only exists in
-// the other factory and the page shows nothing to act on.
+// Counts are scoped to the current factory, like the pages they link to.
 type CountScope = { uid: string | null | undefined; factoryId: string | undefined };
 
 function useCount(

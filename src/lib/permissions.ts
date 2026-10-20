@@ -268,30 +268,6 @@ export function useMyRoles() {
   });
 }
 
-export type ProductionScope = "WATER" | "BOTH";
-
-// The caller's own production_scope (profiles.production_scope) — WATER
-// restricts which factory's Production module they can see/act in (enforced
-// server-side by has_production_scope_access()); BOTH (the default for every
-// existing account) means unrestricted, matching pre-feature behaviour.
-export function useMyProductionScope() {
-  return useQuery({
-    queryKey: ["my-production-scope"],
-    queryFn: async (): Promise<ProductionScope> => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return "BOTH";
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("production_scope")
-        .eq("id", userData.user.id)
-        .maybeSingle();
-      if (error) throw error;
-      return (data?.production_scope as ProductionScope | undefined) ?? "BOTH";
-    },
-    staleTime: 60_000,
-  });
-}
-
 export function usePermissions() {
   const { data, isLoading, isError, refetch } = useMyPermissions();
   const access = data?.access ?? {};

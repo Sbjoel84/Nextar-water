@@ -44,6 +44,13 @@ import { Plus, Trash2, Ban, Check, X, Pencil, Droplet } from "lucide-react";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import {
+  REQUISITION_ITEMS,
+  matchesRequisitionItem,
+  requisitionItem,
+  requisitionItemForMaterial,
+  type QtyBasis,
+} from "@/lib/requisition-items";
 
 export const Route = createFileRoute("/_app/costing")({
   head: () => ({ meta: [{ title: "Costing — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -56,8 +63,10 @@ export const Route = createFileRoute("/_app/costing")({
 
 // Costing sheets are water-line only, filtered to water-tagged products/materials.
 type SheetType = "water";
-// Which product template a sheet was built from (see TEMPLATES below).
-type ProductType = "bottle" | "dispenser" | "sachet";
+// Which product template a sheet was built from (see TEMPLATES below). Plain
+// "bottle" is the size-less template older sheets were saved with.
+type ProductType =
+  "bottle_33cl" | "bottle_50cl" | "bottle_75cl" | "dispenser" | "sachet" | "bottle";
 
 type ProductRow = {
   id: string;
@@ -290,7 +299,7 @@ function CostingPage() {
 
   const pageLabel = "Costing";
   const pageDesc =
-    "Cost Bottle, Dispenser and Sachet Water from their raw materials, labour and logistics — submitted for approval before applying to the live cost price.";
+    "Cost 33CL, 50CL and 75CL bottles, Dispenser and Sachet Water from their store requisition items, labour and logistics — submitted for approval before applying to the live cost price.";
 
   return (
     <div className="space-y-6">
@@ -342,7 +351,7 @@ function CostingPage() {
                       </TableCell>
                       <TableCell className="font-medium">{s.sheet_number}</TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {TEMPLATES[s.product_type ?? "bottle"].label}
+                        {templateFor(s.product_type).label}
                       </TableCell>
                       <TableCell>{s.products?.name ?? "—"}</TableCell>
                       <TableCell>
@@ -529,23 +538,10 @@ function CostingPage() {
 }
 
 // ============================================================================
-// COSTING SHEET — pick a product type, and its raw materials, units, labour
-// and logistics are laid out ready to fill in.
+// COSTING SHEET — pick a product (33CL, 50CL, 75CL, Dispenser or Sachet
+// Water) and its store requisition items, labour and logistics are laid out
+// ready to fill in. Any other requisition item can be added from the dropdown.
 // ============================================================================
-
-// How a material's quantity is entered: for the whole batch (e.g. kg of
-// preform), per finished unit (one cap per bottle), or per pack (one bag per
-// 20 sachets). It is always submitted as the batch total.
-type QtyBasis = "batch" | "per_unit" | "per_pack";
-
-type MaterialSlot = {
-  role: string;
-  label: string;
-  basis: QtyBasis;
-  defaultQty: number;
-  // Picks the matching raw material automatically when the type is chosen.
-  match: RegExp;
-};
 
 type TypeTemplate = {
   label: string;
@@ -557,26 +553,27 @@ type TypeTemplate = {
   packCost: number;
   contentPercent: number;
   productMatch: RegExp;
-  slots: MaterialSlot[];
+  // Requisition items laid out when the type is chosen.
+  items: string[];
 };
 
+const bottleTemplate = (size: string, preform: string): TypeTemplate => ({
+  label: `${size}CL Bottle Water`,
+  unit: "bottle",
+  units: "bottles",
+  pack: "pack",
+  packQty: 12,
+  packCostLabel: "Other packaging (₦ per pack)",
+  packCost: 0,
+  contentPercent: 10,
+  productMatch: new RegExp(`${size}\\s*cl`, "i"),
+  items: [preform, "cap_bottle", "label_bottle", "shrink_nylon"],
+});
+
 const TEMPLATES: Record<ProductType, TypeTemplate> = {
-  bottle: {
-    label: "Bottle Water",
-    unit: "bottle",
-    units: "bottles",
-    pack: "carton",
-    packQty: 12,
-    packCostLabel: "Shrink wrapper (₦ per carton)",
-    packCost: 100,
-    contentPercent: 10,
-    productMatch: /bottle|\d+\s*cl\b|\bpet\b/i,
-    slots: [
-      { role: "preform", label: "Preform", basis: "batch", defaultQty: 0, match: /preform/i },
-      { role: "cap", label: "Cap", basis: "per_unit", defaultQty: 1, match: /cap/i },
-      { role: "label", label: "Label", basis: "per_unit", defaultQty: 1, match: /label/i },
-    ],
-  },
+  bottle_33cl: bottleTemplate("33", "preform_33cl"),
+  bottle_50cl: bottleTemplate("50", "preform_50cl"),
+  bottle_75cl: bottleTemplate("75", "preform_75cl"),
   dispenser: {
     label: "Dispenser Water",
     unit: "dispenser",
@@ -587,23 +584,12 @@ const TEMPLATES: Record<ProductType, TypeTemplate> = {
     packCost: 0,
     contentPercent: 0,
     productMatch: /dispenser|gallon|keg|(18\.9|19|20)\s*(l|lt|ltr|litre|liter)s?\b/i,
-    slots: [
-      {
-        role: "dispenser_bottle",
-        label: "Dispenser bottle (jar)",
-        basis: "per_unit",
-        defaultQty: 1,
-        match: /dispenser|jar|keg|gallon|18\.9|19\s*l/i,
-      },
-      { role: "cap", label: "Cap", basis: "per_unit", defaultQty: 1, match: /cap/i },
-      {
-        role: "seal",
-        label: "Seal / shrink band",
-        basis: "per_unit",
-        defaultQty: 1,
-        match: /seal|band|shrink/i,
-      },
-      { role: "label", label: "Label", basis: "per_unit", defaultQty: 1, match: /label/i },
+    items: [
+      "dispenser_bottle",
+      "top_label_dispenser",
+      "side_label_dispenser",
+      "tamper_proof",
+      "packing_bag_dispenser",
     ],
   },
   sachet: {
@@ -616,37 +602,59 @@ const TEMPLATES: Record<ProductType, TypeTemplate> = {
     packCost: 0,
     contentPercent: 0,
     productMatch: /sachet|pure\s*water/i,
-    slots: [
-      {
-        role: "sachet_film",
-        label: "Sachet film (roll)",
-        basis: "batch",
-        defaultQty: 0,
-        match: /sachet|film|roll/i,
-      },
-      {
-        role: "packing_bag",
-        label: "Packing bag",
-        basis: "per_pack",
-        defaultQty: 1,
-        match: /bag|nylon/i,
-      },
-    ],
+    items: ["nylon_roll_sachet", "packing_bag_sachet"],
+  },
+  // Sheets saved before bottles were costed per size. Never offered for new ones.
+  bottle: {
+    ...bottleTemplate("33", "preform_33cl"),
+    label: "Bottle Water",
+    productMatch: /bottle|\d+\s*cl\b|\bpet\b/i,
   },
 };
-const PRODUCT_TYPES = Object.keys(TEMPLATES) as ProductType[];
+const PRODUCT_TYPES: ProductType[] = [
+  "bottle_33cl",
+  "bottle_50cl",
+  "bottle_75cl",
+  "dispenser",
+  "sachet",
+];
+const templateFor = (type: string | null) =>
+  TEMPLATES[(type ?? "bottle") as ProductType] ?? TEMPLATES.bottle;
 
-type SlotState = { role: string; materialId: string; qty: string };
-type ExtraLine = { materialId: string; qty: string };
+// Basis of the roles older sheets were saved with.
+const LEGACY_ROLE_BASIS: Record<string, QtyBasis> = {
+  preform: "batch",
+  sachet_film: "batch",
+  cap: "per_unit",
+  label: "per_unit",
+  dispenser_bottle: "per_unit",
+  seal: "per_unit",
+  packing_bag: "per_pack",
+};
 
-function autoSlots(t: TypeTemplate, materials: MaterialRow[]): SlotState[] {
-  const used = new Set<string>();
-  return t.slots.map((s) => {
-    const m = materials.find((x) => s.match.test(x.name) && !used.has(x.id));
-    if (m) used.add(m.id);
-    return { role: s.role, materialId: m?.id ?? "", qty: s.defaultQty ? String(s.defaultQty) : "" };
-  });
-}
+// "other" = a stock item that isn't on the requisition note.
+const OTHER_ITEM = "other";
+
+type Line = { item: string; materialId: string; qty: string; basis: QtyBasis };
+
+const matchingMaterials = (item: string, materials: MaterialRow[]) => {
+  const r = requisitionItem(item);
+  return r ? materials.filter((m) => matchesRequisitionItem(r, m.name)) : [];
+};
+
+const newLine = (item: string, materials: MaterialRow[]): Line => {
+  const r = requisitionItem(item);
+  const basis = r?.basis ?? "batch";
+  return {
+    item,
+    materialId: matchingMaterials(item, materials)[0]?.id ?? "",
+    qty: basis === "batch" ? "" : "1",
+    basis,
+  };
+};
+
+const templateLines = (t: TypeTemplate, materials: MaterialRow[]) =>
+  t.items.map((i) => newLine(i, materials));
 
 function CostingDialog({
   factoryId,
@@ -662,16 +670,13 @@ function CostingDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [productType, setProductType] = useState<ProductType>(editing?.product_type ?? "bottle");
-  const t = TEMPLATES[productType];
+  const [productType, setProductType] = useState<ProductType>(
+    (editing?.product_type as ProductType | null) ?? "bottle_33cl",
+  );
+  const t = templateFor(productType);
   const [productId, setProductId] = useState(editing?.product_id ?? "");
   const [yieldQty, setYieldQty] = useState(editing ? String(editing.yield_quantity) : "");
-  const [slots, setSlots] = useState<SlotState[]>(() =>
-    editing
-      ? t.slots.map((s) => ({ role: s.role, materialId: "", qty: "" }))
-      : autoSlots(t, materials),
-  );
-  const [extras, setExtras] = useState<ExtraLine[]>([]);
+  const [lines, setLines] = useState<Line[]>(() => (editing ? [] : templateLines(t, materials)));
   const [labour, setLabour] = useState(editing ? String(editing.labor_cost) : "");
   const [logistics, setLogistics] = useState(editing ? String(editing.logistics_cost ?? 0) : "");
   const [contentPercent, setContentPercent] = useState(
@@ -692,12 +697,11 @@ function CostingDialog({
   const packQtyN = Number(packQty) || 1;
   const packs = yieldN / packQtyN;
 
-  // Choosing a type lays out that type's materials and defaults.
+  // Choosing a product lays out its requisition items and defaults.
   const changeType = (next: ProductType) => {
     const nt = TEMPLATES[next];
     setProductType(next);
-    setSlots(autoSlots(nt, materials));
-    setExtras([]);
+    setLines(templateLines(nt, materials));
     setContentPercent(String(nt.contentPercent));
     setPackQty(String(nt.packQty));
     setPackCost(String(nt.packCost));
@@ -705,10 +709,10 @@ function CostingDialog({
     if (current && !nt.productMatch.test(current.name)) setProductId("");
   };
 
-  // A new sheet opened before the material list arrived: pick them once it has.
+  // A new sheet opened before the material list arrived: link them once it has.
   useEffect(() => {
-    if (!editing && materials.length > 0 && slots.every((x) => !x.materialId)) {
-      setSlots(autoSlots(t, materials));
+    if (!editing && materials.length > 0 && lines.every((x) => !x.materialId)) {
+      setLines(lines.map((l) => ({ ...l, materialId: newLine(l.item, materials).materialId })));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materials.length]);
@@ -719,25 +723,21 @@ function CostingDialog({
     (async () => {
       const { data: items } = await supabase
         .from("costing_sheet_items")
-        .select("material_id,quantity,role")
+        .select("material_id,quantity,role,raw_materials(name)")
         .eq("sheet_id", editing.id);
-      const tpl = TEMPLATES[editing.product_type ?? "bottle"];
       const y = Number(editing.yield_quantity) || 1;
       const p = y / (Number(editing.pack_quantity) || 1);
-      const rows = items ?? [];
-      setSlots(
-        tpl.slots.map((s) => {
-          const it = rows.find((i) => i.role === s.role);
-          if (!it) return { role: s.role, materialId: "", qty: "" };
+      setLines(
+        (items ?? []).map((it) => {
+          const role = it.role ?? "";
+          const name = (it.raw_materials as { name: string } | null)?.name ?? "";
+          const item =
+            requisitionItem(role)?.key ?? requisitionItemForMaterial(name)?.key ?? OTHER_ITEM;
+          const basis = requisitionItem(role)?.basis ?? LEGACY_ROLE_BASIS[role] ?? "batch";
           const q = Number(it.quantity);
-          const shown = s.basis === "batch" ? q : s.basis === "per_unit" ? q / y : q / p;
-          return { role: s.role, materialId: it.material_id, qty: String(+shown.toFixed(4)) };
+          const shown = basis === "batch" ? q : basis === "per_unit" ? q / y : q / p;
+          return { item, materialId: it.material_id, qty: String(+shown.toFixed(4)), basis };
         }),
-      );
-      setExtras(
-        rows
-          .filter((i) => !tpl.slots.some((s) => s.role === i.role))
-          .map((i) => ({ materialId: i.material_id, qty: String(i.quantity) })),
       );
       const { data: options } = await supabase
         .from("costing_price_options")
@@ -751,29 +751,15 @@ function CostingDialog({
   }, [editing]);
 
   const materialById = (id: string) => materials.find((m) => m.id === id);
-  const batchQty = (s: MaterialSlot, qty: number) =>
-    s.basis === "batch" ? qty : s.basis === "per_unit" ? qty * yieldN : qty * packs;
+  const batchQty = (basis: QtyBasis, qty: number) =>
+    basis === "batch" ? qty : basis === "per_unit" ? qty * yieldN : qty * packs;
 
-  const lines = [
-    ...t.slots.map((s, i) => {
-      const st = slots[i] ?? { role: s.role, materialId: "", qty: "" };
-      const m = materialById(st.materialId);
-      const quantity = batchQty(s, Number(st.qty) || 0);
-      return { role: s.role, label: s.label, m, quantity, cost: quantity * (m?.unit_cost ?? 0) };
-    }),
-    ...extras.map((e) => {
-      const m = materialById(e.materialId);
-      const quantity = Number(e.qty) || 0;
-      return {
-        role: "other",
-        label: m?.name ?? "Other",
-        m,
-        quantity,
-        cost: quantity * (m?.unit_cost ?? 0),
-      };
-    }),
-  ];
-  const materialCost = lines.reduce((sum, l) => sum + l.cost, 0);
+  const costed = lines.map((l) => {
+    const m = materialById(l.materialId);
+    const quantity = batchQty(l.basis, Number(l.qty) || 0);
+    return { ...l, m, quantity, cost: quantity * (m?.unit_cost ?? 0) };
+  });
+  const materialCost = costed.reduce((sum, l) => sum + l.cost, 0);
   const contentCost = (materialCost * (Number(contentPercent) || 0)) / 100;
   const labourN = Number(labour) || 0;
   const logisticsN = Number(logistics) || 0;
@@ -799,9 +785,9 @@ function CostingDialog({
     pack_cost: packCostN,
     apply_to_product: applyToProduct,
     notes: notes || null,
-    items: lines
+    items: costed
       .filter((l) => l.m && l.quantity > 0)
-      .map((l) => ({ material_id: l.m!.id, quantity: +l.quantity.toFixed(4), role: l.role })),
+      .map((l) => ({ material_id: l.m!.id, quantity: +l.quantity.toFixed(4), role: l.item })),
     price_options: priceOptions
       .filter((p) => p.trim() !== "" && Number(p) >= 0)
       .map((p) => ({ proposed_price: Number(p) })),
@@ -843,15 +829,16 @@ function CostingDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const missingSlot = t.slots.find((s, i) => !slots[i]?.materialId || !(Number(slots[i]?.qty) > 0));
-  const canSubmitForm = loaded && !!productId && yieldN > 0 && !missingSlot;
+  const lineLabel = (l: Line) =>
+    requisitionItem(l.item)?.name ?? (l.item === OTHER_ITEM ? "Other material" : "Item");
+  const incomplete = costed.find((l) => !l.item || !l.m || !(Number(l.qty) > 0));
+  const canSubmitForm = loaded && !!productId && yieldN > 0 && costed.length > 0 && !incomplete;
 
-  const qtyLabel = (s: MaterialSlot, unit: string) =>
-    s.basis === "batch"
-      ? `${unit} used for the whole batch`
-      : s.basis === "per_unit"
-        ? `${unit} per ${t.unit}`
-        : `${unit} per ${t.pack}`;
+  const basisOptions: { value: QtyBasis; label: string }[] = [
+    { value: "batch", label: "Whole batch" },
+    { value: "per_unit", label: `Per ${t.unit}` },
+    ...(t.pack !== "unit" ? [{ value: "per_pack" as const, label: `Per ${t.pack}` }] : []),
+  ];
 
   return (
     <Dialog
@@ -860,7 +847,7 @@ function CostingDialog({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Droplet className="h-4 w-4 text-sky-500" />
@@ -880,11 +867,13 @@ function CostingDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRODUCT_TYPES.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {TEMPLATES[k].label}
-                    </SelectItem>
-                  ))}
+                  {(productType === "bottle" ? [...PRODUCT_TYPES, productType] : PRODUCT_TYPES).map(
+                    (k) => (
+                      <SelectItem key={k} value={k}>
+                        {TEMPLATES[k].label}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -922,106 +911,131 @@ function CostingDialog({
           <div className="space-y-3 rounded-lg border p-3">
             <div className="flex items-center justify-between">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Raw materials
+                Store requisition items
               </Label>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setExtras([...extras, { materialId: "", qty: "" }])}
+                onClick={() =>
+                  setLines([...lines, { item: "", materialId: "", qty: "", basis: "batch" }])
+                }
               >
-                <Plus className="mr-1 h-3.5 w-3.5" /> Other material
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add item
               </Button>
             </div>
-            {t.slots.map((s, i) => {
-              const st = slots[i] ?? { role: s.role, materialId: "", qty: "" };
-              const m = materialById(st.materialId);
-              const line = lines[i];
-              const update = (patch: Partial<SlotState>) =>
-                setSlots(slots.map((x, j) => (j === i ? { ...st, ...patch } : x)));
+            {costed.map((l, i) => {
+              const update = (patch: Partial<Line>) =>
+                setLines(lines.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              const matches = matchingMaterials(l.item, materials);
+              const materialChoices = matches.length > 0 ? matches : materials;
+              const req = requisitionItem(l.item);
               return (
-                <div key={s.role} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                  <div className="space-y-1">
-                    <Label className="text-xs">{s.label}</Label>
-                    <Select value={st.materialId} onValueChange={(v) => update({ materialId: v })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={`Select ${s.label.toLowerCase()}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials.map((mm) => (
-                          <SelectItem key={mm.id} value={mm.id}>
-                            {mm.name} ({money(mm.unit_cost)}/{mm.unit})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div key={i} className="space-y-2 rounded-md border bg-muted/20 p-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Requisition item</Label>
+                      <Select value={l.item} onValueChange={(v) => update(newLine(v, materials))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select item" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {REQUISITION_ITEMS.map((r) => (
+                            <SelectItem key={r.key} value={r.key}>
+                              {r.sn}. {r.name} ({r.unit})
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={OTHER_ITEM}>Other stock item…</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">
+                        Stock item (unit cost)
+                      </Label>
+                      <Select
+                        value={l.materialId}
+                        onValueChange={(v) => update({ materialId: v })}
+                        disabled={!l.item}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select stock item" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {materialChoices.map((mm) => (
+                            <SelectItem key={mm.id} value={mm.id}>
+                              {mm.name} ({money(mm.unit_cost)}/{mm.unit})
+                            </SelectItem>
+                          ))}
+                          {materialChoices.length === 0 && (
+                            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                              No water raw materials yet.
+                            </div>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {req && matches.length === 0 && (
+                        <p className="text-xs text-warning">
+                          No “{req.name}” in Raw Materials. Pick the closest stock item, or add it
+                          on the Raw Materials page.
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">
-                      {qtyLabel(s, m?.unit ?? "Qty")}
-                    </Label>
-                    <MoneyInput
-                      min="0"
-                      step="0.001"
-                      value={Number(st.qty) || 0}
-                      onChange={(v) => update({ qty: String(v) })}
-                    />
-                  </div>
-                  <div className="self-end pb-2 text-right text-xs text-muted-foreground sm:w-28">
-                    {num(+line.quantity.toFixed(3))} {m?.unit ?? ""}
-                    <div className="font-medium text-foreground">{money(line.cost)}</div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">
+                        Quantity ({l.m?.unit ?? req?.unit ?? "qty"})
+                      </Label>
+                      <MoneyInput
+                        min="0"
+                        step="0.001"
+                        value={Number(l.qty) || 0}
+                        onChange={(v) => update({ qty: String(v) })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Quantity is</Label>
+                      <Select
+                        value={l.basis}
+                        onValueChange={(v) => update({ basis: v as QtyBasis })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {basisOptions.map((b) => (
+                            <SelectItem key={b.value} value={b.value}>
+                              {b.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end justify-end gap-1 sm:w-36">
+                      <div className="pb-1 text-right text-xs text-muted-foreground">
+                        {num(+l.quantity.toFixed(3))} {l.m?.unit ?? ""}
+                        <div className="font-medium text-foreground">{money(l.cost)}</div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title="Remove item"
+                        onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );
             })}
-            {extras.map((e, i) => {
-              const m = materialById(e.materialId);
-              const update = (patch: Partial<ExtraLine>) =>
-                setExtras(extras.map((x, j) => (j === i ? { ...e, ...patch } : x)));
-              return (
-                <div key={`x${i}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Other material</Label>
-                    <Select value={e.materialId} onValueChange={(v) => update({ materialId: v })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="e.g. treatment chemical" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {materials.map((mm) => (
-                          <SelectItem key={mm.id} value={mm.id}>
-                            {mm.name} ({money(mm.unit_cost)}/{mm.unit})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">
-                      {m?.unit ?? "Qty"} used for the whole batch
-                    </Label>
-                    <MoneyInput
-                      min="0"
-                      step="0.001"
-                      value={Number(e.qty) || 0}
-                      onChange={(v) => update({ qty: String(v) })}
-                    />
-                  </div>
-                  <div className="flex items-end justify-end gap-1 pb-1 sm:w-28">
-                    <span className="pb-1 text-xs font-medium">
-                      {money((Number(e.qty) || 0) * (m?.unit_cost ?? 0))}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setExtras(extras.filter((_, j) => j !== i))}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+            {costed.length === 0 && loaded && (
+              <p className="py-2 text-center text-xs text-muted-foreground">
+                Add the requisition items this batch uses.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1088,7 +1102,12 @@ function CostingDialog({
           </div>
 
           <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
-            <Row label="Raw materials" value={money(materialCost)} />
+            {costed
+              .filter((l) => l.cost > 0)
+              .map((l, i) => (
+                <Row key={i} label={lineLabel(l)} value={money(l.cost)} />
+              ))}
+            <Row label="Requisition items" value={money(materialCost)} strong />
             <Row label={`Water & treatment (${contentPercent || 0}%)`} value={money(contentCost)} />
             <Row label="Labour" value={money(labourN)} />
             <Row label="Logistics" value={money(logisticsN)} />
@@ -1108,9 +1127,11 @@ function CostingDialog({
             )}
             <Row label={`Final cost per ${t.pack}`} value={money(costPerPack)} strong />
           </div>
-          {missingSlot && (
+          {incomplete && (
             <p className="text-xs text-warning">
-              Choose the {missingSlot.label.toLowerCase()} and enter its quantity.
+              {incomplete.item
+                ? `Choose the stock item for ${lineLabel(incomplete).toLowerCase()} and enter its quantity.`
+                : "Choose a requisition item for every line, or remove the empty one."}
             </p>
           )}
           <p className="text-xs text-muted-foreground">

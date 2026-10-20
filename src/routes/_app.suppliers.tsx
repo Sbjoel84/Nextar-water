@@ -35,7 +35,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Eye, Trash2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Search, Pencil, Eye, Trash2, PackagePlus } from "lucide-react";
+import {
+  GoodsReceivedNoteFormDialog,
+  GoodsReceivedNotesTable,
+} from "@/components/suppliers/goods-received-notes";
 import { money, num } from "@/lib/format";
 import { toast } from "sonner";
 import { requestDelete } from "@/lib/request-delete";
@@ -89,12 +94,15 @@ type PurchaseRecord = {
 function SuppliersPage() {
   const { data: factoryId } = useFactoryId();
   const qc = useQueryClient();
-  const { canWrite } = usePermissions();
+  const { canWrite, canSubmit, canView } = usePermissions();
   const write = canWrite("suppliers");
+  const canReceive = canSubmit("goods-receiving");
+  const viewGrns = canView("goods-receiving");
   const [q, setQ] = useSearchQuery();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [viewing, setViewing] = useState<Supplier | null>(null);
+  const [receiving, setReceiving] = useState<Supplier | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
 
   const list = useQuery({
@@ -165,7 +173,8 @@ function SuppliersPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Suppliers</h1>
           <p className="text-sm text-muted-foreground">
-            Supplier profiles, materials supplied, and purchase history.
+            Supplier profiles, materials supplied, purchase history, and Goods Received Notes for
+            every delivery.
           </p>
         </div>
         {write && (
@@ -191,109 +200,171 @@ function SuppliersPage() {
         )}
       </div>
 
-      <Card className="rounded-2xl">
-        <CardHeader className="flex-row items-center justify-between gap-3">
-          <CardTitle>All Suppliers</CardTitle>
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search or paste #ID…"
-              className="pl-8 h-9"
-            />
-          </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Contact Person</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Materials Supplied</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Outstanding Balance</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {shown.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>
-                    <RefId id={s.id} />
-                  </TableCell>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell>{s.category ?? "—"}</TableCell>
-                  <TableCell>{s.contact_person ?? "—"}</TableCell>
-                  <TableCell>{s.phone ?? "—"}</TableCell>
-                  <TableCell className="max-w-60 truncate">{s.materials_supplied ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={s.status === "active" ? "secondary" : "outline"}
-                      className="capitalize"
-                    >
-                      {s.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={
-                        Number(s.outstanding_balance) > 0 ? "text-destructive font-medium" : ""
-                      }
-                    >
-                      {money(Number(s.outstanding_balance))}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="View profile"
-                        onClick={() => setViewing(s)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Edit"
-                        onClick={() => {
-                          setEditing(s);
-                          setOpen(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Delete"
-                        onClick={() => setDeleteTarget(s)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {shown.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                    No suppliers yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="suppliers" className="space-y-4">
+        {viewGrns && (
+          <TabsList>
+            <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+            <TabsTrigger value="grns">Goods Received Notes</TabsTrigger>
+          </TabsList>
+        )}
+        <TabsContent value="suppliers" className="mt-0">
+          <Card className="rounded-2xl">
+            <CardHeader className="flex-row items-center justify-between gap-3">
+              <CardTitle>All Suppliers</CardTitle>
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search or paste #ID…"
+                  className="pl-8 h-9"
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Contact Person</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Materials Supplied</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Outstanding Balance</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shown.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell>
+                        <RefId id={s.id} />
+                      </TableCell>
+                      <TableCell className="font-medium">{s.name}</TableCell>
+                      <TableCell>{s.category ?? "—"}</TableCell>
+                      <TableCell>{s.contact_person ?? "—"}</TableCell>
+                      <TableCell>{s.phone ?? "—"}</TableCell>
+                      <TableCell className="max-w-60 truncate">
+                        {s.materials_supplied ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={s.status === "active" ? "secondary" : "outline"}
+                          className="capitalize"
+                        >
+                          {s.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span
+                          className={
+                            Number(s.outstanding_balance) > 0 ? "text-destructive font-medium" : ""
+                          }
+                        >
+                          {money(Number(s.outstanding_balance))}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          {canReceive && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Receive goods (GRN)"
+                              onClick={() => setReceiving(s)}
+                            >
+                              <PackagePlus className="h-4 w-4 text-success" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="View profile"
+                            onClick={() => setViewing(s)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edit"
+                            onClick={() => {
+                              setEditing(s);
+                              setOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Delete"
+                            onClick={() => setDeleteTarget(s)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {shown.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                        No suppliers yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        {viewGrns && (
+          <TabsContent value="grns" className="mt-0">
+            <Card className="rounded-2xl">
+              <CardHeader>
+                <CardTitle>Goods Received Notes</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Every delivery received from suppliers. Stock is only updated once a different
+                  person confirms the note.
+                </p>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <GoodsReceivedNotesTable factoryId={factoryId} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
 
       <Dialog open={!!viewing} onOpenChange={(v) => !v && setViewing(null)}>
-        {viewing && <SupplierProfileDialog supplier={viewing} />}
+        {viewing && (
+          <SupplierProfileDialog
+            supplier={viewing}
+            factoryId={factoryId}
+            showGrns={viewGrns}
+            onReceive={
+              canReceive
+                ? () => {
+                    setReceiving(viewing);
+                    setViewing(null);
+                  }
+                : undefined
+            }
+          />
+        )}
+      </Dialog>
+
+      <Dialog open={!!receiving} onOpenChange={(v) => !v && setReceiving(null)}>
+        {receiving && (
+          <GoodsReceivedNoteFormDialog
+            supplier={receiving}
+            factoryId={factoryId}
+            onDone={() => setReceiving(null)}
+          />
+        )}
       </Dialog>
 
       <RequestDeleteDialog
@@ -307,7 +378,17 @@ function SuppliersPage() {
   );
 }
 
-function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
+function SupplierProfileDialog({
+  supplier,
+  factoryId,
+  showGrns,
+  onReceive,
+}: {
+  supplier: Supplier;
+  factoryId: string | undefined;
+  showGrns: boolean;
+  onReceive?: () => void;
+}) {
   const materials = useQuery({
     queryKey: ["supplier-materials", supplier.id],
     queryFn: async () => {
@@ -342,11 +423,11 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
   });
 
   return (
-    <DialogContent className="max-w-2xl">
+    <DialogContent className="max-w-3xl">
       <DialogHeader>
         <DialogTitle>{supplier.name}</DialogTitle>
       </DialogHeader>
-      <div className="space-y-4">
+      <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
         <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-sm">
           <div>
             <span className="text-muted-foreground">Category:</span> {supplier.category ?? "—"}
@@ -436,6 +517,26 @@ function SupplierProfileDialog({ supplier }: { supplier: Supplier }) {
             </TableBody>
           </Table>
         </div>
+
+        {showGrns && (
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-sm font-medium">Goods Received Notes</div>
+              {onReceive && (
+                <Button size="sm" className="gap-1" onClick={onReceive}>
+                  <PackagePlus className="h-4 w-4" /> Receive goods
+                </Button>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <GoodsReceivedNotesTable
+                factoryId={factoryId}
+                supplierId={supplier.id}
+                emptyText="No deliveries received from this supplier yet."
+              />
+            </div>
+          </div>
+        )}
 
         <div>
           <div className="mb-2 text-sm font-medium">Purchase history</div>

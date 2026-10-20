@@ -49,7 +49,6 @@ import {
   Boxes,
   AlertTriangle,
   Wallet,
-  ArrowLeftRight,
   Send,
   Ban,
   Undo2,
@@ -69,6 +68,7 @@ import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
 import { usePrefillFromProfile } from "@/lib/use-my-profile";
+import { MATERIAL_PRESETS, presetUnitOption } from "@/lib/material-presets";
 
 export const Route = createFileRoute("/_app/raw-materials")({
   head: () => ({
@@ -103,7 +103,6 @@ type Material = {
   suppliers: { name: string } | null;
   material_categories: { name: string } | null;
 };
-type Factory = { id: string; code: string; name: string };
 type CostHistoryRow = {
   id: string;
   cost: number;
@@ -221,7 +220,6 @@ function RawMaterialsPage() {
   const [receiveTarget, setReceiveTarget] = useState<Material | null>(null);
   const [issueTarget, setIssueTarget] = useState<Material | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<Material | null>(null);
-  const [transferTarget, setTransferTarget] = useState<Material | null>(null);
   const [historyTarget, setHistoryTarget] = useState<Material | null>(null);
   const [purchaseTarget, setPurchaseTarget] = useState<Material | null>(null);
   const [q, setQ] = useSearchQuery();
@@ -237,15 +235,6 @@ function RawMaterialsPage() {
         .order("name");
       if (error) throw error;
       return (data ?? []) as Supplier[];
-    },
-  });
-
-  const factories = useQuery({
-    queryKey: ["factories-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("factories").select("id,code,name").order("name");
-      if (error) throw error;
-      return (data ?? []) as Factory[];
     },
   });
 
@@ -460,18 +449,6 @@ function RawMaterialsPage() {
       toast.success("Write-off request cancelled");
       invalidateAll();
     },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const toggleActive = useMutation({
-    mutationFn: async (m: Material) => {
-      const { error } = await supabase
-        .from("raw_materials")
-        .update({ active: !m.active })
-        .eq("id", m.id);
-      if (error) throw error;
-    },
-    onSuccess: () => invalidateAll(),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -764,16 +741,6 @@ function RawMaterialsPage() {
                                 <SlidersHorizontal className="h-4 w-4" />
                               </Button>
                             )}
-                            {write && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Transfer"
-                                onClick={() => setTransferTarget(m)}
-                              >
-                                <ArrowLeftRight className="h-4 w-4" />
-                              </Button>
-                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -801,16 +768,6 @@ function RawMaterialsPage() {
                                 }}
                               >
                                 <Pencil className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {write && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title={m.active ? "Deactivate" : "Activate"}
-                                onClick={() => toggleActive.mutate(m)}
-                              >
-                                {m.active ? "Deactivate" : "Activate"}
                               </Button>
                             )}
                           </>
@@ -1129,18 +1086,6 @@ function RawMaterialsPage() {
           />
         )}
       </Dialog>
-      <Dialog open={!!transferTarget} onOpenChange={(v) => !v && setTransferTarget(null)}>
-        {transferTarget && (
-          <TransferDialog
-            material={transferTarget}
-            factories={(factories.data ?? []).filter((f) => f.id !== factoryId)}
-            onDone={() => {
-              setTransferTarget(null);
-              invalidateAll();
-            }}
-          />
-        )}
-      </Dialog>
       <Dialog open={!!historyTarget} onOpenChange={(v) => !v && setHistoryTarget(null)}>
         {historyTarget && <HistoryDialog material={historyTarget} />}
       </Dialog>
@@ -1188,6 +1133,32 @@ function MaterialForm({
     unitOptions.includes(initialUnit) ? "" : initialUnit,
   );
   const unit = unitChoice === "__custom__" ? customUnit : unitChoice;
+
+  // Name comes from the standard store list; "Other…" allows any other name.
+  const [nameChoice, setNameChoice] = useState(
+    editing
+      ? MATERIAL_PRESETS.some((p) => p.name === editing.name)
+        ? editing.name
+        : "__other__"
+      : "",
+  );
+  const pickName = (choice: string) => {
+    setNameChoice(choice);
+    if (choice === "__other__") {
+      setName("");
+      return;
+    }
+    setName(choice);
+    const presetUnit = MATERIAL_PRESETS.find((p) => p.name === choice)?.unit;
+    if (!presetUnit) return;
+    const option = presetUnitOption(presetUnit, unitOptions);
+    if (option) {
+      setUnitChoice(option);
+    } else {
+      setUnitChoice("__custom__");
+      setCustomUnit(presetUnit);
+    }
+  };
 
   // Bottle/Sachet/Dispenser only take kg or pieces — if the category changes
   // to/from one of those, drop a unit choice that's no longer offered.
@@ -1295,7 +1266,28 @@ function MaterialForm({
       <div className="grid gap-3 max-h-[75vh] overflow-y-auto pr-1">
         <div>
           <Label>Raw material name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
+          <Select value={nameChoice} onValueChange={pickName}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select material…" />
+            </SelectTrigger>
+            <SelectContent>
+              {MATERIAL_PRESETS.map((p) => (
+                <SelectItem key={p.name} value={p.name}>
+                  {p.name}
+                  {p.unit ? ` (${p.unit})` : ""}
+                </SelectItem>
+              ))}
+              <SelectItem value="__other__">Other…</SelectItem>
+            </SelectContent>
+          </Select>
+          {nameChoice === "__other__" && (
+            <Input
+              className="mt-2"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Type the material name"
+            />
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -1793,91 +1785,6 @@ function AdjustDialog({ material, onDone }: { material: Material; onDone: () => 
           onClick={() => submit.mutate()}
         >
           {submit.isPending ? "Submitting…" : "Submit for approval"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function TransferDialog({
-  material,
-  factories,
-  onDone,
-}: {
-  material: Material;
-  factories: Factory[];
-  onDone: () => void;
-}) {
-  const [toFactory, setToFactory] = useState(factories[0]?.id ?? "");
-  const [quantity, setQuantity] = useState(0);
-  const [reason, setReason] = useState("");
-
-  const submit = useMutation({
-    mutationFn: async () => {
-      if (!toFactory) throw new Error("Select a destination factory");
-      if (quantity <= 0) throw new Error("Quantity must be > 0");
-      const { error } = await supabase.rpc("transfer_raw_material", {
-        payload: {
-          material_id: material.id,
-          to_factory_id: toFactory,
-          quantity,
-          reason: reason || null,
-        } as any,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Stock transferred");
-      onDone();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Transfer — {material.name}</DialogTitle>
-      </DialogHeader>
-      <div className="grid gap-3">
-        <p className="text-sm text-muted-foreground">
-          Available: {num(Number(material.current_stock))} {material.unit}
-        </p>
-        <div>
-          <Label>Destination factory</Label>
-          <Select value={toFactory} onValueChange={setToFactory}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {factories.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Quantity</Label>
-          <MoneyInput
-            min={0.001}
-            max={Number(material.current_stock)}
-            step="0.001"
-            value={quantity}
-            onChange={setQuantity}
-          />
-        </div>
-        <div>
-          <Label>Reason</Label>
-          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button
-          disabled={submit.isPending || quantity <= 0 || !toFactory}
-          onClick={() => submit.mutate()}
-        >
-          {submit.isPending ? "Transferring…" : "Transfer stock"}
         </Button>
       </DialogFooter>
     </DialogContent>
