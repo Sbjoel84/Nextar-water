@@ -56,7 +56,6 @@ type RawMaterialRow = {
   category: string | null;
   unit: string;
   current_stock: number;
-  unit_cost: number;
   current_value: number;
   reorder_level: number | null;
   active: boolean;
@@ -134,7 +133,7 @@ function InventoryOverviewPage() {
       const { data, error } = await supabase
         .from("raw_materials")
         .select(
-          "id,name,category,unit,current_stock,unit_cost,current_value,reorder_level,active,material_categories(name)",
+          "id,name,category,unit,current_stock,current_value,reorder_level,active,material_categories(name)",
         )
         .eq("factory_id", factoryId!)
         .eq("active", true)
@@ -281,7 +280,6 @@ function InventoryOverviewPage() {
                     <TableHead>Category</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
                     <TableHead className="text-right">Reorder Level</TableHead>
-                    <TableHead className="text-right">Unit Cost</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -306,7 +304,6 @@ function InventoryOverviewPage() {
                             ? `${num(Number(m.reorder_level))} ${m.unit}`
                             : "—"}
                         </TableCell>
-                        <TableCell className="text-right">{money(Number(m.unit_cost))}</TableCell>
                         <TableCell>
                           {low ? (
                             <Badge variant="destructive">Low Stock</Badge>
@@ -326,7 +323,7 @@ function InventoryOverviewPage() {
                   })}
                   {filteredMaterials.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         No raw materials for {factoryLabel.name}.
                       </TableCell>
                     </TableRow>

@@ -45,7 +45,6 @@ import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import {
-  REQUISITION_ITEMS,
   matchesRequisitionItem,
   requisitionItem,
   requisitionItemForMaterial,
@@ -89,6 +88,10 @@ type Sheet = {
   sheet_type: SheetType | null;
   product_type: ProductType | null;
   logistics_cost: number;
+  electricity_cost: number; // NEPA
+  fuel_cost: number; // diesel / fuel
+  loading_cost: number;
+  working_days: number;
   yield_quantity: number;
   material_cost: number;
   labor_cost: number;
@@ -113,6 +116,126 @@ const statusBadge = (s: WorkflowStatus): "default" | "secondary" | "outline" | "
   if (s === "rejected" || s === "cancelled") return "destructive";
   return "outline";
 };
+
+// A sheet costs one day's production; working_days projects it over the month.
+const DEFAULT_WORKING_DAYS = 26;
+const daysOf = (s: Sheet) => Number(s.working_days) || DEFAULT_WORKING_DAYS;
+// total_cost covers the day's batch; per-pack packaging is added on top of it.
+const packagingPerDay = (s: Sheet) =>
+  Number(s.pack_cost) * (Number(s.yield_quantity) / (Number(s.pack_quantity) || 1));
+const dailySpend = (s: Sheet) => Number(s.total_cost) + packagingPerDay(s);
+
+// What each product costs the company over a month, from its approved sheet
+// (or, until one is approved, its latest sheet awaiting approval).
+function MonthlyProjection({ sheets }: { sheets: Sheet[] }) {
+  const byProduct = new Map<string, Sheet>();
+  // sheets arrive newest first, so the first posted / pending one wins.
+  for (const status of ["posted", "pending_approval"] as WorkflowStatus[]) {
+    sheets
+      .filter((s) => s.status === status && !byProduct.has(s.product_id))
+      .forEach((s) => byProduct.set(s.product_id, s));
+  }
+  const rows = [...byProduct.values()].map((s) => {
+    const days = daysOf(s);
+    return {
+      s,
+      days,
+      units: Number(s.yield_quantity) * days,
+      materials: (Number(s.material_cost) + packagingPerDay(s)) * days,
+      treatment: Number(s.overhead_cost) * days,
+      labour: Number(s.labor_cost) * days,
+      running: (Number(s.electricity_cost ?? 0) + Number(s.fuel_cost ?? 0)) * days,
+      logistics: (Number(s.logistics_cost ?? 0) + Number(s.loading_cost ?? 0)) * days,
+      total: dailySpend(s) * days,
+    };
+  });
+  const totals = rows.reduce(
+    (t, r) => ({
+      materials: t.materials + r.materials,
+      treatment: t.treatment + r.treatment,
+      labour: t.labour + r.labour,
+      running: t.running + r.running,
+      logistics: t.logistics + r.logistics,
+      total: t.total + r.total,
+    }),
+    { materials: 0, treatment: 0, labour: 0, running: 0, logistics: 0, total: 0 },
+  );
+
+  return (
+    <Card className="rounded-2xl">
+      <CardHeader>
+        <CardTitle>Monthly spend projection</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Each product's daily production cost × its production days per month.
+        </p>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Product</TableHead>
+              <TableHead>Output / month</TableHead>
+              <TableHead className="text-right">Raw materials</TableHead>
+              <TableHead className="text-right">Water &amp; treatment</TableHead>
+              <TableHead className="text-right">Labour</TableHead>
+              <TableHead className="text-right">Running cost</TableHead>
+              <TableHead className="text-right">Logistics &amp; loading</TableHead>
+              <TableHead className="text-right">Total / month</TableHead>
+              <TableHead className="text-right">Cost / unit</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => {
+              const t = templateFor(r.s.product_type);
+              return (
+                <TableRow key={r.s.id}>
+                  <TableCell>
+                    <div className="font-medium">{r.s.products?.name ?? "—"}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {r.s.sheet_number}
+                      {r.s.status === "pending_approval" && " · awaiting approval"}
+                    </div>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {num(r.units)} {t.units}
+                    <div className="text-xs text-muted-foreground">
+                      {num(Number(r.s.yield_quantity))}/day × {num(r.days)} days
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">{money(r.materials)}</TableCell>
+                  <TableCell className="text-right">{money(r.treatment)}</TableCell>
+                  <TableCell className="text-right">{money(r.labour)}</TableCell>
+                  <TableCell className="text-right">{money(r.running)}</TableCell>
+                  <TableCell className="text-right">{money(r.logistics)}</TableCell>
+                  <TableCell className="text-right font-semibold">{money(r.total)}</TableCell>
+                  <TableCell className="text-right">{money(r.s.unit_cost)}</TableCell>
+                </TableRow>
+              );
+            })}
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
+                  Submit a costing sheet to see the month's projected spend.
+                </TableCell>
+              </TableRow>
+            ) : (
+              <TableRow className="bg-muted/30 font-semibold">
+                <TableCell colSpan={2}>All products</TableCell>
+                <TableCell className="text-right">{money(totals.materials)}</TableCell>
+                <TableCell className="text-right">{money(totals.treatment)}</TableCell>
+                <TableCell className="text-right">{money(totals.labour)}</TableCell>
+                <TableCell className="text-right">{money(totals.running)}</TableCell>
+                <TableCell className="text-right">{money(totals.logistics)}</TableCell>
+                <TableCell className="text-right">{money(totals.total)}</TableCell>
+                <TableCell />
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
 
 function PriceOptionsEditor({
   priceOptions,
@@ -236,7 +359,7 @@ function CostingPage() {
       const { data, error } = await supabase
         .from("costing_sheets")
         .select(
-          "id,sheet_number,product_id,sheet_type,product_type,logistics_cost,yield_quantity,material_cost,labor_cost,overhead_cost,overhead_percent,pack_quantity,pack_cost,cost_per_pack,total_cost,unit_cost,apply_to_product,is_applied,status,created_by,notes,created_at,products(name,unit)",
+          "id,sheet_number,product_id,sheet_type,product_type,logistics_cost,electricity_cost,fuel_cost,loading_cost,working_days,yield_quantity,material_cost,labor_cost,overhead_cost,overhead_percent,pack_quantity,pack_cost,cost_per_pack,total_cost,unit_cost,apply_to_product,is_applied,status,created_by,notes,created_at,products(name,unit)",
         )
         .eq("factory_id", factoryId!)
         .order("created_at", { ascending: false })
@@ -299,7 +422,7 @@ function CostingPage() {
 
   const pageLabel = "Costing";
   const pageDesc =
-    "Cost 33CL, 50CL and 75CL bottles, Dispenser and Sachet Water from their store requisition items, labour and logistics — submitted for approval before applying to the live cost price.";
+    "What the company spends to produce each product: one day's raw materials at their cost per piece, labour wages, running cost (NEPA, diesel/fuel) and logistics with loading — projected over the month. Sheets are approved before the cost applies to the product.";
 
   return (
     <div className="space-y-6">
@@ -316,6 +439,8 @@ function CostingPage() {
         )}
       </div>
 
+      <MonthlyProjection sheets={sheets.data ?? []} />
+
       <Card className="rounded-2xl">
         <CardHeader>
           <CardTitle>Costing history</CardTitle>
@@ -329,8 +454,13 @@ function CostingPage() {
                 <TableHead>Sheet #</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Product</TableHead>
-                <TableHead>Yield</TableHead>
+                <TableHead>Daily Output</TableHead>
                 <TableHead>Material</TableHead>
+                <TableHead>Labour</TableHead>
+                <TableHead>Running Cost</TableHead>
+                <TableHead>Logistics</TableHead>
+                <TableHead>Daily Cost</TableHead>
+                <TableHead>Monthly Spend</TableHead>
                 <TableHead>Unit Cost</TableHead>
                 <TableHead>Cost/Pack</TableHead>
                 <TableHead>Applied</TableHead>
@@ -358,6 +488,20 @@ function CostingPage() {
                         {num(s.yield_quantity)} {s.products?.unit}
                       </TableCell>
                       <TableCell>{money(s.material_cost)}</TableCell>
+                      <TableCell>{money(s.labor_cost)}</TableCell>
+                      <TableCell>
+                        {money(Number(s.electricity_cost ?? 0) + Number(s.fuel_cost ?? 0))}
+                      </TableCell>
+                      <TableCell>
+                        {money(Number(s.logistics_cost ?? 0) + Number(s.loading_cost ?? 0))}
+                      </TableCell>
+                      <TableCell>{money(dailySpend(s))}</TableCell>
+                      <TableCell className="font-medium whitespace-nowrap">
+                        {money(dailySpend(s) * daysOf(s))}
+                        <div className="text-xs font-normal text-muted-foreground">
+                          {num(daysOf(s))} days
+                        </div>
+                      </TableCell>
                       <TableCell>{money(s.unit_cost)}</TableCell>
                       <TableCell className="font-medium">{money(s.cost_per_pack)}</TableCell>
                       <TableCell>{s.is_applied ? "Yes" : "No"}</TableCell>
@@ -400,7 +544,7 @@ function CostingPage() {
                 })}
               {(sheets.data?.length ?? 0) === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={17} className="text-center text-muted-foreground py-8">
                     No costing sheets yet.
                   </TableCell>
                 </TableRow>
@@ -674,11 +818,18 @@ function CostingDialog({
     (editing?.product_type as ProductType | null) ?? "bottle_33cl",
   );
   const t = templateFor(productType);
-  const [productId, setProductId] = useState(editing?.product_id ?? "");
   const [yieldQty, setYieldQty] = useState(editing ? String(editing.yield_quantity) : "");
+  const [workingDays, setWorkingDays] = useState(
+    String(editing ? daysOf(editing) : DEFAULT_WORKING_DAYS),
+  );
   const [lines, setLines] = useState<Line[]>(() => (editing ? [] : templateLines(t, materials)));
   const [labour, setLabour] = useState(editing ? String(editing.labor_cost) : "");
   const [logistics, setLogistics] = useState(editing ? String(editing.logistics_cost ?? 0) : "");
+  const [electricity, setElectricity] = useState(
+    editing ? String(editing.electricity_cost ?? 0) : "",
+  );
+  const [fuel, setFuel] = useState(editing ? String(editing.fuel_cost ?? 0) : "");
+  const [loading, setLoading] = useState(editing ? String(editing.loading_cost ?? 0) : "");
   const [contentPercent, setContentPercent] = useState(
     editing?.overhead_percent != null ? String(editing.overhead_percent) : String(t.contentPercent),
   );
@@ -705,8 +856,6 @@ function CostingDialog({
     setContentPercent(String(nt.contentPercent));
     setPackQty(String(nt.packQty));
     setPackCost(String(nt.packCost));
-    const current = products.find((p) => p.id === productId);
-    if (current && !nt.productMatch.test(current.name)) setProductId("");
   };
 
   // A new sheet opened before the material list arrived: link them once it has.
@@ -763,13 +912,27 @@ function CostingDialog({
   const contentCost = (materialCost * (Number(contentPercent) || 0)) / 100;
   const labourN = Number(labour) || 0;
   const logisticsN = Number(logistics) || 0;
+  const electricityN = Number(electricity) || 0;
+  const fuelN = Number(fuel) || 0;
+  const loadingN = Number(loading) || 0;
+  const runningN = electricityN + fuelN;
   const packCostN = Number(packCost) || 0;
-  const totalBatch = materialCost + contentCost + labourN + logisticsN;
+  const totalBatch = materialCost + contentCost + labourN + runningN + logisticsN + loadingN;
   const costPerUnit = yieldN > 0 ? totalBatch / yieldN : 0;
   const costPerPack = costPerUnit * packQtyN + packCostN;
+  // One day's spend, packaging included, and the month it projects to.
+  const daysN = Number(workingDays) || 0;
+  const packagingDay = packCostN * packs;
+  const totalDay = totalBatch + packagingDay;
+  const totalMonth = totalDay * daysN;
 
-  const typeProducts = products.filter((p) => t.productMatch.test(p.name));
-  const productChoices = typeProducts.length > 0 ? typeProducts : products;
+  // The product is the one matching the chosen type (an edited sheet keeps its own).
+  // When no product name matches the type, the user picks it.
+  const [pickedProductId, setPickedProductId] = useState("");
+  const matchedProductId =
+    editing?.product_id ?? products.find((p) => t.productMatch.test(p.name))?.id ?? "";
+  const productId = matchedProductId || pickedProductId;
+  const product = products.find((p) => p.id === productId);
 
   const buildPayload = () => ({
     factory_id: factoryId,
@@ -779,6 +942,10 @@ function CostingDialog({
     yield_quantity: yieldN,
     labor_cost: labourN,
     logistics_cost: logisticsN,
+    electricity_cost: electricityN,
+    fuel_cost: fuelN,
+    loading_cost: loadingN,
+    working_days: daysN,
     overhead_cost: 0,
     overhead_percent: Number(contentPercent) || 0,
     pack_quantity: packQtyN,
@@ -830,12 +997,21 @@ function CostingDialog({
   });
 
   const lineLabel = (l: Line) =>
-    requisitionItem(l.item)?.name ?? (l.item === OTHER_ITEM ? "Other material" : "Item");
-  const incomplete = costed.find((l) => !l.item || !l.m || !(Number(l.qty) > 0));
-  const canSubmitForm = loaded && !!productId && yieldN > 0 && costed.length > 0 && !incomplete;
+    materialById(l.materialId)?.name ?? requisitionItem(l.item)?.name ?? "Raw material";
+  // Lines with no raw material chosen are skipped; a chosen one needs a quantity.
+  const filled = costed.filter((l) => l.m && Number(l.qty) > 0);
+  const incomplete = costed.find((l) => l.m && !(Number(l.qty) > 0));
+  const missing = [
+    !productId && `the ${t.label} product`,
+    !(yieldN > 0) && "daily production",
+    !(daysN > 0 && daysN <= 31) && "production days per month (1–31)",
+    filled.length === 0 && "at least one raw material with its quantity",
+    incomplete && `the quantity for ${lineLabel(incomplete)}`,
+  ].filter(Boolean) as string[];
+  const canSubmitForm = loaded && missing.length === 0;
 
   const basisOptions: { value: QtyBasis; label: string }[] = [
-    { value: "batch", label: "Whole batch" },
+    { value: "batch", label: "For the day" },
     { value: "per_unit", label: `Per ${t.unit}` },
     ...(t.pack !== "unit" ? [{ value: "per_pack" as const, label: `Per ${t.pack}` }] : []),
   ];
@@ -876,29 +1052,33 @@ function CostingDialog({
                   )}
                 </SelectContent>
               </Select>
+              {product ? (
+                <p className="text-xs text-muted-foreground">
+                  Costing for <span className="font-medium text-foreground">{product.name}</span>
+                </p>
+              ) : null}
+              {!matchedProductId && products.length > 0 && (
+                <Select value={pickedProductId} onValueChange={setPickedProductId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={`Which product is ${t.label}?`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {products.length === 0 && (
+                <p className="text-xs text-warning">
+                  No water products yet — add one on the Finished Goods page.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label>Product</Label>
-              <Select value={productId} onValueChange={setProductId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={`Select ${t.label.toLowerCase()}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {productChoices.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                  {productChoices.length === 0 && (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No water products yet.
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Batch yield ({t.units})</Label>
+              <Label>Daily production ({t.units} per day)</Label>
               <MoneyInput
                 min="0"
                 step="1"
@@ -906,19 +1086,35 @@ function CostingDialog({
                 onChange={(v) => setYieldQty(String(v))}
               />
             </div>
+            <div className="space-y-2">
+              <Label>Production days per month</Label>
+              <MoneyInput
+                min="1"
+                max="31"
+                step="1"
+                value={Number(workingDays) || 0}
+                onChange={(v) => setWorkingDays(String(v))}
+              />
+              {(daysN <= 0 || daysN > 31) && (
+                <p className="text-xs text-warning">Enter between 1 and 31 days.</p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3 rounded-lg border p-3">
             <div className="flex items-center justify-between">
               <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Store requisition items
+                Raw materials used in a day
               </Label>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setLines([...lines, { item: "", materialId: "", qty: "", basis: "batch" }])
+                  setLines([
+                    ...lines,
+                    { item: OTHER_ITEM, materialId: "", qty: "", basis: "batch" },
+                  ])
                 }
               >
                 <Plus className="mr-1 h-3.5 w-3.5" /> Add item
@@ -927,60 +1123,45 @@ function CostingDialog({
             {costed.map((l, i) => {
               const update = (patch: Partial<Line>) =>
                 setLines(lines.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-              const matches = matchingMaterials(l.item, materials);
-              const materialChoices = matches.length > 0 ? matches : materials;
               const req = requisitionItem(l.item);
               return (
                 <div key={i} className="space-y-2 rounded-md border bg-muted/20 p-2">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Requisition item</Label>
-                      <Select value={l.item} onValueChange={(v) => update(newLine(v, materials))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select item" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {REQUISITION_ITEMS.map((r) => (
-                            <SelectItem key={r.key} value={r.key}>
-                              {r.sn}. {r.name} ({r.unit})
-                            </SelectItem>
-                          ))}
-                          <SelectItem value={OTHER_ITEM}>Other stock item…</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">
-                        Stock item (unit cost)
-                      </Label>
-                      <Select
-                        value={l.materialId}
-                        onValueChange={(v) => update({ materialId: v })}
-                        disabled={!l.item}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select stock item" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {materialChoices.map((mm) => (
-                            <SelectItem key={mm.id} value={mm.id}>
-                              {mm.name} ({money(mm.unit_cost)}/{mm.unit})
-                            </SelectItem>
-                          ))}
-                          {materialChoices.length === 0 && (
-                            <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                              No water raw materials yet.
-                            </div>
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {req && matches.length === 0 && (
-                        <p className="text-xs text-warning">
-                          No “{req.name}” in Raw Materials. Pick the closest stock item, or add it
-                          on the Raw Materials page.
-                        </p>
-                      )}
-                    </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Raw material</Label>
+                    <Select
+                      value={l.materialId}
+                      onValueChange={(v) => {
+                        const name = materialById(v)?.name ?? "";
+                        update({
+                          materialId: v,
+                          item: requisitionItemForMaterial(name)?.key ?? OTHER_ITEM,
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={req ? `Select ${req.name}` : "Select raw material"}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {materials.map((mm) => (
+                          <SelectItem key={mm.id} value={mm.id}>
+                            {mm.name} ({money(mm.unit_cost)}/{mm.unit})
+                          </SelectItem>
+                        ))}
+                        {materials.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            No water raw materials yet.
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {l.m && (
+                      <p className="text-xs text-muted-foreground">
+                        Cost per {l.m.unit}:{" "}
+                        <span className="font-medium text-foreground">{money(l.m.unit_cost)}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                     <div className="space-y-1">
@@ -1014,8 +1195,8 @@ function CostingDialog({
                     </div>
                     <div className="flex items-end justify-end gap-1 sm:w-36">
                       <div className="pb-1 text-right text-xs text-muted-foreground">
-                        {num(+l.quantity.toFixed(3))} {l.m?.unit ?? ""}
-                        <div className="font-medium text-foreground">{money(l.cost)}</div>
+                        {num(+l.quantity.toFixed(3))} {l.m?.unit ?? ""}/day
+                        <div className="font-medium text-foreground">{money(l.cost)}/day</div>
                       </div>
                       <Button
                         type="button"
@@ -1033,22 +1214,59 @@ function CostingDialog({
             })}
             {costed.length === 0 && loaded && (
               <p className="py-2 text-center text-xs text-muted-foreground">
-                Add the requisition items this batch uses.
+                Add the raw materials a day's production uses.
               </p>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Labour (₦ for the whole batch)</Label>
-              <MoneyInput value={Number(labour) || 0} onChange={(v) => setLabour(String(v))} />
+          <div className="space-y-2">
+            <Label>Labour wages (₦ per day)</Label>
+            <MoneyInput value={Number(labour) || 0} onChange={(v) => setLabour(String(v))} />
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Running cost (per day)
+              </Label>
+              <span className="text-xs text-muted-foreground">{money(runningN)}/day</span>
             </div>
-            <div className="space-y-2">
-              <Label>Logistics (₦ for the whole batch)</Label>
-              <MoneyInput
-                value={Number(logistics) || 0}
-                onChange={(v) => setLogistics(String(v))}
-              />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">NEPA (₦)</Label>
+                <MoneyInput
+                  value={Number(electricity) || 0}
+                  onChange={(v) => setElectricity(String(v))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Diesel / fuel (₦)</Label>
+                <MoneyInput value={Number(fuel) || 0} onChange={(v) => setFuel(String(v))} />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                Logistics (per day)
+              </Label>
+              <span className="text-xs text-muted-foreground">
+                {money(logisticsN + loadingN)}/day
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Transport / haulage (₦)</Label>
+                <MoneyInput
+                  value={Number(logistics) || 0}
+                  onChange={(v) => setLogistics(String(v))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Loading (₦)</Label>
+                <MoneyInput value={Number(loading) || 0} onChange={(v) => setLoading(String(v))} />
+              </div>
             </div>
           </div>
 
@@ -1101,38 +1319,54 @@ function CostingDialog({
             </Label>
           </div>
 
-          <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+          <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+            <div className="mb-1 grid grid-cols-[1fr_auto_auto] gap-x-4 text-xs uppercase tracking-wide text-muted-foreground">
+              <span>Cost</span>
+              <span className="w-28 text-right">Per day</span>
+              <span className="w-32 text-right">Month ({num(daysN)} days)</span>
+            </div>
             {costed
               .filter((l) => l.cost > 0)
               .map((l, i) => (
-                <Row key={i} label={lineLabel(l)} value={money(l.cost)} />
+                <SpendRow key={i} label={lineLabel(l)} day={l.cost} days={daysN} />
               ))}
-            <Row label="Requisition items" value={money(materialCost)} strong />
-            <Row label={`Water & treatment (${contentPercent || 0}%)`} value={money(contentCost)} />
-            <Row label="Labour" value={money(labourN)} />
-            <Row label="Logistics" value={money(logisticsN)} />
-            <Row label="Total batch cost" value={money(totalBatch)} strong />
-            <Row label={`Cost per ${t.unit}`} value={money(costPerUnit)} />
-            {t.pack !== "unit" && (
-              <>
+            <SpendRow label="Raw materials" day={materialCost} days={daysN} strong />
+            <SpendRow
+              label={`Water & treatment (${contentPercent || 0}%)`}
+              day={contentCost}
+              days={daysN}
+            />
+            <SpendRow label="Labour wages" day={labourN} days={daysN} />
+            <SpendRow label="Running cost — NEPA" day={electricityN} days={daysN} />
+            <SpendRow label="Running cost — diesel / fuel" day={fuelN} days={daysN} />
+            <SpendRow label="Logistics — transport" day={logisticsN} days={daysN} />
+            <SpendRow label="Logistics — loading" day={loadingN} days={daysN} />
+            {packagingDay > 0 && (
+              <SpendRow label="Other packaging" day={packagingDay} days={daysN} />
+            )}
+            <SpendRow label="Total spend" day={totalDay} days={daysN} strong />
+            <div className="mt-1 grid grid-cols-[1fr_auto_auto] gap-x-4">
+              <span className="text-muted-foreground">Output</span>
+              <span className="w-28 text-right">
+                {num(yieldN)} {t.units}
+              </span>
+              <span className="w-32 text-right">
+                {num(yieldN * daysN)} {t.units}
+              </span>
+            </div>
+            <div className="mt-2 space-y-1 border-t pt-2">
+              <Row label={`Cost per ${t.unit}`} value={money(costPerUnit)} />
+              {t.pack !== "unit" && (
                 <Row
-                  label={`${num(packQtyN)} ${t.units} per ${t.pack}`}
-                  value={money(costPerUnit * packQtyN)}
+                  label={`Cost per ${t.pack} (${num(packQtyN)} ${t.units} + packaging)`}
+                  value={money(costPerPack)}
                 />
-                <Row label={t.packCostLabel.replace(/\s*\(.*\)$/, "")} value={money(packCostN)} />
-              </>
-            )}
-            {t.pack === "unit" && packCostN > 0 && (
-              <Row label="Other packaging" value={money(packCostN)} />
-            )}
-            <Row label={`Final cost per ${t.pack}`} value={money(costPerPack)} strong />
+              )}
+              <Row label="Projected spend for the month" value={money(totalMonth)} strong />
+            </div>
           </div>
-          {incomplete && (
-            <p className="text-xs text-warning">
-              {incomplete.item
-                ? `Choose the stock item for ${lineLabel(incomplete).toLowerCase()} and enter its quantity.`
-                : "Choose a requisition item for every line, or remove the empty one."}
-            </p>
+          {loaded && missing.length > 0 && (
+            <p className="text-xs text-warning">To submit, enter {missing.join(", ")}.</p>
           )}
           <p className="text-xs text-muted-foreground">
             Requires a second person's approval — this submits a request instead of changing the
@@ -1146,6 +1380,28 @@ function CostingDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SpendRow({
+  label,
+  day,
+  days,
+  strong,
+}: {
+  label: string;
+  day: number;
+  days: number;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      className={`grid grid-cols-[1fr_auto_auto] gap-x-4 ${strong ? "mt-1 border-t pt-1 font-semibold" : ""}`}
+    >
+      <span className={strong ? "" : "text-muted-foreground"}>{label}</span>
+      <span className="w-28 text-right">{money(day)}</span>
+      <span className="w-32 text-right">{money(day * days)}</span>
+    </div>
   );
 }
 

@@ -227,6 +227,10 @@ export type Database = {
       }
       costing_sheets: {
         Row: {
+          electricity_cost: number
+          working_days: number
+          fuel_cost: number
+          loading_cost: number
           logistics_cost: number
           product_type: string | null
           apply_to_product: boolean
@@ -255,6 +259,10 @@ export type Database = {
           yield_quantity: number
         }
         Insert: {
+          electricity_cost?: number
+          working_days?: number
+          fuel_cost?: number
+          loading_cost?: number
           logistics_cost?: number
           product_type?: string | null
           apply_to_product?: boolean
@@ -283,6 +291,10 @@ export type Database = {
           yield_quantity: number
         }
         Update: {
+          electricity_cost?: number
+          working_days?: number
+          fuel_cost?: number
+          loading_cost?: number
           logistics_cost?: number
           product_type?: string | null
           apply_to_product?: boolean

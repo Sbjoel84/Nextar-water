@@ -43,6 +43,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { money } from "@/lib/format";
+import { financeSummary, profitOf } from "@/lib/finance-summary";
 import {
   TrendingUp,
   TrendingDown,
@@ -58,6 +59,7 @@ import {
   Undo2,
   FileDown,
   Landmark,
+  Scale,
 } from "lucide-react";
 import { startOfMonth, startOfWeek, startOfYear } from "date-fns";
 import { RefId } from "@/components/shared/ref-id";
@@ -132,6 +134,13 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
     enabled: validRange,
     queryFn: async () =>
       sum(await postedSalesRows(factoryId, "grand_total", from, to), (r) => r.grand_total),
+  });
+
+  // Same figure as the admin dashboard's Profit & Loss card, for the period.
+  const profitLoss = useQuery({
+    queryKey: ["fin", "profit-loss", factoryId, from, to],
+    enabled: validRange,
+    queryFn: async () => profitOf((await financeSummary(factoryId, from, to)).totals),
   });
 
   const payments = useQuery({
@@ -417,6 +426,17 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
           value={money(revenue.data)}
           hint="Approved invoices in the period"
           tone="success"
+        />
+        <KPI
+          icon={Scale}
+          label="Profit & Loss"
+          value={
+            profitLoss.data == null
+              ? "—"
+              : `${profitLoss.data >= 0 ? "Profit" : "Loss"} ${money(Math.abs(profitLoss.data))}`
+          }
+          hint="Revenue − cost of goods sold − expenses − salaries"
+          tone={(profitLoss.data ?? 0) >= 0 ? "success" : "destructive"}
         />
         <KPI
           icon={Wallet}

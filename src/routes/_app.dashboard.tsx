@@ -362,9 +362,11 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
         />
         <KPI
           icon={Scale}
-          label={monthProfit >= 0 ? "Profit (this month)" : "Loss (this month)"}
-          value={money(monthProfit)}
-          hint="Revenue − cost of goods sold − expenses − salaries"
+          label="Profit & Loss (this month)"
+          value={`${monthProfit >= 0 ? "Profit" : "Loss"} ${money(Math.abs(monthProfit))}`}
+          hint={`Revenue ${money(revenueOf(monthTotals))} − costs ${money(
+            monthTotals.cogs + operatingCostsOf(monthTotals),
+          )}`}
           tone={monthProfit >= 0 ? "success" : "destructive"}
         />
         <KPI icon={Boxes} label="Raw Material Stock" value={money(rawStockValue.data)} />

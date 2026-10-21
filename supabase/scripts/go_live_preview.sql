@@ -21,9 +21,10 @@ WITH plan(table_name, action) AS (
   SELECT t, 'CLEAR' FROM unnest(ARRAY[
     'audit_logs','cash_transactions','costing_price_options','costing_sheet_items','costing_sheets',
     'customers','customer_account_adjustments','customer_account_transactions','damage_records','debt_payments','debts',
-    'delete_requests','deliveries','expenses','goods_receipts','inventory_movements','notifications',
-    'payments_received','payroll','product_price_history','production','production_request_items',
-    'production_requests','purchase_orders','raw_material_cost_history','raw_material_movements',
+    'delete_requests','deliveries','expenses','goods_received_notes','goods_receipts','inventory_movements',
+    'notification_reads','notifications',
+    'payments_received','payroll','product_price_history','production','production_corrections','production_request_items',
+    'production_requests','purchase_orders','raw_material_cost_history','raw_material_movements','recycle_bin',
     'rep_remittances','rep_return_items','rep_returns','rep_stock','rep_stock_movements',
     'role_grant_requests','sale_items','sales','sales_returns','staff_deductions','staff_loan_repayments',
     'staff_loans','stock_adjustment_requests','stock_dispatch_items','stock_dispatches',

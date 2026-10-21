@@ -41,6 +41,8 @@ BEGIN
   FOR v_patch IN SELECT * FROM (VALUES ('public.submit_costing_sheet(jsonb)'), ('public.update_costing_sheet(jsonb)')) AS t(sig)
   LOOP
     v_def := pg_get_functiondef(v_patch.sig::regprocedure);
+    -- Already applied (e.g. by 20261021100000, which redefines these in full).
+    CONTINUE WHEN position('v_logistics' IN v_def) > 0;
     v_new := v_def;
 
     FOR v_step IN SELECT * FROM (VALUES

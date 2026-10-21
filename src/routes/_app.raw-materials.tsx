@@ -103,17 +103,10 @@ type Material = {
   suppliers: { name: string } | null;
   material_categories: { name: string } | null;
 };
-type CostHistoryRow = {
-  id: string;
-  cost: number;
-  previous_cost: number | null;
-  effective_date: string;
-};
 type Movement = {
   id: string;
   movement_type: string;
   quantity: number;
-  unit_cost: number | null;
   reference: string | null;
   reason: string | null;
   user_id: string | null;
@@ -212,7 +205,6 @@ function RawMaterialsPage() {
       ["damage-records-raw-materials"],
       ["damage-value-raw-materials"],
       ["material-movements"],
-      ["material-cost-history"],
     ],
   );
   const [formOpen, setFormOpen] = useState(false);
@@ -515,7 +507,6 @@ function RawMaterialsPage() {
       item_name: m.name,
       unit: m.unit,
       current_stock: Number(m.current_stock),
-      unit_cost: Number(m.unit_cost),
       total_value: Number(m.current_value),
       reorder_level: m.reorder_level,
       extra: [
@@ -1170,7 +1161,6 @@ function MaterialForm({
   }, [selectedCategoryName, allUnitOptions]);
 
   const [openingStock, setOpeningStock] = useState(editing ? Number(editing.opening_stock) : 0);
-  const [unitCost, setUnitCost] = useState(editing ? Number(editing.unit_cost) : 0);
   const [supplierId, setSupplierId] = useState(editing?.supplier_id ?? "none");
   const [reorderLevel, setReorderLevel] = useState(
     editing ? Number(editing.reorder_level ?? 0) : 0,
@@ -1231,7 +1221,6 @@ function MaterialForm({
         name: name.trim(),
         category_id: categoryId === "none" ? null : categoryId,
         unit: unit.trim(),
-        unit_cost: unitCost,
         supplier_id: supplierId === "none" ? null : supplierId,
         reorder_level: reorderLevel,
         minimum_stock: minimumStock,
@@ -1350,21 +1339,15 @@ function MaterialForm({
             />
           </div>
         )}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Opening stock</Label>
-            <MoneyInput
-              min={0}
-              step="0.001"
-              value={openingStock}
-              onChange={setOpeningStock}
-              disabled={!!editing}
-            />
-          </div>
-          <div>
-            <Label>Unit cost</Label>
-            <MoneyInput value={unitCost} onChange={setUnitCost} />
-          </div>
+        <div>
+          <Label>Opening stock</Label>
+          <MoneyInput
+            min={0}
+            step="0.001"
+            value={openingStock}
+            onChange={setOpeningStock}
+            disabled={!!editing}
+          />
         </div>
         <div>
           <Label>Supplier</Label>
@@ -1434,7 +1417,6 @@ function ReceiveDialog({
 }) {
   const [quantity, setQuantity] = useState(0);
   const [damagedQuantity, setDamagedQuantity] = useState(0);
-  const [unitCost, setUnitCost] = useState(Number(material.unit_cost));
   const [supplierId, setSupplierId] = useState(material.supplier_id ?? "none");
   const [deliveryReference, setDeliveryReference] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -1450,7 +1432,6 @@ function ReceiveDialog({
           material_id: material.id,
           quantity,
           damaged_quantity: damagedQuantity,
-          unit_cost: unitCost,
           supplier_id: supplierId === "none" ? null : supplierId,
           delivery_reference: deliveryReference || null,
           remarks: remarks || null,
@@ -1494,10 +1475,6 @@ function ReceiveDialog({
           Accepted quantity: {num(accepted)} {material.unit} — only this posts to stock; damaged
           goes to the damage ledger.
         </p>
-        <div>
-          <Label>Unit cost</Label>
-          <MoneyInput value={unitCost} onChange={setUnitCost} />
-        </div>
         <div>
           <Label>Delivery reference</Label>
           <Input
@@ -1798,27 +1775,13 @@ function HistoryDialog({ material }: { material: Material }) {
       const { data, error } = await supabase
         .from("raw_material_movements")
         .select(
-          "id,movement_type,quantity,unit_cost,reference,reason,user_id,created_at,quantity_before,quantity_after",
+          "id,movement_type,quantity,reference,reason,user_id,created_at,quantity_before,quantity_after",
         )
         .eq("material_id", material.id)
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
       return (data ?? []) as Movement[];
-    },
-  });
-
-  const costHistory = useQuery({
-    queryKey: ["material-cost-history", material.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("raw_material_cost_history")
-        .select("id,cost,previous_cost,effective_date")
-        .eq("material_id", material.id)
-        .order("effective_date", { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return (data ?? []) as CostHistoryRow[];
     },
   });
 
@@ -1837,10 +1800,6 @@ function HistoryDialog({ material }: { material: Material }) {
       <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
         <div>
           <div className="mb-2 text-sm font-medium">Stock movements</div>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Unit cost and value below are each transaction's own recorded cost at the time it
-            happened — not the material's current unit cost.
-          </p>
           <Table>
             <TableHeader>
               <TableRow>
@@ -1850,8 +1809,6 @@ function HistoryDialog({ material }: { material: Material }) {
                 <TableHead className="text-right">Qty</TableHead>
                 <TableHead className="text-right">Before</TableHead>
                 <TableHead className="text-right">After</TableHead>
-                <TableHead className="text-right">Unit Cost</TableHead>
-                <TableHead className="text-right">Value</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Reason</TableHead>
               </TableRow>
@@ -1879,55 +1836,14 @@ function HistoryDialog({ material }: { material: Material }) {
                   <TableCell className="text-right text-xs">
                     {m.quantity_after === null ? "—" : `${num(m.quantity_after)} ${material.unit}`}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {m.unit_cost == null ? "—" : money(Number(m.unit_cost))}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {m.unit_cost == null ? "—" : money(Number(m.quantity) * Number(m.unit_cost))}
-                  </TableCell>
                   <TableCell>{m.reference ?? "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{m.reason ?? "—"}</TableCell>
                 </TableRow>
               ))}
               {(movements.data ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                     No movements yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        <div>
-          <div className="mb-2 text-sm font-medium">Unit cost history</div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Effective</TableHead>
-                <TableHead className="text-right">Previous cost</TableHead>
-                <TableHead className="text-right">New cost</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(costHistory.data ?? []).map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell>
-                    <RefId id={c.id} />
-                  </TableCell>
-                  <TableCell>{new Date(c.effective_date).toLocaleString()}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {c.previous_cost == null ? "—" : money(Number(c.previous_cost))}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{money(Number(c.cost))}</TableCell>
-                </TableRow>
-              ))}
-              {(costHistory.data ?? []).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                    No unit cost changes recorded yet.
                   </TableCell>
                 </TableRow>
               )}

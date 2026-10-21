@@ -585,7 +585,8 @@ export async function generateStockCardPdf(
     item_name: string;
     unit: string;
     current_stock: number;
-    unit_cost: number;
+    // Omitted on raw material cards — inventory tracks quantities, not cost.
+    unit_cost?: number;
     total_value: number;
     reorder_level?: number | null;
     extra?: [string, string][];
@@ -621,7 +622,9 @@ export async function generateStockCardPdf(
   doc.setFontSize(10);
   const rows: [string, string][] = [
     ["Current stock", `${opts.current_stock} ${opts.unit}`],
-    ["Unit cost", money(opts.unit_cost, currency)],
+    ...(opts.unit_cost != null
+      ? [["Unit cost", money(opts.unit_cost, currency)] as [string, string]]
+      : []),
     ["Total value", money(opts.total_value, currency)],
     ...(opts.reorder_level != null
       ? [["Reorder level", `${opts.reorder_level} ${opts.unit}`] as [string, string]]
