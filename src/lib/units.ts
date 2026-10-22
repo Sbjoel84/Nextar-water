@@ -23,6 +23,32 @@ export const UNIT_OPTIONS = [
   "boxes",
 ];
 
+// The units a finished product can be counted in — the product form's Unit
+// dropdown offers exactly these.
+export const PRODUCT_UNITS = ["Piece", "Kilogram", "Roll", "Litre", "Bag", "Unit", "Packs"];
+
+// Matches a saved unit to its entry in PRODUCT_UNITS, so older spellings
+// ("pieces", "bags", "kg") still select the right one.
+const ALIASES: Record<string, string> = {
+  pieces: "Piece",
+  pcs: "Piece",
+  kg: "Kilogram",
+  kilograms: "Kilogram",
+  rolls: "Roll",
+  litres: "Litre",
+  liters: "Litre",
+  l: "Litre",
+  bags: "Bag",
+  units: "Unit",
+  pack: "Packs",
+};
+export function productUnitOf(unit: string | null | undefined): string {
+  const u = (unit ?? "").trim();
+  return (
+    PRODUCT_UNITS.find((p) => p.toLowerCase() === u.toLowerCase()) ?? ALIASES[u.toLowerCase()] ?? u
+  );
+}
+
 // Packaging categories that only ever come in these two units. Matched
 // against the admin-defined `material_categories.name` (case-insensitive),
 // not a fixed category enum — factories can still add other categories,

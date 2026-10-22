@@ -34,6 +34,7 @@ import {
 import { generateReportPdf, generateStatementPdf, type StatementSection } from "@/lib/pdf";
 import { dayKey } from "@/lib/metrics";
 import { exportCsv, exportExcel, type ReportColumn } from "@/lib/export";
+import { monthlyAccumulated, saleAmountRows } from "@/lib/sales-revenue";
 import { logAudit } from "@/lib/audit";
 import {
   CUSTOMER_REPORTS,
@@ -65,6 +66,7 @@ type ReportKey =
   | "executive_summary"
   | "profit_loss"
   | "sales"
+  | "monthly_accumulated_sales"
   | "production"
   | "inventory"
   | "raw_materials"
@@ -84,6 +86,7 @@ const REPORTS: { key: ReportKey; label: string }[] = [
   { key: "executive_summary", label: "Executive Summary" },
   { key: "profit_loss", label: "Profit & Loss" },
   { key: "sales", label: "Sales" },
+  { key: "monthly_accumulated_sales", label: "Monthly Accumulated Sales" },
   { key: "production", label: "Production" },
   { key: "inventory", label: "Inventory (Finished Products Movements)" },
   { key: "raw_materials", label: "Raw Materials Movements" },
@@ -183,6 +186,35 @@ async function fetchReport(
     };
   }
   if (isCustomerReport(key)) return fetchCustomerReport(key, factoryId, start, end);
+  if (key === "monthly_accumulated_sales") {
+    // Approved, non-PR sales grouped by month of sale_date, with the running
+    // total across the selected range. "All time" starts at the first sale.
+    const toDay = end ? dayKey(new Date(end)) : dayKey(new Date());
+    const rows = await saleAmountRows(
+      factoryId,
+      start ? dayKey(new Date(start)) : "2000-01-01",
+      toDay,
+    );
+    const firstMonth = start
+      ? dayKey(new Date(start)).slice(0, 7)
+      : (rows[0]?.sale_date.slice(0, 7) ?? toDay.slice(0, 7));
+    return {
+      columns: [
+        { key: "month", label: "Month" },
+        { key: "sales", label: "Approved Sales" },
+        { key: "revenue", label: "Sales Revenue" },
+        { key: "change", label: "vs Prior Month" },
+        { key: "accumulated", label: "Accumulated" },
+      ],
+      rows: monthlyAccumulated(rows, firstMonth, toDay.slice(0, 7)).map((m) => ({
+        month: m.label,
+        sales: m.salesCount,
+        revenue: m.revenue.toFixed(2),
+        change: m.changePct == null ? "" : `${m.changePct.toFixed(1)}%`,
+        accumulated: m.accumulated.toFixed(2),
+      })),
+    };
+  }
 
   const applyRange = <T,>(q: T): T => {
     let query = q as any;
@@ -583,6 +615,7 @@ const DATE_FIELDS: Record<ReportKey, string> = {
   executive_summary: "",
   profit_loss: "",
   sales: "sale_date",
+  monthly_accumulated_sales: "sale_date",
   production: "production_date",
   inventory: "created_at",
   raw_materials: "created_at",

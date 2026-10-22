@@ -67,8 +67,9 @@ import {
   ScrollText,
   Wallet,
   Scale,
+  CalendarRange,
 } from "lucide-react";
-import { format, startOfDay, startOfMonth, subDays } from "date-fns";
+import { format, startOfDay, startOfMonth, startOfYear, subDays } from "date-fns";
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -166,6 +167,7 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
     ],
     [
       ["total-sales-month"],
+      ["total-sales-year"],
       ["sales-today"],
       ["raw-stock"],
       ["low-stock"],
@@ -183,6 +185,15 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
     enabled: !!factoryId,
     queryFn: async () =>
       sum(await postedSalesRows(factoryId, "grand_total", monthStartDay), (r) => r.grand_total),
+  });
+  // Sales accumulated since Jan 1 — the month-by-month breakdown lives on the
+  // Sales page (Monthly Accumulated Sales).
+  const yearStartDay = dayKey(startOfYear(new Date()));
+  const totalSalesYear = useQuery({
+    queryKey: ["total-sales-year", factoryId],
+    enabled: !!factoryId,
+    queryFn: async () =>
+      sum(await postedSalesRows(factoryId, "grand_total", yearStartDay), (r) => r.grand_total),
   });
   const salesToday = useQuery({
     queryKey: ["sales-today", factoryId],
@@ -381,6 +392,13 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
           label="Outstanding Payments"
           value={money(outstandingPayments.data)}
           tone="destructive"
+        />
+        <KPI
+          icon={CalendarRange}
+          label={`Accumulated Sales (${new Date().getFullYear()})`}
+          value={money(totalSalesYear.data)}
+          hint="Approved sales, Jan 1 to today"
+          tone="success"
         />
       </div>
 

@@ -81,6 +81,7 @@ import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-a
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { fetchAll } from "@/lib/metrics";
 import { RefId } from "@/components/shared/ref-id";
+import { SalesRevenuePanel } from "@/components/sales/sales-revenue";
 
 export const Route = createFileRoute("/_app/sales")({
   head: () => ({ meta: [{ title: "Sales & POS — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -210,7 +211,13 @@ function SalesPage() {
   // keep every open account view current without a manual refresh.
   useRealtimeInvalidate(
     ["customer_account_transactions", "sales", "payments_received"],
-    [["sales-list"], ["customer-account"], ["customer-sales-full"], ["customer-payments-full"]],
+    [
+      ["sales-list"],
+      ["customer-account"],
+      ["customer-sales-full"],
+      ["customer-payments-full"],
+      ["sales-revenue"],
+    ],
   );
   const { canWrite, canApprove, canReject, canCancel, canDelete, canEdit } = usePermissions();
   const write = canWrite("sales");
@@ -543,7 +550,7 @@ function SalesPage() {
             <CardContent className="flex items-center justify-between p-5">
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Revenue Generated
+                  Sales Revenue
                 </div>
                 <div className="mt-2 text-2xl font-semibold">{money(daySummary.revenue)}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
@@ -579,6 +586,8 @@ function SalesPage() {
           </Card>
         </div>
       </div>
+
+      {factoryId && <SalesRevenuePanel factoryId={factoryId} />}
 
       <Card className="rounded-2xl">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

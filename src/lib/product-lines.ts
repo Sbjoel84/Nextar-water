@@ -29,3 +29,12 @@ export function splitProductName(name: string, sku: string): { line: string; who
 export const PRODUCT_VARIANTS: Record<string, string[]> = {
   "Bottle Water": ["75cl", "50cl x 12", "50cl x 20", "33cl x 20"],
 };
+
+// Product types sold as a single product, with no SKU/size to pick: the
+// product is just "Dispenser", "Sachet Water" or "Ice Block".
+export const NO_SKU_LINES = ["Dispenser", "Sachet Water", "Ice Block"];
+export const needsSku = (productLine: string) => !NO_SKU_LINES.includes(productLine);
+
+// The unit a product type is counted in; everything else is counted in pieces.
+const LINE_UNITS: Record<string, string> = { "Sachet Water": "Bag" };
+export const unitFor = (productLine: string) => LINE_UNITS[productLine] ?? "Piece";

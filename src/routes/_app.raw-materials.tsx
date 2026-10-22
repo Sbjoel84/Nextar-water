@@ -1137,16 +1137,16 @@ function MaterialForm({
   const [name, setName] = useState(editing?.name ?? "");
   const [categoryId, setCategoryId] = useState(editing?.category_id ?? "none");
   const selectedCategoryName = categories.find((c) => c.id === categoryId)?.name;
-  const unitOptions = getUnitOptionsForCategory(selectedCategoryName, allUnitOptions);
+  const categoryUnits = getUnitOptionsForCategory(selectedCategoryName, allUnitOptions);
   const [newCategory, setNewCategory] = useState("");
-  const initialUnit = editing?.unit ?? "kg";
-  const [unitChoice, setUnitChoice] = useState(
-    unitOptions.includes(initialUnit) ? initialUnit : "__custom__",
-  );
-  const [customUnit, setCustomUnit] = useState(
-    unitOptions.includes(initialUnit) ? "" : initialUnit,
-  );
-  const unit = unitChoice === "__custom__" ? customUnit : unitChoice;
+  // Every material gets its own unit, picked from the list when it's
+  // registered — there's no default and no free-typed unit. A material saved
+  // earlier with a unit outside the list keeps it as an option.
+  const [unit, setUnit] = useState(editing?.unit ?? "");
+  const unitOptions =
+    editing?.unit && !categoryUnits.includes(editing.unit)
+      ? [...categoryUnits, editing.unit]
+      : categoryUnits;
 
   // Name comes from the standard store list; "Other…" allows any other name.
   const [nameChoice, setNameChoice] = useState(
@@ -1163,23 +1163,18 @@ function MaterialForm({
       return;
     }
     setName(choice);
+    // Pre-select the store list's unit only when it's one of the listed units;
+    // otherwise the unit is left for the user to pick.
     const presetUnit = MATERIAL_PRESETS.find((p) => p.name === choice)?.unit;
     if (!presetUnit) return;
     const option = presetUnitOption(presetUnit, unitOptions);
-    if (option) {
-      setUnitChoice(option);
-    } else {
-      setUnitChoice("__custom__");
-      setCustomUnit(presetUnit);
-    }
+    if (option) setUnit(option);
   };
 
   // Bottle/Sachet/Dispenser only take kg or pieces — if the category changes
-  // to/from one of those, drop a unit choice that's no longer offered.
+  // to/from one of those, clear a unit that's no longer offered.
   useEffect(() => {
-    if (unitChoice !== "__custom__" && !unitOptions.includes(unitChoice)) {
-      setUnitChoice(unitOptions[0] ?? "__custom__");
-    }
+    if (unit && !unitOptions.includes(unit)) setUnit("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryName, allUnitOptions]);
 
@@ -1239,7 +1234,7 @@ function MaterialForm({
   const save = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error("Material name is required");
-      if (!unit.trim()) throw new Error("Select or enter a unit of measurement");
+      if (!unit.trim()) throw new Error("Select the unit of measurement");
       const payload = {
         name: name.trim(),
         category_id: categoryId === "none" ? null : categoryId,
@@ -1320,9 +1315,9 @@ function MaterialForm({
           </div>
           <div>
             <Label>Unit of measurement</Label>
-            <Select value={unitChoice} onValueChange={setUnitChoice}>
+            <Select value={unit || undefined} onValueChange={setUnit}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Select unit…" />
               </SelectTrigger>
               <SelectContent>
                 {unitOptions.map((u) => (
@@ -1330,7 +1325,6 @@ function MaterialForm({
                     {u}
                   </SelectItem>
                 ))}
-                <SelectItem value="__custom__">Other…</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1352,16 +1346,6 @@ function MaterialForm({
             Add
           </Button>
         </div>
-        {unitChoice === "__custom__" && (
-          <div>
-            <Label>Custom unit</Label>
-            <Input
-              value={customUnit}
-              onChange={(e) => setCustomUnit(e.target.value)}
-              placeholder="e.g. crates"
-            />
-          </div>
-        )}
         <div>
           <Label>Opening stock</Label>
           <MoneyInput

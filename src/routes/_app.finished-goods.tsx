@@ -72,8 +72,12 @@ import {
   skuLabelFor,
   splitProductName,
   PRODUCT_VARIANTS,
+  needsSku,
+  unitFor,
 } from "@/lib/product-lines";
 import { SkuField } from "@/components/shared/sku-field";
+import { ProductUnitSelect } from "@/components/shared/unit-select";
+import { productUnitOf } from "@/lib/units";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
 
@@ -1357,19 +1361,27 @@ function ProductForm({
       : [productLine, sku.trim()].filter(Boolean).join(" ");
 
   const skuLabel = skuLabelFor(productLine);
+  // Defaults to the product type's usual unit (Sachet Water: bags) until a
+  // unit is picked. A product holding stock keeps its unit — stock numbers
+  // aren't converted between units.
+  const unitLocked = !!editing && Number(editing.current_stock) !== 0;
+  const [unit, setUnit] = useState<string | null>(null);
+  const unitValue = unit ?? editing?.unit ?? unitFor(productLine);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!productLine) throw new Error("Select the product type");
-      if (!editing && !sku.trim()) throw new Error(`Enter the ${skuLabel} (e.g. 35cl, 50cl)`);
-      // Unit, type, opening stock and reorder level are no longer asked for:
-      // a new product is a finished product, counted in pieces, starting at 0
-      // stock (stock arrives through production). Editing keeps what's set.
+      if (!editing && needsSku(productLine) && !sku.trim())
+        throw new Error(`Enter the ${skuLabel}`);
+      if (!unitValue.trim()) throw new Error("Select or enter a unit");
+      // Type, opening stock and reorder level are no longer asked for: a new
+      // product is a finished product starting at 0 stock (stock arrives
+      // through production). Editing keeps what's set.
       const payload = {
         name,
         sku: sku.trim() || null,
         product_type: editing?.product_type ?? "finished",
-        unit: editing?.unit ?? "pieces",
+        unit: unitLocked ? editing!.unit : productUnitOf(unitValue),
         // Category is no longer asked for; editing keeps any existing one.
         category_id: editing?.category_id ?? null,
         // Prices aren't set here: an approved Costing sheet sets both the
@@ -1426,7 +1438,7 @@ function ProductForm({
               onValueChange={(v) => {
                 setProductLine(v);
                 const variants = PRODUCT_VARIANTS[v];
-                if (variants && !variants.includes(sku)) setSku("");
+                if ((variants && !variants.includes(sku)) || !needsSku(v)) setSku("");
               }}
             >
               <SelectTrigger>
@@ -1446,6 +1458,16 @@ function ProductForm({
             </Select>
           </div>
           <SkuField productLine={productLine} value={sku} onChange={setSku} />
+          <ProductUnitSelect
+            value={unitLocked ? editing!.unit : unitValue}
+            onChange={setUnit}
+            disabled={unitLocked}
+            hint={
+              unitLocked
+                ? `Can't change while ${num(Number(editing!.current_stock))} ${editing!.unit} are in stock.`
+                : undefined
+            }
+          />
         </div>
         <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-sm">
           <div>

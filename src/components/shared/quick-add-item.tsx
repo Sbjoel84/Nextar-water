@@ -3,8 +3,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/lib/audit";
-import { PRODUCT_LINES, productNameFor, skuLabelFor, PRODUCT_VARIANTS } from "@/lib/product-lines";
+import {
+  PRODUCT_LINES,
+  productNameFor,
+  skuLabelFor,
+  PRODUCT_VARIANTS,
+  needsSku,
+  unitFor,
+} from "@/lib/product-lines";
 import { SkuField } from "@/components/shared/sku-field";
+import { ProductUnitSelect } from "@/components/shared/unit-select";
 import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,25 +52,18 @@ function refreshItemLists(qc: ReturnType<typeof useQueryClient>) {
   });
 }
 
-function UnitField({
-  unitChoice,
-  setUnitChoice,
-  customUnit,
-  setCustomUnit,
-}: {
-  unitChoice: string;
-  setUnitChoice: (v: string) => void;
-  customUnit: string;
-  setCustomUnit: (v: string) => void;
-}) {
+// Unit of a new raw material: picked from the configured units, with no
+// default and no free-typed entry, so every material is registered with its
+// own unit.
+function UnitField({ unit, setUnit }: { unit: string; setUnit: (v: string) => void }) {
   const unitsOfMeasure = useUnitsOfMeasure();
   const unitOptions = unitsOfMeasure.data ?? UNIT_OPTIONS_FALLBACK;
   return (
     <div>
       <Label>Unit of measurement</Label>
-      <Select value={unitChoice} onValueChange={setUnitChoice}>
+      <Select value={unit || undefined} onValueChange={setUnit}>
         <SelectTrigger>
-          <SelectValue />
+          <SelectValue placeholder="Select unit…" />
         </SelectTrigger>
         <SelectContent>
           {unitOptions.map((u) => (
@@ -70,17 +71,8 @@ function UnitField({
               {u}
             </SelectItem>
           ))}
-          <SelectItem value="__custom__">Other…</SelectItem>
         </SelectContent>
       </Select>
-      {unitChoice === "__custom__" && (
-        <Input
-          className="mt-2"
-          placeholder="Enter unit"
-          value={customUnit}
-          onChange={(e) => setCustomUnit(e.target.value)}
-        />
-      )}
     </div>
   );
 }
@@ -106,18 +98,32 @@ export function QuickAddProductDialog({
   const [sku, setSku] = useState("");
   const name = productNameFor(productLine, sku);
   const skuLabel = skuLabelFor(productLine);
+  // The product type's usual unit until one is picked.
+  const [unit, setUnit] = useState<string | null>(null);
+  const unitValue = unit ?? unitFor(productLine);
 
   useEffect(() => {
     if (open) {
       setProductLine("");
       setSku("");
+      setUnit(null);
     }
   }, [open]);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!productLine) throw new Error("Select the product type");
-      if (!sku.trim()) throw new Error(`Enter the ${skuLabel} (e.g. 35cl, 50cl)`);
+      if (needsSku(productLine) && !sku.trim()) throw new Error(`Enter the ${skuLabel}`);
+      if (!unitValue.trim()) throw new Error("Select or enter a unit");
+      // The name is fixed by type + SKU, so the same product can't be added twice.
+      const { data: existing } = await supabase
+        .from("products")
+        .select("id")
+        .eq("factory_id", factoryId)
+        .eq("active", true)
+        .ilike("name", name)
+        .limit(1);
+      if (existing?.length) throw new Error(`"${name}" already exists — select it from the list`);
       // Goes through an RPC (permission-checked server side) because the
       // products table itself only lets Finished Goods writers insert.
       const { data, error } = await supabase.rpc(
@@ -126,9 +132,9 @@ export function QuickAddProductDialog({
           payload: {
             factory_id: factoryId,
             name,
-            sku: sku.trim(),
+            sku: sku.trim() || null,
             product_type: "finished",
-            unit: "pieces",
+            unit: unitValue.trim(),
             unit_price: 0,
             cost_price: 0,
             current_stock: 0,
@@ -169,7 +175,7 @@ export function QuickAddProductDialog({
                 onValueChange={(v) => {
                   setProductLine(v);
                   const variants = PRODUCT_VARIANTS[v];
-                  if (variants && !variants.includes(sku)) setSku("");
+                  if ((variants && !variants.includes(sku)) || !needsSku(v)) setSku("");
                 }}
               >
                 <SelectTrigger>
@@ -185,6 +191,7 @@ export function QuickAddProductDialog({
               </Select>
             </div>
             <SkuField productLine={productLine} value={sku} onChange={setSku} />
+            <ProductUnitSelect value={unitValue} onChange={setUnit} />
           </div>
           <p className="text-xs text-muted-foreground">
             {name ? (
@@ -220,18 +227,15 @@ export function QuickAddMaterialDialog({
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
-  const [unitChoice, setUnitChoice] = useState("kg");
-  const [customUnit, setCustomUnit] = useState("");
+  const [unit, setUnit] = useState("");
   const [unitCost, setUnitCost] = useState(0);
   const [openingStock, setOpeningStock] = useState(0);
   const [reorderLevel, setReorderLevel] = useState(0);
-  const unit = unitChoice === "__custom__" ? customUnit : unitChoice;
 
   useEffect(() => {
     if (open) {
       setName("");
-      setUnitChoice("kg");
-      setCustomUnit("");
+      setUnit("");
       setUnitCost(0);
       setOpeningStock(0);
       setReorderLevel(0);
@@ -241,7 +245,7 @@ export function QuickAddMaterialDialog({
   const save = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error("Material name is required");
-      if (!unit.trim()) throw new Error("Select or enter a unit of measurement");
+      if (!unit.trim()) throw new Error("Select the unit of measurement");
       const { data, error } = await supabase.rpc("request_new_material", {
         payload: {
           factory_id: factoryId,
@@ -283,12 +287,7 @@ export function QuickAddMaterialDialog({
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <UnitField
-              unitChoice={unitChoice}
-              setUnitChoice={setUnitChoice}
-              customUnit={customUnit}
-              setCustomUnit={setCustomUnit}
-            />
+            <UnitField unit={unit} setUnit={setUnit} />
             <div>
               <Label>Unit cost</Label>
               <MoneyInput value={unitCost} onChange={setUnitCost} />
