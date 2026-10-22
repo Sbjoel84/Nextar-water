@@ -312,6 +312,8 @@ function CostingPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingSheet, setEditingSheet] = useState<Sheet | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Sheet | null>(null);
+  // Approving opens a dialog to pick the product's selling price.
+  const [approveTarget, setApproveTarget] = useState<Sheet | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
   const products = useQuery({
@@ -395,12 +397,21 @@ function CostingPage() {
   });
 
   const approveSheet = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.rpc("approve_costing_sheet", { p_id: id });
+    mutationFn: async ({ id, price }: { id: string; price: number | null }) => {
+      const { error } = await supabase.rpc("approve_costing_sheet_with_price", {
+        p_id: id,
+        p_selling_price: price,
+      });
       if (error) throw error;
+      return price;
     },
-    onSuccess: () => {
-      toast.success("Approved — cost applied to product");
+    onSuccess: (price) => {
+      toast.success(
+        price
+          ? `Approved — cost and selling price ${money(price)} applied`
+          : "Approved — cost applied",
+      );
+      setApproveTarget(null);
       invalidateAll();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -595,7 +606,7 @@ function CostingPage() {
                                 variant="ghost"
                                 size="icon"
                                 title="Approve & Apply"
-                                onClick={() => approveSheet.mutate(s.id)}
+                                onClick={() => setApproveTarget(s)}
                               >
                                 <Check className="h-4 w-4 text-success" />
                               </Button>
@@ -639,6 +650,16 @@ function CostingPage() {
           onClose={() => setEditingSheet(null)}
         />
       )}
+
+      <Dialog open={!!approveTarget} onOpenChange={(v) => !v && setApproveTarget(null)}>
+        {approveTarget && (
+          <ApproveCostingDialog
+            sheet={approveTarget}
+            saving={approveSheet.isPending}
+            onSubmit={(price) => approveSheet.mutate({ id: approveTarget.id, price })}
+          />
+        )}
+      </Dialog>
 
       <Dialog
         open={!!rejectTarget}
@@ -1411,5 +1432,109 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <span className="text-muted-foreground">{label}</span>
       <span className={strong ? "font-semibold" : ""}>{value}</span>
     </div>
+  );
+}
+
+// Approving a sheet sets the product's cost price (from the sheet) and its
+// selling price — picked here from the sheet's proposed prices, or typed in.
+function ApproveCostingDialog({
+  sheet,
+  saving,
+  onSubmit,
+}: {
+  sheet: Sheet;
+  saving: boolean;
+  onSubmit: (price: number | null) => void;
+}) {
+  const options = useQuery({
+    queryKey: ["costing-price-options", sheet.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("costing_price_options")
+        .select("proposed_price,margin,margin_percent")
+        .eq("sheet_id", sheet.id)
+        .order("proposed_price");
+      if (error) throw error;
+      return (data ?? []) as { proposed_price: number; margin: number; margin_percent: number }[];
+    },
+  });
+  const [price, setPrice] = useState<number>(0);
+  const [touched, setTouched] = useState(false);
+  // Default to the first proposed price once the options load.
+  useEffect(() => {
+    if (!touched && options.data?.length) setPrice(Number(options.data[0].proposed_price));
+  }, [options.data, touched]);
+
+  const cost = Number(sheet.cost_per_pack);
+  const margin = price > 0 ? price - cost : null;
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Approve {sheet.sheet_number}</DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-3 text-sm">
+        <div className="rounded-md bg-muted/30 p-3">
+          <div className="font-medium">{sheet.products?.name ?? "—"}</div>
+          <div className="text-muted-foreground">Cost per pack {money(cost)}</div>
+        </div>
+        {sheet.apply_to_product ? (
+          <>
+            {(options.data ?? []).length > 0 && (
+              <div className="grid gap-1.5">
+                <Label>Proposed selling prices</Label>
+                <div className="flex flex-wrap gap-2">
+                  {options.data!.map((o) => (
+                    <Button
+                      key={o.proposed_price}
+                      type="button"
+                      size="sm"
+                      variant={price === Number(o.proposed_price) ? "default" : "outline"}
+                      onClick={() => {
+                        setTouched(true);
+                        setPrice(Number(o.proposed_price));
+                      }}
+                    >
+                      {money(Number(o.proposed_price))}
+                      <span className="ml-1 text-xs opacity-75">
+                        ({Number(o.margin_percent).toFixed(1)}%)
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <Label>Selling price to apply</Label>
+              <MoneyInput
+                value={price}
+                onChange={(v) => {
+                  setTouched(true);
+                  setPrice(v);
+                }}
+              />
+              {margin !== null && (
+                <p className={`mt-1 text-xs ${margin >= 0 ? "text-success" : "text-destructive"}`}>
+                  Margin {money(margin)} per pack
+                  {cost > 0 ? ` (${((margin / cost) * 100).toFixed(1)}%)` : ""}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Leave at 0 to keep the product's current selling price.
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="text-muted-foreground">
+            This sheet isn't set to apply to the product, so prices stay as they are.
+          </p>
+        )}
+      </div>
+      <DialogFooter>
+        <Button disabled={saving} onClick={() => onSubmit(price > 0 ? price : null)}>
+          {saving ? "Approving…" : "Approve & Apply"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }

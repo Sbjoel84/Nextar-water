@@ -62,10 +62,18 @@ import {
   Factory,
   Trash2,
   Search,
+  Undo2,
 } from "lucide-react";
 import { generateStockCardPdf } from "@/lib/pdf";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
-import { RepActivityCard } from "@/components/store/rep-activity";
+import { RepActivityCard, ReturnProductDialog } from "@/components/store/rep-activity";
+import {
+  PRODUCT_LINES,
+  skuLabelFor,
+  splitProductName,
+  PRODUCT_VARIANTS,
+} from "@/lib/product-lines";
+import { SkuField } from "@/components/shared/sku-field";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
 
@@ -84,6 +92,8 @@ type Product = {
   id: string;
   name: string;
   sku: string | null;
+  // Generated on insert, e.g. BW-35CL-001 (products_set_code trigger).
+  product_code: string | null;
   unit: string;
   unit_price: number;
   cost_price: number;
@@ -224,6 +234,9 @@ function FinishedGoodsPage() {
   const { canWrite, canSubmit, canApprove, canPost, canCancel, canConfirm, canReject, canDelete } =
     usePermissions();
   const write = canWrite("finished-goods");
+  // Sales-Reps bring unsold products back to the store (logged as sales returns).
+  const canLogReturn = canSubmit("sales-returns");
+  const [returnOpen, setReturnOpen] = useState(false);
   const submit = canSubmit("finished-goods");
   const approve = canApprove("finished-goods");
   const post = canPost("finished-goods");
@@ -281,7 +294,7 @@ function FinishedGoodsPage() {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id,name,sku,unit,unit_price,cost_price,current_stock,reorder_level,category_id,product_type,product_categories(name)",
+          "id,name,sku,product_code,unit,unit_price,cost_price,current_stock,reorder_level,category_id,product_type,product_categories(name)",
         )
         .eq("factory_id", factoryId!)
         .eq("active", true)
@@ -628,10 +641,23 @@ function FinishedGoodsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Finished Products</h1>
           <p className="text-sm text-muted-foreground">
-            Available stock plus production, sales, damages, returns, adjustments, and transfers.
+            Record of finished products: production batches Store approves, what Sales sells, and
+            returns, damages, adjustments and transfers.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canLogReturn && (
+            <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Undo2 className="h-4 w-4" /> Return Product
+                </Button>
+              </DialogTrigger>
+              {returnOpen && factoryId && (
+                <ReturnProductDialog factoryId={factoryId} onDone={() => setReturnOpen(false)} />
+              )}
+            </Dialog>
+          )}
           {write && (
             <Dialog
               open={formOpen}
@@ -640,12 +666,9 @@ function FinishedGoodsPage() {
                 if (!v) setEditing(null);
               }}
             >
-              <DialogTrigger asChild>
-                <Button className="gap-2" onClick={() => setEditing(null)}>
-                  <Plus className="h-4 w-4" /> Add Product
-                </Button>
-              </DialogTrigger>
-              {formOpen && factoryId && (
+              {/* No Add Product button: products are created where production
+                  records them; Store keeps the record and edits it. */}
+              {formOpen && editing && factoryId && (
                 <ProductForm
                   factoryId={factoryId}
                   categories={categories.data ?? []}
@@ -719,7 +742,14 @@ function FinishedGoodsPage() {
                     <TableCell>
                       <RefId id={p.id} />
                     </TableCell>
-                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {p.name}
+                      {p.product_code && (
+                        <div className="font-mono text-xs font-normal text-muted-foreground">
+                          {p.product_code}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell>{p.product_categories?.name ?? "—"}</TableCell>
                     <TableCell className="text-right">
                       <span className={low ? "text-destructive font-medium" : ""}>
@@ -1284,23 +1314,6 @@ function FinishedGoodsPage() {
   );
 }
 
-// The factory's product lines, same as the Costing page's product types.
-const PRODUCT_LINES = ["Bottle Water", "Dispenser", "Sachet Water", "Ice Block"];
-
-// Recovers the product line from a saved "<product> <SKU>" name; an older
-// free-typed name that matches no line is kept whole as its own line.
-function splitProductName(name: string, sku: string): { line: string; whole: boolean } {
-  const trimmed = name.trim();
-  if (!trimmed) return { line: "", whole: false };
-  const line = PRODUCT_LINES.find((p) => trimmed.toLowerCase().startsWith(p.toLowerCase()));
-  if (line) return { line, whole: false };
-  const s = sku.trim();
-  if (s && trimmed.toLowerCase().endsWith(` ${s.toLowerCase()}`)) {
-    return { line: trimmed.slice(0, -(s.length + 1)), whole: false };
-  }
-  return { line: trimmed, whole: true };
-}
-
 function ProductForm({
   factoryId,
   categories,
@@ -1342,13 +1355,13 @@ function ProductForm({
     editing && split.whole && productLine === split.line
       ? editing.name
       : [productLine, sku.trim()].filter(Boolean).join(" ");
-  const [unitPrice, setUnitPrice] = useState(editing ? Number(editing.unit_price) : 0);
-  const [costPrice, setCostPrice] = useState(editing ? Number(editing.cost_price) : 0);
+
+  const skuLabel = skuLabelFor(productLine);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!productLine) throw new Error("Select the product type");
-      if (!editing && !sku.trim()) throw new Error("Enter the SKU (e.g. 35cl, 50cl)");
+      if (!editing && !sku.trim()) throw new Error(`Enter the ${skuLabel} (e.g. 35cl, 50cl)`);
       // Unit, type, opening stock and reorder level are no longer asked for:
       // a new product is a finished product, counted in pieces, starting at 0
       // stock (stock arrives through production). Editing keeps what's set.
@@ -1359,20 +1372,14 @@ function ProductForm({
         unit: editing?.unit ?? "pieces",
         // Category is no longer asked for; editing keeps any existing one.
         category_id: editing?.category_id ?? null,
-        unit_price: unitPrice,
+        // Prices aren't set here: an approved Costing sheet sets both the
+        // cost price and the selling price (approve_costing_sheet_with_price).
       };
       if (editing) {
         // cost_price is column-locked for direct updates; a manual change goes
         // through the audited set_product_cost_price RPC instead.
         const { error } = await supabase.from("products").update(payload).eq("id", editing.id);
         if (error) throw error;
-        if (costPrice !== Number(editing.cost_price)) {
-          const { error: costErr } = await supabase.rpc("set_product_cost_price", {
-            p_id: editing.id,
-            p_cost: costPrice,
-          });
-          if (costErr) throw costErr;
-        }
         const newMaterial = supplyMaterial === "none" ? null : supplyMaterial;
         if (
           newMaterial !== (supplyLink?.materialId ?? null) ||
@@ -1388,7 +1395,8 @@ function ProductForm({
       } else {
         const { error } = await supabase.from("products").insert({
           ...payload,
-          cost_price: costPrice,
+          unit_price: 0,
+          cost_price: 0,
           factory_id: factoryId,
           current_stock: 0,
           reorder_level: 0,
@@ -1413,7 +1421,14 @@ function ProductForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Product Type</Label>
-            <Select value={productLine || undefined} onValueChange={setProductLine}>
+            <Select
+              value={productLine || undefined}
+              onValueChange={(v) => {
+                setProductLine(v);
+                const variants = PRODUCT_VARIANTS[v];
+                if (variants && !variants.includes(sku)) setSku("");
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select product type…" />
               </SelectTrigger>
@@ -1430,34 +1445,24 @@ function ProductForm({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>SKU</Label>
-            <Input
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              placeholder="e.g. 35cl, 50cl"
-            />
-          </div>
+          <SkuField productLine={productLine} value={sku} onChange={setSku} />
         </div>
-        {name && (
-          <p className="-mt-1 text-xs text-muted-foreground">
-            Saved as <strong>{name}</strong> · Finished product
+        <div className="grid grid-cols-2 gap-3 rounded-md bg-muted/30 p-3 text-sm">
+          <div>
+            <div className="text-xs text-muted-foreground">Product ID</div>
+            <div className="font-mono font-medium">
+              {editing?.product_code ?? "Assigned automatically on save"}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Saved as</div>
+            <div className="font-medium">{name || "—"}</div>
+          </div>
+          <p className="col-span-2 text-xs text-muted-foreground">
+            {editing
+              ? `Selling price ${money(Number(editing.unit_price))} · cost price ${money(Number(editing.cost_price))} — set by approving a Costing sheet.`
+              : "Selling price and cost price are set on the Costing page when its sheet is approved."}
           </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Selling price</Label>
-            <MoneyInput value={unitPrice} onChange={setUnitPrice} />
-          </div>
-          <div>
-            <Label>Cost price</Label>
-            <MoneyInput value={costPrice} onChange={setCostPrice} />
-            {editing && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Stays as entered until changed here or by an approved Costing sheet.
-              </p>
-            )}
-          </div>
         </div>
         {editing && (
           <div className="grid gap-3 rounded-md border p-3">

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/lib/audit";
+import { PRODUCT_LINES, productNameFor, skuLabelFor, PRODUCT_VARIANTS } from "@/lib/product-lines";
+import { SkuField } from "@/components/shared/sku-field";
 import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +17,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Sentinel value for the "+ Add new …" entry that sits at the bottom of the
 // product / material dropdowns. Selects intercept it before touching state.
@@ -29,7 +37,9 @@ function refreshItemLists(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({
     predicate: (q) => {
       const k = String(q.queryKey[0] ?? "");
-      return k.startsWith("products") || k.startsWith("raw-materials") || k.startsWith("dist-products");
+      return (
+        k.startsWith("products") || k.startsWith("raw-materials") || k.startsWith("dist-products")
+      );
     },
   });
 }
@@ -80,83 +90,62 @@ export function QuickAddProductDialog({
   onOpenChange,
   factoryId,
   onCreated,
-  hideOpeningStock = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   factoryId: string;
   onCreated?: (id: string) => void;
-  // Production: the batch being recorded is what brings stock in, so an
-  // opening stock here would count the same goods twice once Store confirms.
+  // Kept for existing callers: a new product always starts at zero stock now
+  // (the production batch brings stock in once Store confirms it).
   hideOpeningStock?: boolean;
 }) {
   const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const [productType, setProductType] = useState<"finished" | "semi_finished">("finished");
-  const [categoryId, setCategoryId] = useState("none");
-  const [unitChoice, setUnitChoice] = useState("pieces");
-  const [customUnit, setCustomUnit] = useState("");
-  const [unitPrice, setUnitPrice] = useState(0);
-  const [costPrice, setCostPrice] = useState(0);
-  const [openingStock, setOpeningStock] = useState(0);
-  const unit = unitChoice === "__custom__" ? customUnit : unitChoice;
+  // Same fields as the Store's product form: product type + SKU only. Prices
+  // come from an approved Costing sheet; unit, type and stock use defaults.
+  const [productLine, setProductLine] = useState("");
+  const [sku, setSku] = useState("");
+  const name = productNameFor(productLine, sku);
+  const skuLabel = skuLabelFor(productLine);
 
   useEffect(() => {
     if (open) {
-      setName("");
-      setProductType("finished");
-      setCategoryId("none");
-      setUnitChoice("pieces");
-      setCustomUnit("");
-      setUnitPrice(0);
-      setCostPrice(0);
-      setOpeningStock(0);
+      setProductLine("");
+      setSku("");
     }
   }, [open]);
 
-  const categories = useQuery({
-    queryKey: ["product-categories-quick-add", factoryId],
-    enabled: open && !!factoryId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_categories")
-        .select("id,name")
-        .eq("factory_id", factoryId)
-        .order("name");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
   const save = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) throw new Error("Product name is required");
-      if (!unit.trim()) throw new Error("Select or enter a unit of measurement");
+      if (!productLine) throw new Error("Select the product type");
+      if (!sku.trim()) throw new Error(`Enter the ${skuLabel} (e.g. 35cl, 50cl)`);
       // Goes through an RPC (permission-checked server side) because the
       // products table itself only lets Finished Goods writers insert.
-      const { data, error } = await supabase.rpc("quick_add_product" as any, {
-        payload: {
-          factory_id: factoryId,
-          name: name.trim(),
-          product_type: productType,
-          unit: unit.trim(),
-          category_id: categoryId === "none" ? null : categoryId,
-          unit_price: unitPrice,
-          cost_price: costPrice,
-          current_stock: hideOpeningStock ? 0 : openingStock,
-        },
-      } as any);
+      const { data, error } = await supabase.rpc(
+        "quick_add_product" as any,
+        {
+          payload: {
+            factory_id: factoryId,
+            name,
+            sku: sku.trim(),
+            product_type: "finished",
+            unit: "pieces",
+            unit_price: 0,
+            cost_price: 0,
+            current_stock: 0,
+          },
+        } as any,
+      );
       if (error) throw error;
       return (data as { id: string }).id;
     },
     onSuccess: (id) => {
-      toast.success(`"${name.trim()}" added`);
+      toast.success(`"${name}" added`);
       logAudit({
         action: "create",
         entity: "products",
         entityId: id,
         factoryId,
-        newValue: { name: name.trim(), unit: unit.trim(), cost_price: costPrice, unit_price: unitPrice },
+        newValue: { name, sku: sku.trim() },
       });
       refreshItemLists(qc);
       onCreated?.(id);
@@ -172,72 +161,40 @@ export function QuickAddProductDialog({
           <DialogTitle>Add New Product</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
-          <div>
-            <Label>Product name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Type</Label>
-              <Select value={productType} onValueChange={(v) => setProductType(v as typeof productType)}>
+              <Label>Product Type</Label>
+              <Select
+                value={productLine || undefined}
+                onValueChange={(v) => {
+                  setProductLine(v);
+                  const variants = PRODUCT_VARIANTS[v];
+                  if (variants && !variants.includes(sku)) setSku("");
+                }}
+              >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select product type…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="finished">Finished product</SelectItem>
-                  <SelectItem value="semi_finished">Semi-finished product</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Category</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— None —</SelectItem>
-                  {(categories.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
+                  {PRODUCT_LINES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <UnitField
-              unitChoice={unitChoice}
-              setUnitChoice={setUnitChoice}
-              customUnit={customUnit}
-              setCustomUnit={setCustomUnit}
-            />
-            {!hideOpeningStock && (
-              <div>
-                <Label>Opening stock</Label>
-                <MoneyInput min={0} step="0.001" value={openingStock} onChange={setOpeningStock} />
-              </div>
-            )}
-          </div>
-          {hideOpeningStock && (
-            <p className="text-xs text-muted-foreground">
-              Starts at zero stock — this production batch adds the stock once Store confirms it.
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Cost price</Label>
-              <MoneyInput value={costPrice} onChange={setCostPrice} />
-            </div>
-            <div>
-              <Label>Selling price</Label>
-              <MoneyInput value={unitPrice} onChange={setUnitPrice} />
-            </div>
+            <SkuField productLine={productLine} value={sku} onChange={setSku} />
           </div>
           <p className="text-xs text-muted-foreground">
-            The cost is saved with the product and stays until someone changes it on the Finished
-            Products page. The Sales picker only lists products that have a category.
+            {name ? (
+              <>
+                Saved as <strong>{name}</strong> · Finished product, product ID assigned
+                automatically.{" "}
+              </>
+            ) : null}
+            Starts at zero stock — the production batch adds stock once Store confirms it. Prices
+            are set by approving a Costing sheet.
           </p>
         </div>
         <DialogFooter>

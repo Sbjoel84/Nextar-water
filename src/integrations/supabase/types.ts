@@ -2139,6 +2139,7 @@ export type Database = {
           factory_id: string
           id: string
           name: string
+          product_code: string | null
           product_type: string
           reorder_level: number | null
           sku: string | null
@@ -2156,6 +2157,7 @@ export type Database = {
           factory_id: string
           id?: string
           name: string
+          product_code?: string | null
           product_type?: string
           reorder_level?: number | null
           sku?: string | null
@@ -2173,6 +2175,7 @@ export type Database = {
           factory_id?: string
           id?: string
           name?: string
+          product_code?: string | null
           product_type?: string
           reorder_level?: number | null
           sku?: string | null
@@ -4145,6 +4148,14 @@ export type Database = {
       }
       approve_sale: {
         Args: { p_comment?: string; p_id: string }
+        Returns: Json
+      }
+      approve_costing_sheet_with_price: {
+        Args: { p_id: string; p_selling_price?: number | null; p_comment?: string | null }
+        Returns: Json
+      }
+      store_rep_returnables: {
+        Args: { p_factory_id: string }
         Returns: Json
       }
       store_rep_activity: {

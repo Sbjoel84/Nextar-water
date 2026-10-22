@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +30,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Eye, Undo2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Supplied = {
   sale_id: string;
@@ -381,14 +388,19 @@ function LogRepReturnDialog({
   factoryId,
   rep,
   onDone,
+  picker,
 }: {
   factoryId: string;
   rep: RepDay;
   onDone: () => void;
+  // Set by ReturnProductDialog: the Sales-Rep chooser shown above the lines.
+  picker?: ReactNode;
 }) {
   const qc = useQueryClient();
   const lines = useMemo(() => productLines(rep).filter((l) => l.outstanding > 0), [rep]);
   const [qty, setQty] = useState<Record<string, number>>({});
+  // Switching Sales-Rep in Return Product starts the quantities afresh.
+  useEffect(() => setQty({}), [rep.sales_rep_id]);
   const [reason, setReason] = useState("Unsold — returned at close of business");
 
   const over = lines.filter((l) => (qty[l.product_id] ?? 0) > l.outstanding);
@@ -424,6 +436,7 @@ function LogRepReturnDialog({
         logAudit({ action: "create", entity: "sales_returns", entityId: r.id, factoryId }),
       );
       qc.invalidateQueries({ queryKey: ["store-rep-activity"] });
+      qc.invalidateQueries({ queryKey: ["store-rep-returnables"] });
       qc.invalidateQueries({ queryKey: ["sales-returns-list"] });
       onDone();
     },
@@ -433,13 +446,19 @@ function LogRepReturnDialog({
   return (
     <DialogContent className="max-w-lg">
       <DialogHeader>
-        <DialogTitle>Log Return — {rep.name}</DialogTitle>
+        <DialogTitle>{picker ? "Return Product" : `Log Return — ${rep.name}`}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
+        {picker}
         <p className="text-xs text-muted-foreground">
           Enter what the rep brought back. It is inspected before it goes back into stock and is
           credited to the rep's account.
         </p>
+        {rep.customer_id && lines.length === 0 && (
+          <p className="rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            {rep.name} has no supplied products left to return.
+          </p>
+        )}
         {lines.map((l) => {
           const v = qty[l.product_id] ?? 0;
           return (
@@ -477,4 +496,121 @@ function LogRepReturnDialog({
       </DialogFooter>
     </DialogContent>
   );
+}
+
+type Returnable = {
+  sales_rep_id: string;
+  customer_id: string;
+  name: string;
+  products: {
+    product_id: string;
+    product_name: string;
+    unit: string | null;
+    supplied: number;
+    returned: number;
+    sale_id: string;
+  }[];
+};
+
+const NO_REP: RepDay = {
+  sales_rep_id: "",
+  customer_id: "",
+  name: "",
+  phone: null,
+  status: "active",
+  supplied: [],
+  pending_orders: 0,
+  returned: [],
+};
+
+// Store page header "Return Product": pick a Sales-Rep, then log what they
+// brought back out of everything they've been supplied (any day).
+export function ReturnProductDialog({
+  factoryId,
+  onDone,
+}: {
+  factoryId: string;
+  onDone: () => void;
+}) {
+  const [repId, setRepId] = useState("");
+  const returnables = useQuery({
+    queryKey: ["store-rep-returnables", factoryId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("store_rep_returnables", {
+        p_factory_id: factoryId,
+      });
+      if (error) throw error;
+      return (data ?? []) as unknown as Returnable[];
+    },
+  });
+
+  // Shaped like a day of activity so the Log Return form can be reused as is.
+  const rep: RepDay = useMemo(() => {
+    const r = returnables.data?.find((x) => x.sales_rep_id === repId);
+    if (!r) return NO_REP;
+    return {
+      ...NO_REP,
+      sales_rep_id: r.sales_rep_id,
+      customer_id: r.customer_id,
+      name: r.name,
+      supplied: r.products.map((p) => ({
+        sale_id: p.sale_id,
+        invoice_number: "",
+        product_id: p.product_id,
+        product_name: p.product_name,
+        unit: p.unit,
+        quantity: Number(p.supplied),
+        unit_price: 0,
+        created_at: "",
+      })),
+      returned: r.products
+        .filter((p) => Number(p.returned) > 0)
+        .map((p) => ({
+          id: p.product_id,
+          return_number: "",
+          product_id: p.product_id,
+          product_name: p.product_name,
+          unit: p.unit,
+          quantity: Number(p.returned),
+          accepted: null,
+          damaged: 0,
+          rejected: 0,
+          status: "received",
+          received_at: "",
+        })),
+    };
+  }, [returnables.data, repId]);
+
+  const picker = (
+    <div>
+      <Label>Sales-Rep</Label>
+      <Select value={repId || undefined} onValueChange={setRepId}>
+        <SelectTrigger>
+          <SelectValue
+            placeholder={returnables.isLoading ? "Loading…" : "Select the sales-rep returning…"}
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {(returnables.data ?? []).map((r) => {
+            const out = r.products.reduce(
+              (s, p) => s + Math.max(Number(p.supplied) - Number(p.returned), 0),
+              0,
+            );
+            return (
+              <SelectItem key={r.sales_rep_id} value={r.sales_rep_id}>
+                {r.name} · {num(out)} still with them
+              </SelectItem>
+            );
+          })}
+          {returnables.data?.length === 0 && (
+            <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+              No sales-reps yet — add them under Distribution → Sales Reps.
+            </div>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
+  return <LogRepReturnDialog factoryId={factoryId} rep={rep} onDone={onDone} picker={picker} />;
 }

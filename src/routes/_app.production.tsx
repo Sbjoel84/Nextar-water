@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RequireAccess } from "@/components/layout/require-access";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
@@ -30,7 +30,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -63,6 +65,7 @@ import { toast } from "sonner";
 import { generateProductionSlipPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
+import { PRODUCT_LINES } from "@/lib/product-lines";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
@@ -76,7 +79,14 @@ export const Route = createFileRoute("/_app/production")({
   ),
 });
 
-type Product = { id: string; name: string; unit: string; current_stock: number };
+type Product = {
+  id: string;
+  name: string;
+  unit: string;
+  current_stock: number;
+  product_code: string | null;
+  product_type: string;
+};
 type ProductionRow = {
   id: string;
   production_number: string;
@@ -146,7 +156,7 @@ function ProductionPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id,name,unit,current_stock")
+        .select("id,name,unit,current_stock,product_code,product_type")
         .eq("factory_id", factoryId!)
         .eq("active", true)
         .order("name");
@@ -758,6 +768,21 @@ function ProductionForm({
   }, [editing, currentUserName.data]);
 
   const selectedProduct = products.find((p) => p.id === productId);
+  // Every finished product, grouped by product type (Bottle Water, Dispenser,
+  // ...). The batch's own product stays listed even if it isn't one, so an
+  // older record still shows what it was.
+  const finishedGroups = useMemo(() => {
+    const items = products.filter((p) => p.product_type === "finished" || p.id === productId);
+    const groups = new Map<string, Product[]>();
+    for (const p of items) {
+      const line =
+        PRODUCT_LINES.find((l) => p.name.toLowerCase().startsWith(l.toLowerCase())) ?? "Other";
+      groups.set(line, [...(groups.get(line) ?? []), p]);
+    }
+    return [...PRODUCT_LINES, "Other"]
+      .filter((l) => groups.has(l))
+      .map((label) => ({ label, items: groups.get(label)! }));
+  }, [products, productId]);
 
   const productUnits = useQuery({
     queryKey: ["product-units-for-production", productId],
@@ -911,11 +936,23 @@ function ProductionForm({
               <SelectValue placeholder="Select product…" />
             </SelectTrigger>
             <SelectContent>
-              {products.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name} · stock {num(Number(p.current_stock))} {p.unit}
-                </SelectItem>
+              {finishedGroups.map((g) => (
+                <SelectGroup key={g.label}>
+                  <SelectLabel>{g.label}</SelectLabel>
+                  {g.items.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                      {p.product_code ? ` · ${p.product_code}` : ""} · stock{" "}
+                      {num(Number(p.current_stock))} {p.unit}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               ))}
+              {finishedGroups.length === 0 && (
+                <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+                  No finished products yet — add one below.
+                </div>
+              )}
               <SelectItem value={ADD_NEW_ITEM} className="font-medium text-primary">
                 + Add new product…
               </SelectItem>
