@@ -58,12 +58,23 @@ import {
 import { money, num } from "@/lib/format";
 import { toast } from "sonner";
 import { generateInvoicePdf } from "@/lib/pdf";
+import { openSaleInvoice } from "@/lib/sale-invoice";
+import {
+  CUSTOMER_TYPES,
+  ConfirmSaleDialog,
+  PAY_DIALOG_METHODS,
+  PaymentLinesEditor,
+  RejectSaleDialog,
+  customerTypeLabel,
+  type CustomerType,
+  type PaymentLine,
+  type PaymentMethod,
+} from "@/components/sales/confirm-sale";
 import { logAudit } from "@/lib/audit";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { salePaymentStatus, salePosition, useCustomerAccount } from "@/lib/customer-account";
 import { AccountLedgerTable, AccountStatusBadge } from "@/components/sales/account-ledger";
 import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
-import { ApprovalHistory } from "@/components/workflow/approval-history";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
@@ -79,19 +90,6 @@ export const Route = createFileRoute("/_app/sales")({
     </RequireAccess>
   ),
 });
-
-type PaymentMethod = "cash" | "transfer" | "pos" | "card" | "cheque" | "credit";
-
-// Who the sales person is capturing the order for. Stored on sales.customer_type.
-type CustomerType = "walk_in" | "marketer" | "distributor" | "other";
-const CUSTOMER_TYPES: { value: CustomerType; label: string }[] = [
-  { value: "walk_in", label: "Walk-in customer" },
-  { value: "marketer", label: "Marketer" },
-  { value: "distributor", label: "Distributor" },
-  { value: "other", label: "Other" },
-];
-const customerTypeLabel = (t: string | null | undefined) =>
-  CUSTOMER_TYPES.find((c) => c.value === t)?.label ?? "Walk-in customer";
 
 type Product = {
   id: string;
@@ -309,54 +307,8 @@ function SalesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sales.data, summaryDay, period, today]);
 
-  const openInvoice = async (saleId: string, action: "download" | "print") => {
-    const { data, error } = await supabase
-      .from("sales")
-      .select(
-        `
-      *, sale_items(quantity,unit_price,line_total,products(name,unit))
-    `,
-      )
-      .eq("id", saleId)
-      .single();
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    const s = data as any;
-    await generateInvoicePdf(
-      {
-        company: {
-          name: settings.data?.company_name ?? "FMIS",
-          address: settings.data?.address,
-          phone: settings.data?.phone,
-          email: settings.data?.email,
-          logo_url: settings.data?.logo_url,
-        },
-        invoice_number: s.invoice_number,
-        sale_date: s.sale_date,
-        customer: { name: s.customer_name, phone: s.customer_phone, address: s.customer_address },
-        items: (s.sale_items ?? []).map((it: any) => ({
-          name: it.products?.name ?? "-",
-          quantity: Number(it.quantity),
-          unit: it.products?.unit ?? "",
-          unit_price: Number(it.unit_price),
-          line_total: Number(it.line_total),
-        })),
-        subtotal: Number(s.subtotal),
-        discount: Number(s.discount),
-        vat: Number(s.vat),
-        grand_total: Number(s.grand_total),
-        amount_paid: Number(s.amount_paid),
-        balance: Number(s.balance),
-        currency: settings.data?.currency ?? "NGN",
-        remarks: s.remarks,
-        sales_person: s.sales_person,
-        is_pr: s.is_pr,
-      },
-      action,
-    );
-  };
+  const openInvoice = (saleId: string, action: "download" | "print") =>
+    openSaleInvoice(saleId, settings.data, action);
 
   // Loads the full detail (including line items) a still-pending sale needs
   // to reopen in PosDialog for editing — the list row above only carries the
@@ -439,39 +391,6 @@ function SalesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const invalidateAfterApproval = () => {
-    qc.invalidateQueries({ queryKey: ["sales-list"] });
-    qc.invalidateQueries({ queryKey: ["customer-account"] });
-    qc.invalidateQueries({ queryKey: ["customer-sales-full"] });
-    qc.invalidateQueries({ queryKey: ["customer-payments-full"] });
-    qc.invalidateQueries({ queryKey: ["customers"] });
-    // approve_sale is what actually decrements stock -- keep the rest of
-    // the app's stock-derived views in sync, same as a normal sale used to.
-    qc.invalidateQueries({ queryKey: ["finished-goods"] });
-    qc.invalidateQueries({ queryKey: ["products-active"] });
-    qc.invalidateQueries({ queryKey: ["products-for-production"] });
-  };
-
-  const approveSale = useMutation({
-    mutationFn: async (input: { sale: SaleRow; comment: string }) => {
-      const { error } = await supabase.rpc("approve_sale", {
-        p_id: input.sale.id,
-        p_comment: input.comment || undefined,
-      });
-      if (error) throw error;
-      return input;
-    },
-    onSuccess: ({ sale }) => {
-      toast.success(`Order ${sale.invoice_number} approved — printing receipt`);
-      logAudit({ action: "approve", entity: "sales", entityId: sale.id, factoryId });
-      invalidateAfterApproval();
-      setApproveTarget(null);
-      // The accountant prints the customer's receipt as part of approving.
-      openInvoice(sale.id, "print");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const rejectSale = useMutation({
     mutationFn: async (input: { sale: SaleRow; reason: string }) => {
       const { error } = await supabase.rpc("reject_sale", {
@@ -533,8 +452,9 @@ function SalesPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Sales & POS</h1>
           <p className="text-sm text-muted-foreground">
             Sales persons capture orders from walk-in customers, marketers, distributors and others,
-            then post them to the accountant. The accountant approves each order and prints the
-            receipt — only then does it decrement stock and count toward the customer's balance.
+            then post them to the accountant. On the Finance page the accountant sets the payment,
+            discount / commission and VAT, confirms the order and prints the receipt — only then
+            does it decrement stock and count toward the customer's balance.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -548,7 +468,7 @@ function SalesPage() {
             >
               <DialogTrigger asChild>
                 <Button className="gap-2" onClick={() => setPresetCustomerId(undefined)}>
-                  <Plus className="h-4 w-4" /> New Order
+                  <Plus className="h-4 w-4" /> Sales & POS
                 </Button>
               </DialogTrigger>
               {posOpen && factoryId && (
@@ -784,7 +704,7 @@ function SalesPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Approve & print receipt"
+                            title="Confirm payment & print receipt"
                             onClick={() => setApproveTarget(s)}
                           >
                             <Check className="h-4 w-4 text-success" />
@@ -924,11 +844,11 @@ function SalesPage() {
       </Dialog>
 
       <Dialog open={!!approveTarget} onOpenChange={(v) => !v && setApproveTarget(null)}>
-        {approveTarget && (
-          <ApproveSaleDialog
+        {approveTarget && factoryId && (
+          <ConfirmSaleDialog
             sale={approveTarget}
-            saving={approveSale.isPending}
-            onSubmit={(comment) => approveSale.mutate({ sale: approveTarget, comment })}
+            factoryId={factoryId}
+            onDone={() => setApproveTarget(null)}
           />
         )}
       </Dialog>
@@ -993,69 +913,6 @@ function SalesPage() {
   );
 }
 
-type PaymentLine = { amount: number; method: PaymentMethod };
-
-// Shared by the New Sale checkout and Receive Payment dialogs — one row per
-// method so a customer paying part cash, part transfer can be recorded in a
-// single transaction instead of forcing everything onto one payment_method.
-function PaymentLinesEditor({
-  payments,
-  onChange,
-  methods,
-}: {
-  payments: PaymentLine[];
-  onChange: (payments: PaymentLine[]) => void;
-  methods: PaymentMethod[];
-}) {
-  const update = (i: number, patch: Partial<PaymentLine>) =>
-    onChange(payments.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
-  const remove = (i: number) => onChange(payments.filter((_, idx) => idx !== i));
-  const add = () => onChange([...payments, { amount: 0, method: "cash" }]);
-
-  return (
-    <div className="space-y-2">
-      {payments.map((p, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <MoneyInput
-            value={p.amount}
-            onChange={(v) => update(i, { amount: v })}
-            className="flex-1"
-          />
-          <Select value={p.method} onValueChange={(v) => update(i, { method: v as PaymentMethod })}>
-            <SelectTrigger className="w-32 shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {methods.map((m) => (
-                <SelectItem key={m} value={m} className="capitalize">
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {payments.length > 1 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              onClick={() => remove(i)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      ))}
-      <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={add}>
-        <Plus className="h-3.5 w-3.5" /> Add payment method
-      </Button>
-    </div>
-  );
-}
-
-const PAY_DIALOG_METHODS: PaymentMethod[] = ["cash", "transfer", "pos", "card", "cheque"];
-const PAYMENT_TYPES = ["Full Payment", "Part Payment"];
-
 function PayDialog({
   sale,
   onSubmit,
@@ -1119,86 +976,6 @@ function PayDialog({
           }
         >
           {saving ? "Saving…" : "Record & Print Receipt"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function ApproveSaleDialog({
-  sale,
-  onSubmit,
-  saving,
-}: {
-  sale: SaleRow;
-  onSubmit: (comment: string) => void;
-  saving: boolean;
-}) {
-  const [comment, setComment] = useState("");
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Approve Order & Print Receipt</DialogTitle>
-      </DialogHeader>
-      <div className="grid gap-3">
-        <p className="text-sm text-muted-foreground">
-          {sale.invoice_number} · {sale.customer_name ?? "Walk-in"} (
-          {customerTypeLabel(sale.customer_type)}) · {money(Number(sale.grand_total))}
-          {sale.sales_person && ` · posted by ${sale.sales_person}`}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          This decrements stock, records any payment taken with the order, and — if there's a
-          balance — adds it to the customer's account, then opens the receipt to print. It can't be
-          undone from here.
-        </p>
-        <div>
-          <Label>Comment (optional)</Label>
-          <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
-        </div>
-        <ApprovalHistory module="sales" entityId={sale.id} />
-      </div>
-      <DialogFooter>
-        <Button disabled={saving} onClick={() => onSubmit(comment)}>
-          {saving ? "Approving…" : "Approve & Print Receipt"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function RejectSaleDialog({
-  sale,
-  onSubmit,
-  saving,
-}: {
-  sale: SaleRow;
-  onSubmit: (reason: string) => void;
-  saving: boolean;
-}) {
-  const [reason, setReason] = useState("");
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Reject Sale</DialogTitle>
-      </DialogHeader>
-      <div className="grid gap-3">
-        <p className="text-sm text-muted-foreground">
-          {sale.invoice_number} · {sale.customer_name ?? "Walk-in"} ·{" "}
-          {money(Number(sale.grand_total))}
-        </p>
-        <div>
-          <Label>Reason</Label>
-          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
-        </div>
-        <ApprovalHistory module="sales" entityId={sale.id} />
-      </div>
-      <DialogFooter>
-        <Button
-          variant="destructive"
-          disabled={saving || !reason.trim()}
-          onClick={() => onSubmit(reason)}
-        >
-          {saving ? "Rejecting…" : "Reject"}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1415,28 +1192,11 @@ export function PosDialog({
       setCustomerAddress(c.address ?? "");
     }
   }, [presetCustomerId, customers.data]);
-  const [discountInput, setDiscountInput] = useState(editingSale?.discount ?? 0);
-  const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
-  const [applyVat, setApplyVat] = useState(editingSale ? editingSale.vat > 0 : true);
   const [isPr, setIsPr] = useState(editingSale?.is_pr ?? false);
-  const [payments, setPayments] = useState<PaymentLine[]>(() => {
-    if (editingSale?.pending_payments?.length) return editingSale.pending_payments;
-    if (editingSale && editingSale.amount_paid > 0) {
-      return [{ amount: editingSale.amount_paid, method: editingSale.payment_method }];
-    }
-    return [{ amount: 0, method: "cash" }];
-  });
-  const amountPaid = useMemo(() => payments.reduce((s, p) => s + (p.amount || 0), 0), [payments]);
-  // The customer's real account (ledger-backed): advance they can draw on and
-  // any debt they already owe. Both feed the live figures below.
-  const customerAccount = useCustomerAccount(customerId);
-  const availableCredit = customerAccount.data?.summary.available_advance ?? 0;
-  const existingDebt = customerAccount.data?.summary.outstanding_debt ?? 0;
   const [salesPerson, setSalesPerson] = useState(editingSale?.sales_person ?? "");
   const [customerType, setCustomerType] = useState<CustomerType>(
     editingSale?.customer_type ?? "walk_in",
   );
-  const [remarks, setRemarks] = useState(editingSale?.remarks ?? "");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [pickerId, setPickerId] = useState<string>("");
   const [salesRepId, setSalesRepId] = useState<string>(editingSale?.sales_rep_id ?? "none");
@@ -1522,46 +1282,14 @@ export function PosDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingSale, products.data, repStock.isLoading]);
 
-  const vatRate = Number(settings.data?.vat_rate ?? 0);
   const visibleProducts = useMemo(() => {
     const all = products.data ?? [];
     return categoryFilter === "all" ? all : all.filter((p) => p.category_id === categoryFilter);
   }, [products.data, categoryFilter]);
 
-  const totals = useMemo(() => {
-    const subtotal = cart.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-    // Percentage discount is always taken off the subtotal, not off a
-    // previously-discounted amount -- there's only ever one discount here.
-    const discount =
-      discountType === "percent"
-        ? Math.min(subtotal * (Math.max(discountInput, 0) / 100), subtotal)
-        : Math.min(Math.max(discountInput, 0), subtotal);
-    // PR: stock still goes out (the cart/subtotal above is unaffected), but
-    // nothing is billed, paid, or owed -- everything money-related is 0.
-    if (isPr) return { subtotal, discount, vat: 0, grand: 0, balance: 0, creditApplied: 0 };
-    const vat = applyVat ? Math.max(subtotal - discount, 0) * (vatRate / 100) : 0;
-    const grand = Math.max(subtotal - discount + vat, 0);
-    // Automatic, not something the cashier sets: whatever the customer's
-    // own advance/credit balance can cover of what cash didn't, same
-    // formula approve_sale() finalizes with server-side.
-    const creditApplied = Math.min(Math.max(grand - amountPaid, 0), availableCredit);
-    const balance = Math.max(grand - amountPaid - creditApplied, 0);
-    return { subtotal, discount, vat, grand, balance, creditApplied };
-  }, [cart, discountInput, discountType, amountPaid, availableCredit, vatRate, applyVat, isPr]);
-
-  const registeredCustomer = customerId !== "walkin";
-  // Same arithmetic approve_sale() finalises with, so the figures shown while
-  // building the sale are the ones that get posted.
-  const position = useMemo(
-    () =>
-      salePosition({
-        grand: totals.grand,
-        paid: amountPaid,
-        availableAdvance: availableCredit,
-        previousDebt: existingDebt,
-      }),
-    [totals.grand, amountPaid, availableCredit, existingDebt],
-  );
+  // The sales person only prices the goods. Payment, discount / commission
+  // and VAT are set by the accountant in ConfirmSaleDialog (confirm_sale()).
+  const subtotal = useMemo(() => cart.reduce((s, i) => s + i.quantity * i.unit_price, 0), [cart]);
 
   // What actually gets sold -- excludes lines the user has cleared to 0
   // while editing but hasn't removed or refilled yet.
@@ -1569,15 +1297,6 @@ export function PosDialog({
   // Lines asking for more than the store (or van) holds. They stay as typed
   // and are flagged, rather than being quietly cut down to what's available.
   const overStock = useMemo(() => cart.filter((c) => c.quantity > c.stock), [cart]);
-
-  // Ticking PR clears anything that implies money changed hands, so the form
-  // can't show a half-billed, half-free sale.
-  useEffect(() => {
-    if (isPr) {
-      setPayments([{ amount: 0, method: "cash" }]);
-      setApplyVat(false);
-    }
-  }, [isPr]);
 
   const [addingProduct, setAddingProduct] = useState(false);
   const addProduct = (id: string) => {
@@ -1655,14 +1374,16 @@ export function PosDialog({
         customer_name: displayName || null,
         customer_phone: customerPhone || null,
         customer_address: customerAddress || null,
-        discount: totals.discount,
-        vat: totals.vat,
-        payments: isPr ? [] : payments.filter((p) => p.amount > 0),
+        // The accountant sets these on confirmation. An edit keeps whatever an
+        // order posted before that change already carried.
+        discount: isPr ? 0 : (editingSale?.discount ?? 0),
+        vat: isPr ? 0 : (editingSale?.vat ?? 0),
+        payments: isPr ? [] : (editingSale?.pending_payments ?? []),
         sales_person: salesPerson || null,
         customer_type: customerType,
         sales_rep_id: repMode ? salesRepId : null,
         is_pr: isPr,
-        remarks: remarks || null,
+        remarks: editingSale?.remarks ?? null,
         items: sellableCart.map((c) => ({
           product_id: c.product_id,
           quantity: c.quantity,
@@ -1731,14 +1452,14 @@ export function PosDialog({
           unit_price: c.unit_price,
           line_total: c.quantity * c.unit_price,
         })),
-        subtotal: totals.subtotal,
-        discount: totals.discount,
-        vat: totals.vat,
-        grand_total: totals.grand,
-        amount_paid: amountPaid,
-        balance: totals.balance,
+        subtotal,
+        discount: 0,
+        vat: 0,
+        grand_total: isPr ? 0 : subtotal,
+        amount_paid: 0,
+        balance: isPr ? 0 : subtotal,
         currency: settings.data?.currency ?? "NGN",
-        remarks,
+        remarks: null,
         sales_person: salesPerson,
         is_pr: isPr,
       },
@@ -1750,7 +1471,7 @@ export function PosDialog({
     <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-6xl flex-col gap-0 overflow-hidden p-0">
       <DialogHeader className="shrink-0 border-b px-6 py-4">
         <DialogTitle>
-          {editingSale ? `Edit Order — ${editingSale.invoice_number}` : "New Order"}
+          {editingSale ? `Edit Order — ${editingSale.invoice_number}` : "Sales & POS"}
         </DialogTitle>
       </DialogHeader>
       <div className="grid flex-1 gap-6 overflow-y-auto px-6 py-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -1958,56 +1679,10 @@ export function PosDialog({
               </div>
             </>
           )}
-          <div>
-            <Label className="text-xs">Discount</Label>
-            <div className="flex gap-1.5">
-              {discountType === "percent" ? (
-                <MoneyInput
-                  min={0}
-                  max={100}
-                  step="0.01"
-                  value={discountInput}
-                  onChange={setDiscountInput}
-                />
-              ) : (
-                <MoneyInput value={discountInput} onChange={setDiscountInput} />
-              )}
-              <Select
-                value={discountType}
-                onValueChange={(v) => setDiscountType(v as "amount" | "percent")}
-              >
-                <SelectTrigger className="w-16 shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="amount">₦</SelectItem>
-                  <SelectItem value="percent">%</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={applyVat}
-              disabled={isPr}
-              onCheckedChange={(v) => setApplyVat(!!v)}
-            />
-            VAT
-          </label>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={isPr} onCheckedChange={(v) => setIsPr(!!v)} />
             PR
           </label>
-          {!isPr && (
-            <div>
-              <Label className="text-xs">Amount Paid</Label>
-              <PaymentLinesEditor
-                payments={payments}
-                onChange={setPayments}
-                methods={PAY_DIALOG_METHODS}
-              />
-            </div>
-          )}
           <div>
             <Label className="text-xs">Sales rep (van stock)</Label>
             <Select
@@ -2033,31 +1708,9 @@ export function PosDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">Sales person</Label>
-              <Input value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Type of Payment</Label>
-              {/* Saved in the sale's remarks field. */}
-              <Select value={remarks || undefined} onValueChange={setRemarks}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                  {/* Keep an older sale's free-text remark selectable when editing it. */}
-                  {remarks && !PAYMENT_TYPES.includes(remarks) && (
-                    <SelectItem value={remarks}>{remarks}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <Label className="text-xs">Sales person</Label>
+            <Input value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} />
           </div>
 
           <div className="rounded-lg border p-3 text-sm space-y-1 bg-muted/30">
@@ -2066,100 +1719,15 @@ export function PosDialog({
                 PR — complimentary. Stock value below is for record only; nothing is billed.
               </div>
             )}
-            <div className="flex justify-between">
-              <span>{isPr ? "Value of products issued" : "Subtotal"}</span>
-              <span>{money(totals.subtotal)}</span>
+            <div className="flex justify-between text-base font-semibold">
+              <span>{isPr ? "Value of products issued" : "Goods total"}</span>
+              <span>{money(subtotal)}</span>
             </div>
             {!isPr && (
-              <>
-                <div className="flex justify-between">
-                  <span>Discount{discountType === "percent" ? ` (${discountInput}%)` : ""}</span>
-                  <span>-{money(totals.discount)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>VAT {applyVat ? `(${vatRate}%)` : "(not applied)"}</span>
-                  <span>{money(totals.vat)}</span>
-                </div>
-              </>
-            )}
-            <div className="flex justify-between text-base font-semibold pt-1 border-t">
-              <span>Total</span>
-              <span>{money(totals.grand)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Paid</span>
-              <span>{money(amountPaid)}</span>
-            </div>
-            {registeredCustomer && !isPr ? (
-              <div className="mt-1 space-y-1 border-t pt-2">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Current sale vs customer advance
-                </div>
-                <div className="flex justify-between">
-                  <span>Advance available</span>
-                  <span>{money(availableCredit)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Advance applied</span>
-                  <span className={position.advanceApplied > 0 ? "text-success" : ""}>
-                    {money(position.advanceApplied)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Remaining advance</span>
-                  <span>{money(position.remainingAdvance)}</span>
-                </div>
-                <div className="flex justify-between font-medium">
-                  <span>Amount due</span>
-                  <span className={position.amountDue > 0 ? "text-destructive" : ""}>
-                    {money(position.amountDue)}
-                  </span>
-                </div>
-                {totals.grand > 0 && position.advanceShort && (
-                  <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
-                    Advance exhausted. Customer owes {money(position.amountDue)}.
-                  </p>
-                )}
-                {totals.grand > 0 && position.advanceExhausted && (
-                  <p className="rounded-md bg-warning/15 px-2 py-1 text-xs font-medium text-warning">
-                    This sale uses up the customer's advance — nothing is left afterwards.
-                  </p>
-                )}
-                {totals.grand > 0 && position.advanceLow && (
-                  <p className="rounded-md bg-warning/15 px-2 py-1 text-xs text-warning">
-                    Advance almost exhausted — only {money(position.remainingAdvance)} left after
-                    this sale.
-                  </p>
-                )}
-                {totals.grand > 0 && availableCredit === 0 && position.amountDue > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    No advance on this account — the amount due becomes a debt unless it is paid
-                    now.
-                  </p>
-                )}
-                {existingDebt > 0 && (
-                  <div className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
-                    Existing debt {money(existingDebt)} is not part of this sale and stays on the
-                    account. Total owed after this sale:{" "}
-                    <strong>{money(position.debtAfter)}</strong>.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                {totals.creditApplied > 0 && (
-                  <div className="flex justify-between">
-                    <span>Credit applied</span>
-                    <span>{money(totals.creditApplied)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-medium">
-                  <span>Balance</span>
-                  <span className={totals.balance > 0 ? "text-destructive" : ""}>
-                    {money(totals.balance)}
-                  </span>
-                </div>
-              </>
+              <p className="text-xs text-muted-foreground">
+                Payment, discount / commission and VAT are set by the accountant when confirming
+                this order on the Finance page, before the receipt is printed.
+              </p>
             )}
           </div>
         </div>

@@ -4135,6 +4135,10 @@ export type Database = {
         Args: { p_comment?: string; p_id: string }
         Returns: Json
       }
+      confirm_sale: {
+        Args: { p_id: string; payload: Json }
+        Returns: Json
+      }
       approve_staff_deduction: {
         Args: { p_comment?: string; p_id: string }
         Returns: Json

@@ -22,6 +22,8 @@ import {
 } from "@/lib/metric-queries";
 import { exportCsv } from "@/lib/export";
 import { CustomerAccountsCard } from "@/components/dashboards/customer-accounts";
+import { PendingSalesCard } from "@/components/sales/confirm-sale";
+import { usePermissions } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -124,8 +126,11 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
       "sales_returns",
       "cash_transactions",
     ],
-    [["fin"]],
+    [["fin"], ["pending-sales"]],
   );
+  // The accountant confirms (prices, takes payment for) and prints the orders
+  // sales persons post — see PendingSalesCard.
+  const canConfirmSales = usePermissions().canApprove("sales");
 
   const validRange = !!from && !!to && from <= to;
 
@@ -418,6 +423,8 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
           )}
         </CardContent>
       </Card>
+
+      {canConfirmSales && <PendingSalesCard factoryId={factoryId} />}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KPI
