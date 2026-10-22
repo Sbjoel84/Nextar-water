@@ -45,6 +45,7 @@ import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-a
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { RefId } from "@/components/shared/ref-id";
+import { DistributorsTab } from "@/components/distribution/distributors-tab";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 
@@ -218,6 +219,7 @@ function DistributionPage() {
       <Tabs defaultValue="reps">
         <TabsList className="flex-wrap">
           <TabsTrigger value="reps">Sales Reps</TabsTrigger>
+          <TabsTrigger value="distributors">Distributors</TabsTrigger>
           <TabsTrigger value="dispatches">Dispatches</TabsTrigger>
           <TabsTrigger value="returns">Rep Returns</TabsTrigger>
           <TabsTrigger value="remittances">Remittances</TabsTrigger>
@@ -226,6 +228,9 @@ function DistributionPage() {
 
         <TabsContent value="reps" className="mt-4">
           <RepsTab factoryId={factoryId} reps={reps.data ?? []} perms={perms} />
+        </TabsContent>
+        <TabsContent value="distributors" className="mt-4">
+          <DistributorsTab factoryId={factoryId} />
         </TabsContent>
         <TabsContent value="dispatches" className="mt-4">
           <DispatchesTab

@@ -210,6 +210,8 @@ function RawMaterialsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Material | null>(null);
   const [receiveTarget, setReceiveTarget] = useState<Material | null>(null);
+  // Header "Restock" button: same receipt flow, material picked in the dialog.
+  const [restockOpen, setRestockOpen] = useState(false);
   const [issueTarget, setIssueTarget] = useState<Material | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<Material | null>(null);
   const [historyTarget, setHistoryTarget] = useState<Material | null>(null);
@@ -533,35 +535,42 @@ function RawMaterialsPage() {
             Stock, receipts, issues to production, and reorder alerts.
           </p>
         </div>
-        {(write || submitMaterial) && (
-          <Dialog
-            open={formOpen}
-            onOpenChange={(v) => {
-              setFormOpen(v);
-              if (!v) setEditing(null);
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button className="gap-2" onClick={() => setEditing(null)}>
-                <Plus className="h-4 w-4" /> Add Material
-              </Button>
-            </DialogTrigger>
-            {formOpen && factoryId && (
-              <MaterialForm
-                factoryId={factoryId}
-                suppliers={suppliers.data ?? []}
-                categories={materialCategories.data ?? []}
-                editing={editing}
-                onDone={() => {
-                  setFormOpen(false);
-                  setEditing(null);
-                  invalidateAll();
-                  qc.invalidateQueries({ queryKey: ["material-categories"] });
-                }}
-              />
-            )}
-          </Dialog>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canSubmitReceipt && (
+            <Button variant="outline" className="gap-2" onClick={() => setRestockOpen(true)}>
+              <PackagePlus className="h-4 w-4" /> Restock
+            </Button>
+          )}
+          {(write || submitMaterial) && (
+            <Dialog
+              open={formOpen}
+              onOpenChange={(v) => {
+                setFormOpen(v);
+                if (!v) setEditing(null);
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button className="gap-2" onClick={() => setEditing(null)}>
+                  <Plus className="h-4 w-4" /> Add Material
+                </Button>
+              </DialogTrigger>
+              {formOpen && factoryId && (
+                <MaterialForm
+                  factoryId={factoryId}
+                  suppliers={suppliers.data ?? []}
+                  categories={materialCategories.data ?? []}
+                  editing={editing}
+                  onDone={() => {
+                    setFormOpen(false);
+                    setEditing(null);
+                    invalidateAll();
+                    qc.invalidateQueries({ queryKey: ["material-categories"] });
+                  }}
+                />
+              )}
+            </Dialog>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -692,14 +701,15 @@ function RawMaterialsPage() {
                           </>
                         ) : (
                           <>
-                            {canSubmitReceipt && (
+                            {canSubmitReceipt && m.active && (
                               <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Submit Item Receipt"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1"
+                                title="Restock — record goods supplied by a supplier"
                                 onClick={() => setReceiveTarget(m)}
                               >
-                                <PackagePlus className="h-4 w-4 text-success" />
+                                <PackagePlus className="h-4 w-4 text-success" /> Restock
                               </Button>
                             )}
                             {write && (
@@ -1047,9 +1057,22 @@ function RawMaterialsPage() {
         {receiveTarget && (
           <ReceiveDialog
             material={receiveTarget}
+            materials={activeMaterials}
             suppliers={suppliers.data ?? []}
             onDone={() => {
               setReceiveTarget(null);
+              invalidateAll();
+            }}
+          />
+        )}
+      </Dialog>
+      <Dialog open={restockOpen} onOpenChange={setRestockOpen}>
+        {restockOpen && (
+          <ReceiveDialog
+            materials={activeMaterials}
+            suppliers={suppliers.data ?? []}
+            onDone={() => {
+              setRestockOpen(false);
               invalidateAll();
             }}
           />
@@ -1406,24 +1429,40 @@ function MaterialForm({
   );
 }
 
+// Restock: goods a supplier delivered. Opened from a material's row (material
+// preset) or from the header Restock button (material picked here). Posts to
+// stock through the existing goods-receipt dual control.
 function ReceiveDialog({
-  material,
+  material: presetMaterial,
+  materials,
   suppliers,
   onDone,
 }: {
-  material: Material;
+  material?: Material;
+  materials: Material[];
   suppliers: Supplier[];
   onDone: () => void;
 }) {
+  const [materialId, setMaterialId] = useState(presetMaterial?.id ?? "");
+  const material = materials.find((m) => m.id === materialId) ?? presetMaterial;
   const [quantity, setQuantity] = useState(0);
   const [damagedQuantity, setDamagedQuantity] = useState(0);
-  const [supplierId, setSupplierId] = useState(material.supplier_id ?? "none");
+  const [unitCost, setUnitCost] = useState(Number(presetMaterial?.unit_cost ?? 0));
+  const [supplierId, setSupplierId] = useState(presetMaterial?.supplier_id ?? "none");
   const [deliveryReference, setDeliveryReference] = useState("");
   const [remarks, setRemarks] = useState("");
   const accepted = Math.max(quantity - damagedQuantity, 0);
 
+  const pickMaterial = (id: string) => {
+    setMaterialId(id);
+    const m = materials.find((x) => x.id === id);
+    setUnitCost(Number(m?.unit_cost ?? 0));
+    setSupplierId(m?.supplier_id ?? "none");
+  };
+
   const submit = useMutation({
     mutationFn: async () => {
+      if (!material) throw new Error("Select a material");
       if (quantity <= 0) throw new Error("Quantity must be > 0");
       if (damagedQuantity < 0 || damagedQuantity > quantity)
         throw new Error("Damaged quantity must be between 0 and the received quantity");
@@ -1432,6 +1471,8 @@ function ReceiveDialog({
           material_id: material.id,
           quantity,
           damaged_quantity: damagedQuantity,
+          // Blank keeps the material's current unit cost.
+          unit_cost: unitCost > 0 ? unitCost : null,
           supplier_id: supplierId === "none" ? null : supplierId,
           delivery_reference: deliveryReference || null,
           remarks: remarks || null,
@@ -1440,7 +1481,7 @@ function ReceiveDialog({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Submitted — awaiting confirmation by a different person");
+      toast.success("Restock submitted — awaiting confirmation by a different person");
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1449,12 +1490,30 @@ function ReceiveDialog({
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Submit Item Receipt — {material.name}</DialogTitle>
+        <DialogTitle>Restock{material ? ` — ${material.name}` : ""}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-xs text-muted-foreground">
-          Dual control: this only posts to stock once someone else confirms it.
+          Record stock supplied by a supplier. Dual control: it only posts to stock once someone
+          else confirms it under Pending Item Receipts.
         </p>
+        {!presetMaterial && (
+          <div>
+            <Label>Material</Label>
+            <Select value={materialId || undefined} onValueChange={pickMaterial}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a material to restock…" />
+              </SelectTrigger>
+              <SelectContent>
+                {materials.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name} · in stock {num(Number(m.current_stock))} {m.unit}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Quantity received</Label>
@@ -1472,9 +1531,18 @@ function ReceiveDialog({
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Accepted quantity: {num(accepted)} {material.unit} — only this posts to stock; damaged
-          goes to the damage ledger.
+          Accepted quantity: {num(accepted)} {material?.unit ?? ""} — only this posts to stock;
+          damaged goes to the damage ledger.
         </p>
+        <div>
+          <Label>Unit cost (from supplier)</Label>
+          <MoneyInput value={unitCost} onChange={setUnitCost} />
+          {accepted > 0 && unitCost > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Value added to stock: {money(accepted * unitCost)}
+            </p>
+          )}
+        </div>
         <div>
           <Label>Delivery reference</Label>
           <Input
@@ -1506,10 +1574,10 @@ function ReceiveDialog({
       </div>
       <DialogFooter>
         <Button
-          disabled={submit.isPending || quantity <= 0 || damagedQuantity > quantity}
+          disabled={submit.isPending || !material || quantity <= 0 || damagedQuantity > quantity}
           onClick={() => submit.mutate()}
         >
-          {submit.isPending ? "Submitting…" : "Submit for Confirmation"}
+          {submit.isPending ? "Submitting…" : "Submit Restock"}
         </Button>
       </DialogFooter>
     </DialogContent>

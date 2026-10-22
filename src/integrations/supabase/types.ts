@@ -342,8 +342,11 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          area: string | null
+          contact_person: string | null
           created_at: string
           credit_balance: number
+          customer_type: string
           email: string | null
           factory_id: string
           id: string
@@ -357,8 +360,11 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          area?: string | null
+          contact_person?: string | null
           created_at?: string
           credit_balance?: number
+          customer_type?: string
           email?: string | null
           factory_id: string
           id?: string
@@ -372,8 +378,11 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          area?: string | null
+          contact_person?: string | null
           created_at?: string
           credit_balance?: number
+          customer_type?: string
           email?: string | null
           factory_id?: string
           id?: string
@@ -4134,6 +4143,26 @@ export type Database = {
       approve_sale: {
         Args: { p_comment?: string; p_id: string }
         Returns: Json
+      }
+      save_distributor: {
+        Args: { p_id: string | null; payload: Json }
+        Returns: string
+      }
+      list_distributors: {
+        Args: { p_factory_id: string }
+        Returns: {
+          id: string
+          name: string
+          phone: string | null
+          email: string | null
+          address: string | null
+          contact_person: string | null
+          area: string | null
+          outstanding_balance: number
+          credit_balance: number
+          total_purchases: number
+          created_at: string
+        }[]
       }
       confirm_sale: {
         Args: { p_id: string; payload: Json }

@@ -26,6 +26,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -48,6 +55,7 @@ import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { RefId } from "@/components/shared/ref-id";
+import { CUSTOMER_TYPES, customerTypeLabel } from "@/components/sales/confirm-sale";
 
 export const Route = createFileRoute("/_app/customers")({
   head: () => ({ meta: [{ title: "Customers — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -68,6 +76,9 @@ export type Customer = {
   total_purchases: number;
   total_transactions: number;
   registered: boolean;
+  // walk_in | marketer | distributor | other — drives which customers the
+  // Sales & POS box lists for each "Order from" choice.
+  customer_type: string;
 };
 
 function CustomersPage() {
@@ -116,6 +127,7 @@ function CustomersPage() {
             phone: form.phone,
             email: form.email,
             address: form.address,
+            customer_type: form.customer_type,
             // Filling and saving this form is what "registering" a customer
             // means here — applies whether reached via Edit or the Register
             // action on an auto-created walk-in.
@@ -130,6 +142,7 @@ function CustomersPage() {
           phone: form.phone,
           email: form.email,
           address: form.address,
+          customer_type: form.customer_type ?? "walk_in",
           registered: true,
         });
         if (error) throw error;
@@ -138,6 +151,7 @@ function CustomersPage() {
     onSuccess: () => {
       toast.success(editing ? "Customer updated" : "Customer created");
       qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["pos-customers"] });
       setOpen(false);
       setEditing(null);
     },
@@ -224,6 +238,7 @@ function CustomersPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Transactions</TableHead>
                 <TableHead className="text-right">Total Products</TableHead>
                 <TableHead className="text-right">Paid</TableHead>
@@ -250,6 +265,7 @@ function CustomersPage() {
                       </div>
                     </TableCell>
                     <TableCell>{c.phone ?? "—"}</TableCell>
+                    <TableCell>{customerTypeLabel(c.customer_type)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">
                         {c.total_transactions} sale{c.total_transactions === 1 ? "" : "s"}
@@ -319,7 +335,7 @@ function CustomersPage() {
               })}
               {shown.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No customers yet.
                   </TableCell>
                 </TableRow>
@@ -529,6 +545,7 @@ function CustomerDialog({
   const [phone, setPhone] = useState(editing?.phone ?? "");
   const [email, setEmail] = useState(editing?.email ?? "");
   const [address, setAddress] = useState(editing?.address ?? "");
+  const [customerType, setCustomerType] = useState(editing?.customer_type ?? "walk_in");
   return (
     <DialogContent>
       <DialogHeader>
@@ -550,6 +567,21 @@ function CustomerDialog({
           </div>
         </div>
         <div>
+          <Label>Type</Label>
+          <Select value={customerType} onValueChange={setCustomerType}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CUSTOMER_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Label>Address</Label>
           <Textarea value={address} onChange={(e) => setAddress(e.target.value)} />
         </div>
@@ -563,6 +595,7 @@ function CustomerDialog({
               phone: phone || null,
               email: email || null,
               address: address || null,
+              customer_type: customerType,
             })
           }
         >

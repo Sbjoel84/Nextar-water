@@ -101,7 +101,20 @@ type Product = {
   category_id: string | null;
 };
 type Category = { id: string; name: string };
-type Customer = { id: string; name: string; phone: string | null; address: string | null };
+type Customer = {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  customer_type: string;
+};
+// Marketers and distributors are picked from their own registered list; the
+// "Walk-in" entry and everyone else sit under walk-in customer / other.
+const PICK_FROM_LIST: CustomerType[] = ["marketer", "distributor"];
+const customerMatchesType = (c: Customer, t: CustomerType) =>
+  PICK_FROM_LIST.includes(t)
+    ? c.customer_type === t
+    : !PICK_FROM_LIST.includes(c.customer_type as CustomerType);
 type SaleRow = {
   id: string;
   invoice_number: string;
@@ -1028,7 +1041,7 @@ function CustomerAccountPanel({
   const account = useCustomerAccount(customerId);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  if (customerId === "walkin") return null;
+  if (!customerId || customerId === "walkin") return null;
   if (account.isLoading || !account.data) {
     return <p className="text-xs text-muted-foreground">Loading customer account…</p>;
   }
@@ -1157,11 +1170,11 @@ export function PosDialog({
     },
   });
   const customers = useQuery({
-    queryKey: ["customers-brief", factoryId],
+    queryKey: ["pos-customers", factoryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id,name,phone,address")
+        .select("id,name,phone,address,customer_type")
         .eq("factory_id", factoryId)
         .order("name");
       if (error) throw error;
@@ -1190,6 +1203,9 @@ export function PosDialog({
       setCustomerName(c.name);
       setCustomerPhone(c.phone ?? "");
       setCustomerAddress(c.address ?? "");
+      if (PICK_FROM_LIST.includes(c.customer_type as CustomerType)) {
+        setCustomerType(c.customer_type as CustomerType);
+      }
     }
   }, [presetCustomerId, customers.data]);
   const [isPr, setIsPr] = useState(editingSale?.is_pr ?? false);
@@ -1197,6 +1213,22 @@ export function PosDialog({
   const [customerType, setCustomerType] = useState<CustomerType>(
     editingSale?.customer_type ?? "walk_in",
   );
+  const pickFromList = PICK_FROM_LIST.includes(customerType);
+  // Only the customers of the chosen kind — plus the one already selected
+  // (an older sale being edited may predate customer types).
+  const customerOptions = (customers.data ?? []).filter(
+    (c) => customerMatchesType(c, customerType) || c.id === customerId,
+  );
+  // Switching "Order from" drops a selected customer of the wrong kind.
+  const changeCustomerType = (t: CustomerType) => {
+    setCustomerType(t);
+    const current = customers.data?.find((c) => c.id === customerId);
+    if (current && customerMatchesType(current, t)) return;
+    setCustomerId(PICK_FROM_LIST.includes(t) ? "" : "walkin");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+  };
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [pickerId, setPickerId] = useState<string>("");
   const [salesRepId, setSalesRepId] = useState<string>(editingSale?.sales_rep_id ?? "none");
@@ -1361,7 +1393,9 @@ export function PosDialog({
         throw new Error(
           `${overStock.map((c) => c.name).join(", ")}: more than ${repMode ? "is on the van" : "is in the store"}`,
         );
-      const finalCustomer = customerId === "walkin" ? null : customerId;
+      if (pickFromList && (!customerId || customerId === "walkin"))
+        throw new Error(`Select the ${customerTypeLabel(customerType).toLowerCase()}`);
+      const finalCustomer = !customerId || customerId === "walkin" ? null : customerId;
       let displayName = customerName;
       if (finalCustomer) {
         const c = customers.data?.find((x) => x.id === finalCustomer);
@@ -1602,7 +1636,10 @@ export function PosDialog({
         <div className="min-w-0 space-y-2.5">
           <div>
             <Label className="text-xs">Order from</Label>
-            <Select value={customerType} onValueChange={(v) => setCustomerType(v as CustomerType)}>
+            <Select
+              value={customerType}
+              onValueChange={(v) => changeCustomerType(v as CustomerType)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1639,15 +1676,24 @@ export function PosDialog({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue
+                    placeholder={`Select ${customerTypeLabel(customerType).toLowerCase()}…`}
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="walkin">Walk-in</SelectItem>
-                  {(customers.data ?? []).map((c) => (
+                  {!pickFromList && <SelectItem value="walkin">Walk-in</SelectItem>}
+                  {customerOptions.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
                     </SelectItem>
                   ))}
+                  {pickFromList && customerOptions.length === 0 && (
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                      {customerType === "distributor"
+                        ? "No distributors yet — add them under Distribution → Distributors."
+                        : "No marketers yet — add them on the Customers page with type Marketer."}
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -1746,7 +1792,12 @@ export function PosDialog({
           <Eye className="h-4 w-4" /> Preview
         </Button>
         <Button
-          disabled={submit.isPending || sellableCart.length === 0 || overStock.length > 0}
+          disabled={
+            submit.isPending ||
+            sellableCart.length === 0 ||
+            overStock.length > 0 ||
+            (pickFromList && (!customerId || customerId === "walkin"))
+          }
           onClick={() => submit.mutate()}
           className="gap-2"
         >
