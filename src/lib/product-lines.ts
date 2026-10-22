@@ -36,5 +36,5 @@ export const NO_SKU_LINES = ["Dispenser", "Sachet Water", "Ice Block"];
 export const needsSku = (productLine: string) => !NO_SKU_LINES.includes(productLine);
 
 // The unit a product type is counted in; everything else is counted in pieces.
-const LINE_UNITS: Record<string, string> = { "Sachet Water": "Bag" };
+const LINE_UNITS: Record<string, string> = { "Bottle Water": "Packs", "Sachet Water": "Bag" };
 export const unitFor = (productLine: string) => LINE_UNITS[productLine] ?? "Piece";
