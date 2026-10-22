@@ -1723,12 +1723,6 @@ export function PosDialog({
               <span>{isPr ? "Value of products issued" : "Goods total"}</span>
               <span>{money(subtotal)}</span>
             </div>
-            {!isPr && (
-              <p className="text-xs text-muted-foreground">
-                Payment, discount / commission and VAT are set by the accountant when confirming
-                this order on the Finance page, before the receipt is printed.
-              </p>
-            )}
           </div>
         </div>
       </div>
