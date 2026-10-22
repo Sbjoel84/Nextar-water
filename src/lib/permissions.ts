@@ -119,7 +119,8 @@ export type ModuleKey =
   | "logistics"
   | "distribution"
   | "approvals"
-  | "goods-receiving";
+  | "goods-receiving"
+  | "updates";
 
 export const ALL_MODULES: ModuleKey[] = [
   "dashboard",
@@ -150,6 +151,7 @@ export const ALL_MODULES: ModuleKey[] = [
   "distribution",
   "approvals",
   "goods-receiving",
+  "updates",
 ];
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -181,6 +183,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   distribution: "Distribution (Sales Reps)",
   approvals: "Approvals",
   "goods-receiving": "Items Receiving",
+  updates: "Updates & Requests",
 };
 
 // Level 2 of the dual-operation model: independent, non-hierarchical action

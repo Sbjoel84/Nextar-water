@@ -41,6 +41,7 @@ import { Route as AppSalesRouteImport } from './routes/_app.sales'
 import { Route as AppSalesReturnsRouteImport } from './routes/_app.sales-returns'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSuppliersRouteImport } from './routes/_app.suppliers'
+import { Route as AppUpdatesRouteImport } from './routes/_app.updates'
 import { Route as AppUsersRouteImport } from './routes/_app.users'
 import { Route as AppCashLedgerIndexRouteImport } from './routes/_app.cash-ledger.index'
 import { Route as AppCashLedgerDebtsRouteImport } from './routes/_app.cash-ledger.debts'
@@ -205,6 +206,11 @@ const AppSuppliersRoute = AppSuppliersRouteImport.update({
   path: '/suppliers',
   getParentRoute: () => AppRoute,
 } as any)
+const AppUpdatesRoute = AppUpdatesRouteImport.update({
+  id: '/updates',
+  path: '/updates',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppUsersRoute = AppUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/sales-returns': typeof AppSalesReturnsRoute
   '/settings': typeof AppSettingsRoute
   '/suppliers': typeof AppSuppliersRoute
+  '/updates': typeof AppUpdatesRoute
   '/users': typeof AppUsersRoute
   '/cash-ledger/debts': typeof AppCashLedgerDebtsRoute
   '/cash-ledger/ledger': typeof AppCashLedgerLedgerRoute
@@ -294,6 +301,7 @@ export interface FileRoutesByTo {
   '/sales-returns': typeof AppSalesReturnsRoute
   '/settings': typeof AppSettingsRoute
   '/suppliers': typeof AppSuppliersRoute
+  '/updates': typeof AppUpdatesRoute
   '/users': typeof AppUsersRoute
   '/cash-ledger/debts': typeof AppCashLedgerDebtsRoute
   '/cash-ledger/ledger': typeof AppCashLedgerLedgerRoute
@@ -333,6 +341,7 @@ export interface FileRoutesById {
   '/_app/sales-returns': typeof AppSalesReturnsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/suppliers': typeof AppSuppliersRoute
+  '/_app/updates': typeof AppUpdatesRoute
   '/_app/users': typeof AppUsersRoute
   '/_app/cash-ledger/debts': typeof AppCashLedgerDebtsRoute
   '/_app/cash-ledger/ledger': typeof AppCashLedgerLedgerRoute
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | '/sales-returns'
     | '/settings'
     | '/suppliers'
+    | '/updates'
     | '/users'
     | '/cash-ledger/debts'
     | '/cash-ledger/ledger'
@@ -408,6 +418,7 @@ export interface FileRouteTypes {
     | '/sales-returns'
     | '/settings'
     | '/suppliers'
+    | '/updates'
     | '/users'
     | '/cash-ledger/debts'
     | '/cash-ledger/ledger'
@@ -446,6 +457,7 @@ export interface FileRouteTypes {
     | '/_app/sales-returns'
     | '/_app/settings'
     | '/_app/suppliers'
+    | '/_app/updates'
     | '/_app/users'
     | '/_app/cash-ledger/debts'
     | '/_app/cash-ledger/ledger'
@@ -684,6 +696,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSuppliersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/updates': {
+      id: '/_app/updates'
+      path: '/updates'
+      fullPath: '/updates'
+      preLoaderRoute: typeof AppUpdatesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/users': {
       id: '/_app/users'
       path: '/users'
@@ -761,6 +780,7 @@ interface AppRouteChildren {
   AppSalesReturnsRoute: typeof AppSalesReturnsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppSuppliersRoute: typeof AppSuppliersRoute
+  AppUpdatesRoute: typeof AppUpdatesRoute
   AppUsersRoute: typeof AppUsersRoute
 }
 
@@ -794,6 +814,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSalesReturnsRoute: AppSalesReturnsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppSuppliersRoute: AppSuppliersRoute,
+  AppUpdatesRoute: AppUpdatesRoute,
   AppUsersRoute: AppUsersRoute,
 }
 

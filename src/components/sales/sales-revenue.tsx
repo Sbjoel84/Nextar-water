@@ -16,6 +16,7 @@ import {
   CalendarRange,
   FileDown,
   FileSpreadsheet,
+  FileText,
   LineChart,
   TrendingUp,
   Wallet,
@@ -42,6 +43,8 @@ import { KPI } from "@/lib/dashboard-kit";
 import { dayKey, sum } from "@/lib/metrics";
 import { money } from "@/lib/format";
 import { exportCsv, exportExcel } from "@/lib/export";
+import { generateReportPdf } from "@/lib/pdf";
+import { useFactorySettings } from "@/lib/use-factory";
 import { dailyAccumulated, monthlyAccumulated, saleAmountRows } from "@/lib/sales-revenue";
 
 const pct = (v: number | null) =>
@@ -145,6 +148,7 @@ export function MonthlyAccumulatedSalesCard({ factoryId }: { factoryId: string }
   const thisYear = Number(today.slice(0, 4));
   const thisMonth = today.slice(0, 7);
 
+  const settings = useFactorySettings(factoryId);
   const [year, setYear] = useState(thisYear);
   const yearRows = useQuery({
     queryKey: ["sales-revenue", "year", factoryId, year],
@@ -182,7 +186,7 @@ export function MonthlyAccumulatedSalesCard({ factoryId }: { factoryId: string }
 
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i);
 
-  const doExport = (type: "csv" | "excel") => {
+  const doExport = (type: "csv" | "excel" | "pdf") => {
     const name =
       month === "year" ? `Monthly-Accumulated-Sales-${year}` : `Daily-Accumulated-Sales-${month}`;
     const columns = [
@@ -197,6 +201,34 @@ export function MonthlyAccumulatedSalesCard({ factoryId }: { factoryId: string }
       revenue: r.revenue.toFixed(2),
       accumulated: r.accumulated.toFixed(2),
     }));
+    if (type === "pdf") {
+      // Opens in a new tab to view, print or save, with a total line and money
+      // shown in the factory currency.
+      const currency = settings.data?.currency ?? "NGN";
+      const total = month === "year" ? yearTotal : (days[days.length - 1]?.accumulated ?? 0);
+      generateReportPdf(
+        month === "year"
+          ? `Monthly Accumulated Sales ${year}`
+          : `Daily Accumulated Sales ${format(new Date(`${month}-01T00:00:00`), "MMMM yyyy")}`,
+        columns,
+        [
+          ...rows.map((r) => ({
+            ...r,
+            revenue: money(Number(r.revenue), currency),
+            accumulated: money(Number(r.accumulated), currency),
+          })),
+          {
+            period: "Total",
+            sales: sum(rows, (r) => r.sales),
+            revenue: money(total, currency),
+            accumulated: money(total, currency),
+          },
+        ],
+        "preview",
+        { name: settings.data?.company_name, logo_url: settings.data?.logo_url },
+      );
+      return;
+    }
     (type === "csv" ? exportCsv : exportExcel)(name, columns, rows);
   };
 
@@ -252,6 +284,15 @@ export function MonthlyAccumulatedSalesCard({ factoryId }: { factoryId: string }
           </Button>
           <Button variant="outline" size="sm" className="gap-1" onClick={() => doExport("excel")}>
             <FileSpreadsheet className="h-4 w-4" /> Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => doExport("pdf")}
+            title="Preview as PDF"
+          >
+            <FileText className="h-4 w-4" /> PDF
           </Button>
         </div>
       </CardHeader>

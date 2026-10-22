@@ -66,7 +66,7 @@ function NotificationsBell() {
   // server-side. A resolved row is hidden by RLS, so its own change event never
   // reaches the other approvers — listen on the request tables as well.
   useRealtimeInvalidate(
-    ["notifications", "stock_adjustment_requests", "delete_requests"],
+    ["notifications", "stock_adjustment_requests", "delete_requests", "proposals"],
     [["notifications"]],
   );
 
@@ -136,7 +136,12 @@ function NotificationsBell() {
             <DropdownMenuSeparator />
           </>
         )}
-        <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex items-center justify-between">
+          Notifications
+          <Link to="/updates" className="text-xs font-normal text-primary hover:underline">
+            See all
+          </Link>
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {(notifications.data?.length ?? 0) === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-muted-foreground">No notifications.</p>

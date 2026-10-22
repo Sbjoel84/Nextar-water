@@ -3,7 +3,7 @@ import { RequireAccess } from "@/components/layout/require-access";
 import { createContext, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { usePermissions, useIsSuperAdmin } from "@/lib/permissions";
+import { useMyRoles, usePermissions, useIsSuperAdmin } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +119,11 @@ function QueueCard({
 function ApprovalsPage() {
   const [q, setQ] = useSearchQuery();
   const { canApprove, canConfirm, canPost } = usePermissions();
+  // Expenses: the Operations Manager reviews pending ones, the Chairman gives
+  // final approval to those sent to him — role-based, like the expense RPCs.
+  const myRoles = useMyRoles().data ?? [];
+  const isChairman = myRoles.includes("chairman");
+  const reviewsExpenses = isChairman || myRoles.includes("operations_manager");
   const currentUser = useCurrentUser();
   const uid = currentUser.data;
   // approve_sale()/reject_sale() exempt an admin (super_admin) from the
@@ -142,13 +147,13 @@ function ApprovalsPage() {
   });
 
   const expenses = useQuery({
-    queryKey: ["approvals-expenses"],
-    enabled: canApprove("expenses"),
+    queryKey: ["approvals-expenses", isChairman],
+    enabled: reviewsExpenses,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("expenses")
         .select("id,description,amount,expense_date,submitted_by")
-        .eq("status", "pending_approval")
+        .eq("status", isChairman ? "approved" : "pending_approval")
         .order("expense_date", { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -375,7 +380,7 @@ function ApprovalsPage() {
 
   const nothingToApprove =
     !canApprove("sales") &&
-    !canApprove("expenses") &&
+    !reviewsExpenses &&
     !canApprove("debts") &&
     !canApprove("payments") &&
     !canApprove("payroll") &&
@@ -423,10 +428,10 @@ function ApprovalsPage() {
                 }))}
               />
             )}
-            {canApprove("expenses") && (
+            {reviewsExpenses && (
               <QueueCard
                 icon={Receipt}
-                title="Expenses"
+                title={isChairman ? "Expenses — final approval" : "Expenses — review"}
                 to="/expenses"
                 empty="No expenses awaiting approval."
                 rows={(expenses.data ?? []).map((e: any) => ({

@@ -21,6 +21,8 @@ import {
   postedSalesRows,
 } from "@/lib/metric-queries";
 import { exportCsv } from "@/lib/export";
+import { generateReportPdf } from "@/lib/pdf";
+import { useFactorySettings } from "@/lib/use-factory";
 import { CustomerAccountsCard } from "@/components/dashboards/customer-accounts";
 import { PendingSalesCard } from "@/components/sales/confirm-sale";
 import { usePermissions } from "@/lib/permissions";
@@ -60,6 +62,7 @@ import {
   ArrowRight,
   Undo2,
   FileDown,
+  FileText,
   Landmark,
   Scale,
 } from "lucide-react";
@@ -110,6 +113,8 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
   const [to, setTo] = useState(() => dayKey(new Date()));
   const [channelFilter, setChannelFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const settings = useFactorySettings(factoryId);
+  const currency = settings.data?.currency ?? "NGN";
 
   const applyPreset = (p: (typeof PRESETS)[number]) => {
     setPreset(p.key);
@@ -356,23 +361,43 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
     { icon: Undo2, label: "Sales Returns", to: "/sales-returns" },
   ];
 
+  const recordColumns = [
+    { key: "date", label: "Date" },
+    { key: "direction", label: "In / Out" },
+    { key: "channel", label: "Channel" },
+    { key: "source", label: "Type" },
+    { key: "reference", label: "Reference" },
+    { key: "party", label: "Customer / Payee" },
+    { key: "amount", label: "Amount" },
+  ];
+  const recordRows = () =>
+    visible.map((t) => ({
+      ...t,
+      direction: t.direction === "in" ? "Money in" : "Money out",
+      channel: channelLabel(t.channel),
+    }));
   const exportRecords = () =>
     exportCsv(
       `payment-channels-${from}_to_${to}${channelFilter === "all" ? "" : `-${channelFilter}`}`,
+      recordColumns,
+      recordRows(),
+    );
+  // Same records as the CSV, opened as a PDF in a new tab to view, print or save.
+  const previewRecordsPdf = () =>
+    generateReportPdf(
+      `Payment Channels ${from} to ${to}${channelFilter === "all" ? "" : ` (${channelLabel(channelFilter)})`}`,
+      recordColumns,
       [
-        { key: "date", label: "Date" },
-        { key: "direction", label: "In / Out" },
-        { key: "channel", label: "Channel" },
-        { key: "source", label: "Type" },
-        { key: "reference", label: "Reference" },
-        { key: "party", label: "Customer / Payee" },
-        { key: "amount", label: "Amount" },
+        ...recordRows().map((r) => ({
+          ...r,
+          amount: `${r.direction === "Money in" ? "+" : "−"}${money(r.amount, currency)}`,
+        })),
+        { party: "Total in", amount: money(visibleIn, currency) },
+        { party: "Total out", amount: money(visibleOut, currency) },
+        { party: "Net", amount: money(visibleIn - visibleOut, currency) },
       ],
-      visible.map((t) => ({
-        ...t,
-        direction: t.direction === "in" ? "Money in" : "Money out",
-        channel: channelLabel(t.channel),
-      })),
+      "preview",
+      { name: settings.data?.company_name, logo_url: settings.data?.logo_url },
     );
 
   return (
@@ -603,6 +628,16 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
                     onClick={exportRecords}
                   >
                     <FileDown className="h-4 w-4" /> CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={visible.length === 0}
+                    onClick={previewRecordsPdf}
+                    title="Preview as PDF"
+                  >
+                    <FileText className="h-4 w-4" /> PDF
                   </Button>
                 </div>
               </div>

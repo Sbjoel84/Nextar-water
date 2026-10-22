@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { usePermissions, useIsSuperAdmin } from "@/lib/permissions";
+import { useMyRoles, usePermissions, useIsChairman, useIsSuperAdmin } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { useFactoryId } from "@/lib/use-factory";
 
@@ -55,6 +55,8 @@ export function usePendingAttention() {
   // self-approval block every other approver role is still under -- mirror
   // that here instead of hiding an admin's own sale from their own count.
   const isSuperAdmin = useIsSuperAdmin().data ?? false;
+  // Only the chairman decides requests & proposals (decide_proposal()).
+  const isChairman = useIsChairman().data ?? false;
 
   const sales = useCount("sales", canApprove("sales"), scope, () => {
     const q = supabase
@@ -64,12 +66,16 @@ export function usePendingAttention() {
       .eq("status", "pending_approval");
     return isSuperAdmin ? q : q.neq("created_by", uid ?? "");
   });
-  const expenses = useCount("expenses", canApprove("expenses"), scope, () =>
+  // Expenses: the Operations Manager reviews pending ones, the Chairman gives
+  // final approval to the ones sent to him (approved).
+  const isOpsManager = (useMyRoles().data ?? []).includes("operations_manager");
+  const expenseStatus = isChairman ? "approved" : "pending_approval";
+  const expenses = useCount(`expenses-${expenseStatus}`, isChairman || isOpsManager, scope, () =>
     supabase
       .from("expenses")
       .select("id", { count: "exact", head: true })
       .eq("factory_id", scope.factoryId ?? "")
-      .eq("status", "pending_approval")
+      .eq("status", expenseStatus)
       .neq("submitted_by", uid ?? ""),
   );
   // Write-offs waiting on this user's step: approve (pending_approval) and/or
@@ -201,8 +207,17 @@ export function usePendingAttention() {
       .neq("submitted_by", uid ?? ""),
   );
 
+  const proposals = useCount("proposals", isChairman, scope, () =>
+    (supabase as any)
+      .from("proposals")
+      .select("id", { count: "exact", head: true })
+      .eq("factory_id", scope.factoryId ?? "")
+      .eq("status", "pending"),
+  );
+
   useRealtimeInvalidate(
     [
+      "proposals",
       "customer_account_adjustments",
       "sales",
       "expenses",
@@ -222,6 +237,12 @@ export function usePendingAttention() {
   );
 
   const results: { key: string; label: string; to: string; query: typeof expenses }[] = [
+    {
+      key: "proposals",
+      label: "Requests & proposals awaiting your review",
+      to: "/updates",
+      query: proposals,
+    },
     {
       key: "customer-adjustments",
       label: "Customer account adjustments pending",

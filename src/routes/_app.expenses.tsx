@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
-import { usePermissions } from "@/lib/permissions";
+import { useMyRoles, usePermissions } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,6 +128,15 @@ const statusBadge = (s: string): "default" | "secondary" | "outline" | "destruct
       ? "destructive"
       : "outline";
 
+// Expense approval: the Operations Manager reviews it (pending_approval ->
+// approved = sent to the Chairman), then the Chairman gives final approval
+// (approved -> posted). Either can reject with a reason. See
+// 20261022220000_expenses_ops_manager_then_chairman.sql.
+const EXPENSE_STATUS_LABEL: Record<string, string> = {
+  pending_approval: "Awaiting Operations Manager",
+  approved: "Awaiting Chairman",
+};
+
 // Only approved/posted expenses are money spent; pending, rejected, cancelled and
 // reversed ones are listed but never added to the totals (same rule the
 // dashboards use).
@@ -177,8 +186,7 @@ function ExpensesPage() {
   const settings = useFactorySettings(factoryId);
   const currency = settings.data?.currency ?? "NGN";
   const qc = useQueryClient();
-  const { canWrite, canApprove, canReject, canPost, canCancel, canReverse, canDelete } =
-    usePermissions();
+  const { canWrite, canCancel, canReverse, canDelete } = usePermissions();
   const write = canWrite("expenses");
   // Cash-in entries are recorded via create_cash_transaction / the
   // cash_transactions table, both gated server-side on 'receipts-payments'
@@ -188,9 +196,11 @@ function ExpensesPage() {
   // fill out and submit a cash-in entry that the server would then reject
   // with "Insufficient permissions".
   const writeCashIn = canWrite("receipts-payments");
-  const approve = canApprove("expenses");
-  const reject = canReject("expenses");
-  const post = canPost("expenses");
+  // The approval steps belong to roles (enforced by approve_expense /
+  // post_expense / reject_expense), not to the grantable permissions.
+  const roles = useMyRoles().data ?? [];
+  const isChairman = roles.includes("chairman");
+  const isOpsManager = roles.includes("operations_manager");
   const cancel = canCancel("expenses");
   const reverse = canReverse("expenses");
   // request_delete() checks 'expenses':'delete' for a cash-out row and
@@ -311,7 +321,10 @@ function ExpensesPage() {
         category: e.expense_categories?.name ?? "Uncategorized",
         amount: Number(e.amount),
         counts: COUNTED.has(e.status),
-        statusLabel: e.status === "posted" ? null : e.status.replace(/_/g, " "),
+        statusLabel:
+          e.status === "posted"
+            ? null
+            : (EXPENSE_STATUS_LABEL[e.status] ?? e.status.replace(/_/g, " ")),
         statusVariant: statusBadge(e.status),
         expense: e,
       });
@@ -510,8 +523,8 @@ function ExpensesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
           <p className="text-sm text-muted-foreground">
-            Cash-out entries go for admin approval before they're finalized; cash-in entries post
-            immediately.
+            Cash-out entries go to the Operations Manager for review, then to the Chairman for final
+            approval — either can reject with a reason. Cash-in entries post immediately.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -706,31 +719,36 @@ function ExpensesPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        {e && e.status === "pending_approval" && approve && !isSelf && (
+                        {e &&
+                          e.status === "pending_approval" &&
+                          (isChairman || (isOpsManager && !isSelf)) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title={isChairman ? "Final approval" : "Approve & send to Chairman"}
+                              onClick={() => setApproveTarget(e)}
+                            >
+                              <Check className="h-4 w-4 text-success" />
+                            </Button>
+                          )}
+                        {e &&
+                          ((e.status === "pending_approval" &&
+                            (isChairman || (isOpsManager && !isSelf))) ||
+                            (e.status === "approved" && isChairman)) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Reject"
+                              onClick={() => setRejectTarget(e)}
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        {e && e.status === "approved" && isChairman && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Approve"
-                            onClick={() => setApproveTarget(e)}
-                          >
-                            <Check className="h-4 w-4 text-success" />
-                          </Button>
-                        )}
-                        {e && e.status === "pending_approval" && reject && !isSelf && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Reject"
-                            onClick={() => setRejectTarget(e)}
-                          >
-                            <X className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                        {e && e.status === "approved" && post && !isSelf && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Post"
+                            title="Final approval"
                             onClick={() => setPostTarget(e)}
                           >
                             <Send className="h-4 w-4 text-success" />
@@ -861,6 +879,7 @@ function ExpensesPage() {
         {approveTarget && (
           <ApproveDialog
             expense={approveTarget}
+            final={isChairman}
             onDone={() => {
               setApproveTarget(null);
               invalidateAll();
@@ -943,7 +962,18 @@ function ExpensesPage() {
   );
 }
 
-function ApproveDialog({ expense, onDone }: { expense: Expense; onDone: () => void }) {
+// The Operations Manager approves and sends the expense to the Chairman. The
+// Chairman (final) can approve a still-pending expense in one go: his review
+// and final approval are recorded together.
+function ApproveDialog({
+  expense,
+  final,
+  onDone,
+}: {
+  expense: Expense;
+  final: boolean;
+  onDone: () => void;
+}) {
   const [comment, setComment] = useState("");
   const submit = useMutation({
     mutationFn: async () => {
@@ -952,12 +982,20 @@ function ApproveDialog({ expense, onDone }: { expense: Expense; onDone: () => vo
         p_comment: comment || undefined,
       });
       if (error) throw error;
-      return data as {
+      const res = data as {
         approved: boolean;
         partial?: boolean;
         approvals_so_far?: number;
         required?: number;
       };
+      if (final && res?.approved) {
+        const { error: postError } = await supabase.rpc("post_expense", {
+          p_id: expense.id,
+          p_comment: comment || undefined,
+        });
+        if (postError) throw postError;
+      }
+      return res;
     },
     onSuccess: (data) => {
       if (data?.partial) {
@@ -965,7 +1003,7 @@ function ApproveDialog({ expense, onDone }: { expense: Expense; onDone: () => vo
           `Approval recorded — ${data.approvals_so_far}/${data.required} approvers so far`,
         );
       } else {
-        toast.success("Expense approved — post it next to finalize");
+        toast.success(final ? "Expense approved" : "Expense approved and sent to the Chairman");
       }
       logAudit({
         action: "update",
@@ -981,14 +1019,16 @@ function ApproveDialog({ expense, onDone }: { expense: Expense; onDone: () => vo
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Approve Expense</DialogTitle>
+        <DialogTitle>{final ? "Final Approval" : "Approve & Send to Chairman"}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
           {expense.description ?? "—"} · {money(Number(expense.amount))}
         </p>
         <p className="text-sm text-muted-foreground">
-          This marks the expense reviewed. A post step (by you or someone else) still finalizes it.
+          {final
+            ? "This gives the expense final approval — it will count in Cash Flow and reports."
+            : "The expense goes to the Chairman for final approval. He can still reject it."}
         </p>
         <div>
           <Label>Comment (optional)</Label>
@@ -998,7 +1038,7 @@ function ApproveDialog({ expense, onDone }: { expense: Expense; onDone: () => vo
       </div>
       <DialogFooter>
         <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
-          {submit.isPending ? "Approving…" : "Approve"}
+          {submit.isPending ? "Approving…" : final ? "Approve" : "Approve & send"}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1012,7 +1052,7 @@ function RejectDialog({ expense, onDone }: { expense: Expense; onDone: () => voi
     mutationFn: async () => {
       const { error } = await supabase.rpc("reject_expense", {
         p_id: expense.id,
-        p_reason: reason || undefined,
+        p_reason: reason.trim(),
       });
       if (error) throw error;
     },
@@ -1036,13 +1076,25 @@ function RejectDialog({ expense, onDone }: { expense: Expense; onDone: () => voi
       </DialogHeader>
       <div className="grid gap-3">
         <div>
-          <Label>Reason</Label>
-          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Label>Reason for rejecting</Label>
+          <Textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why this expense can't be approved"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            The person who submitted it is notified with this reason.
+          </p>
         </div>
         <ApprovalHistory module="expenses" entityId={expense.id} />
       </div>
       <DialogFooter>
-        <Button variant="destructive" disabled={submit.isPending} onClick={() => submit.mutate()}>
+        <Button
+          variant="destructive"
+          disabled={submit.isPending || !reason.trim()}
+          onClick={() => submit.mutate()}
+        >
           {submit.isPending ? "Rejecting…" : "Reject"}
         </Button>
       </DialogFooter>
@@ -1061,7 +1113,7 @@ function PostDialog({ expense, onDone }: { expense: Expense; onDone: () => void 
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Expense posted");
+      toast.success("Expense approved");
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1070,14 +1122,15 @@ function PostDialog({ expense, onDone }: { expense: Expense; onDone: () => void 
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Post Expense</DialogTitle>
+        <DialogTitle>Final Approval</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
           {expense.description ?? "—"} · {money(Number(expense.amount))}
         </p>
         <p className="text-sm text-muted-foreground">
-          This finalizes the expense — it will count in Cash Flow and reports.
+          Approved by the Operations Manager. Your approval finalizes it — it will count in Cash
+          Flow and reports.
         </p>
         <div>
           <Label>Comment (optional)</Label>
@@ -1087,7 +1140,7 @@ function PostDialog({ expense, onDone }: { expense: Expense; onDone: () => void 
       </div>
       <DialogFooter>
         <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
-          {submit.isPending ? "Posting…" : "Post"}
+          {submit.isPending ? "Approving…" : "Approve"}
         </Button>
       </DialogFooter>
     </DialogContent>

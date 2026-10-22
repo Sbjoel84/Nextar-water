@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Warehouse,
   Settings,
+  Megaphone,
 } from "lucide-react";
 import { type ModuleKey } from "@/lib/permissions";
 
@@ -54,6 +55,7 @@ export const nav: { section: string; items: NavItem[] }[] = [
     section: "Overview",
     items: [
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, module: "dashboard" },
+      { title: "Updates & Requests", url: "/updates", icon: Megaphone, module: "updates" },
     ],
   },
   {
