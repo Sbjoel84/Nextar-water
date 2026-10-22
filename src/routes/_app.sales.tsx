@@ -107,13 +107,15 @@ type Customer = {
   phone: string | null;
   address: string | null;
   customer_type: string;
+  // Set on the customer account of a Distribution sales rep.
+  sales_rep_id: string | null;
 };
-// Marketers and distributors are picked from their own registered list; the
+// Sales-reps (stored as "marketer") and distributors are picked from their own registered list; the
 // "Walk-in" entry and everyone else sit under walk-in customer / other.
 const PICK_FROM_LIST: CustomerType[] = ["marketer", "distributor"];
 const customerMatchesType = (c: Customer, t: CustomerType) =>
   PICK_FROM_LIST.includes(t)
-    ? c.customer_type === t
+    ? c.customer_type === t && (t !== "marketer" || !!c.sales_rep_id)
     : !PICK_FROM_LIST.includes(c.customer_type as CustomerType);
 type SaleRow = {
   id: string;
@@ -464,10 +466,10 @@ function SalesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales & POS</h1>
           <p className="text-sm text-muted-foreground">
-            Sales persons capture orders from walk-in customers, marketers, distributors and others,
-            then post them to the accountant. On the Finance page the accountant sets the payment,
-            discount / commission and VAT, confirms the order and prints the receipt — only then
-            does it decrement stock and count toward the customer's balance.
+            Sales persons capture orders from walk-in customers, sales-reps, distributors and
+            others, then post them to the accountant. On the Finance page the accountant sets the
+            payment, discount / commission and VAT, confirms the order and prints the receipt — only
+            then does it decrement stock and count toward the customer's balance.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1174,7 +1176,7 @@ export function PosDialog({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id,name,phone,address,customer_type")
+        .select("id,name,phone,address,customer_type,sales_rep_id")
         .eq("factory_id", factoryId)
         .order("name");
       if (error) throw error;
@@ -1222,6 +1224,14 @@ export function PosDialog({
   // Switching "Order from" drops a selected customer of the wrong kind.
   const changeCustomerType = (t: CustomerType) => {
     setCustomerType(t);
+    // A sale TO a sales-rep comes out of the store, never off a van.
+    if (t === "marketer" && salesRepId !== "none") {
+      setSalesRepId("none");
+      if (cart.length > 0) {
+        setCart([]);
+        toast.info("Cart cleared — stock source changed");
+      }
+    }
     const current = customers.data?.find((c) => c.id === customerId);
     if (current && customerMatchesType(current, t)) return;
     setCustomerId(PICK_FROM_LIST.includes(t) ? "" : "walkin");
@@ -1691,7 +1701,7 @@ export function PosDialog({
                     <div className="px-2 py-4 text-center text-sm text-muted-foreground">
                       {customerType === "distributor"
                         ? "No distributors yet — add them under Distribution → Distributors."
-                        : "No marketers yet — add them on the Customers page with type Marketer."}
+                        : "No sales-reps yet — add them under Distribution → Sales Reps."}
                     </div>
                   )}
                 </SelectContent>
@@ -1729,31 +1739,33 @@ export function PosDialog({
             <Checkbox checked={isPr} onCheckedChange={(v) => setIsPr(!!v)} />
             PR
           </label>
-          <div>
-            <Label className="text-xs">Sales rep (van stock)</Label>
-            <Select
-              value={salesRepId}
-              onValueChange={(v) => {
-                setSalesRepId(v);
-                if (cart.length > 0) {
-                  setCart([]);
-                  toast.info("Cart cleared — stock source changed");
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Direct from store</SelectItem>
-                {(reps.data ?? []).map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {customerType !== "marketer" && (
+            <div>
+              <Label className="text-xs">Sales rep (van stock)</Label>
+              <Select
+                value={salesRepId}
+                onValueChange={(v) => {
+                  setSalesRepId(v);
+                  if (cart.length > 0) {
+                    setCart([]);
+                    toast.info("Cart cleared — stock source changed");
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Direct from store</SelectItem>
+                  {(reps.data ?? []).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-xs">Sales person</Label>
             <Input value={salesPerson} onChange={(e) => setSalesPerson(e.target.value)} />

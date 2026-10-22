@@ -51,7 +51,7 @@ export type PaymentLine = { amount: number; method: PaymentMethod };
 export type CustomerType = "walk_in" | "marketer" | "distributor" | "other";
 export const CUSTOMER_TYPES: { value: CustomerType; label: string }[] = [
   { value: "walk_in", label: "Walk-in customer" },
-  { value: "marketer", label: "Marketer" },
+  { value: "marketer", label: "Sales-Rep" },
   { value: "distributor", label: "Distributor" },
   { value: "other", label: "Other" },
 ];
@@ -576,7 +576,7 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
             </span>
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Posted by sales for walk-in customers, marketers and distributors. Set the payment,
+            Posted by sales for walk-in customers, sales-reps and distributors. Set the payment,
             discount / commission and VAT, then confirm to print the receipt.
           </p>
         </div>

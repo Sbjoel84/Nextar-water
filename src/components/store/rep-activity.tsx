@@ -1,0 +1,480 @@
+import { useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { usePermissions } from "@/lib/permissions";
+import { useRealtimeInvalidate } from "@/lib/realtime";
+import { logAudit } from "@/lib/audit";
+import { money, num } from "@/lib/format";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Eye, Undo2 } from "lucide-react";
+
+type Supplied = {
+  sale_id: string;
+  invoice_number: string;
+  product_id: string;
+  product_name: string;
+  unit: string | null;
+  quantity: number;
+  unit_price: number;
+  created_at: string;
+};
+type Returned = {
+  id: string;
+  return_number: string;
+  product_id: string;
+  product_name: string;
+  unit: string | null;
+  quantity: number;
+  accepted: number | null;
+  damaged: number;
+  rejected: number;
+  status: string;
+  received_at: string;
+};
+type RepDay = {
+  sales_rep_id: string;
+  customer_id: string;
+  name: string;
+  phone: string | null;
+  status: string;
+  supplied: Supplied[];
+  pending_orders: number;
+  returned: Returned[];
+};
+
+// Per product: what the rep took out today (posted sales), what has come
+// back (logged returns, any status but cancelled), and what is still out.
+type ProductLine = {
+  product_id: string;
+  name: string;
+  unit: string;
+  supplied: number;
+  value: number;
+  returned: number;
+  outstanding: number;
+  // Latest supply sale for the product — the return is logged against it so
+  // inspection credits the rep at the price they were charged.
+  sale_id: string;
+};
+
+function productLines(rep: RepDay): ProductLine[] {
+  const map = new Map<string, ProductLine>();
+  const lineFor = (id: string, name: string, unit: string | null) => {
+    let l = map.get(id);
+    if (!l) {
+      l = {
+        product_id: id,
+        name,
+        unit: unit ?? "",
+        supplied: 0,
+        value: 0,
+        returned: 0,
+        outstanding: 0,
+        sale_id: "",
+      };
+      map.set(id, l);
+    }
+    return l;
+  };
+  for (const s of rep.supplied) {
+    const l = lineFor(s.product_id, s.product_name, s.unit);
+    l.supplied += Number(s.quantity);
+    l.value += Number(s.quantity) * Number(s.unit_price);
+    l.sale_id = s.sale_id;
+  }
+  for (const r of rep.returned) {
+    lineFor(r.product_id, r.product_name, r.unit).returned += Number(r.quantity);
+  }
+  for (const l of map.values()) l.outstanding = Math.max(l.supplied - l.returned, 0);
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const returnStatusLabel = (s: string) =>
+  s === "received" ? "Awaiting inspection" : s === "completed" ? "Inspected" : s;
+
+// Store page: the day's sales-rep activity. Sales supplies a rep (a sale,
+// confirmed by the accountant); at close of business the store logs what the
+// rep brings back. Each return goes through the normal sales-return
+// inspection, which puts accepted stock back and credits the rep's account.
+export function RepActivityCard({ factoryId }: { factoryId: string }) {
+  const { canSubmit } = usePermissions();
+  const canLogReturn = canSubmit("sales-returns");
+  const [day, setDay] = useState(() => new Date().toLocaleDateString("en-CA"));
+  const [detail, setDetail] = useState<RepDay | null>(null);
+  const [returnTarget, setReturnTarget] = useState<RepDay | null>(null);
+
+  useRealtimeInvalidate(["sales", "sales_returns", "sales_reps"], [["store-rep-activity"]]);
+
+  const activity = useQuery({
+    queryKey: ["store-rep-activity", factoryId, day],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("store_rep_activity", {
+        p_factory_id: factoryId,
+        p_date: day,
+      });
+      if (error) throw error;
+      return (data ?? []) as unknown as RepDay[];
+    },
+  });
+
+  // Reps with something happening that day; the rest are noise here.
+  const reps = (activity.data ?? []).filter(
+    (r) => r.supplied.length > 0 || r.returned.length > 0 || r.pending_orders > 0,
+  );
+
+  return (
+    <Card className="rounded-2xl">
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <CardTitle>Sales-Rep Activity</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Products supplied to sales-reps and what they bring back at close of business.
+          </p>
+        </div>
+        <Input
+          type="date"
+          className="h-9 w-auto"
+          value={day}
+          onChange={(e) => e.target.value && setDay(e.target.value)}
+        />
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Sales-Rep</TableHead>
+              <TableHead className="text-right">Supplied</TableHead>
+              <TableHead className="text-right">Value</TableHead>
+              <TableHead className="text-right">Returned</TableHead>
+              <TableHead className="text-right">Still with rep</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {activity.isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  Loading…
+                </TableCell>
+              </TableRow>
+            ) : activity.isError ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-destructive">
+                  {(activity.error as Error).message}
+                </TableCell>
+              </TableRow>
+            ) : reps.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                  No sales-rep supplies or returns on this day.
+                </TableCell>
+              </TableRow>
+            ) : (
+              reps.map((r) => {
+                const lines = productLines(r);
+                const supplied = lines.reduce((s, l) => s + l.supplied, 0);
+                const value = lines.reduce((s, l) => s + l.value, 0);
+                const returned = lines.reduce((s, l) => s + l.returned, 0);
+                const outstanding = lines.reduce((s, l) => s + l.outstanding, 0);
+                const awaiting = r.returned.filter((x) => x.status === "received").length;
+                return (
+                  <TableRow key={r.sales_rep_id}>
+                    <TableCell>
+                      <div className="font-medium">{r.name}</div>
+                      <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                        {r.phone}
+                        {r.pending_orders > 0 && (
+                          <Badge variant="outline">
+                            {r.pending_orders} order{r.pending_orders === 1 ? "" : "s"} awaiting
+                            accountant
+                          </Badge>
+                        )}
+                        {awaiting > 0 && (
+                          <Badge variant="outline" className="text-warning">
+                            {awaiting} return{awaiting === 1 ? "" : "s"} awaiting inspection
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{num(supplied)}</TableCell>
+                    <TableCell className="text-right">{money(value)}</TableCell>
+                    <TableCell className="text-right">{num(returned)}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      <span className={outstanding > 0 ? "text-warning" : ""}>
+                        {num(outstanding)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="View activity"
+                          onClick={() => setDetail(r)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {canLogReturn && outstanding > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => setReturnTarget(r)}
+                          >
+                            <Undo2 className="h-4 w-4" /> Log Return
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Supplied counts orders the accountant has confirmed. Logged returns are inspected under{" "}
+          <Link to="/sales-returns" className="text-primary hover:underline">
+            Sales Returns
+          </Link>{" "}
+          — accepted products go back into stock and the rep's account is credited.
+        </p>
+      </CardContent>
+
+      <Dialog open={!!detail} onOpenChange={(v) => !v && setDetail(null)}>
+        {detail && <RepDayDialog rep={detail} day={day} />}
+      </Dialog>
+      <Dialog open={!!returnTarget} onOpenChange={(v) => !v && setReturnTarget(null)}>
+        {returnTarget && (
+          <LogRepReturnDialog
+            factoryId={factoryId}
+            rep={returnTarget}
+            onDone={() => setReturnTarget(null)}
+          />
+        )}
+      </Dialog>
+    </Card>
+  );
+}
+
+function RepDayDialog({ rep, day }: { rep: RepDay; day: string }) {
+  const lines = productLines(rep);
+  return (
+    <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>
+          {rep.name} · {day}
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Product</TableHead>
+              <TableHead className="text-right">Supplied</TableHead>
+              <TableHead className="text-right">Returned</TableHead>
+              <TableHead className="text-right">Still with rep</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((l) => (
+              <TableRow key={l.product_id}>
+                <TableCell>{l.name}</TableCell>
+                <TableCell className="text-right">
+                  {num(l.supplied)} {l.unit}
+                </TableCell>
+                <TableCell className="text-right">
+                  {num(l.returned)} {l.unit}
+                </TableCell>
+                <TableCell className="text-right font-medium">
+                  {num(l.outstanding)} {l.unit}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        <div>
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Supplies (invoices)
+          </div>
+          {rep.supplied.length === 0 ? (
+            <p className="text-sm text-muted-foreground">None confirmed yet.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {rep.supplied.map((s, i) => (
+                <li key={i} className="flex justify-between gap-2 py-1.5">
+                  <span>
+                    <span className="font-mono text-xs">{s.invoice_number}</span> · {s.product_name}
+                  </span>
+                  <span className="whitespace-nowrap">
+                    {num(Number(s.quantity))} {s.unit} ·{" "}
+                    {new Date(s.created_at).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Returns
+          </div>
+          {rep.returned.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing returned yet.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {rep.returned.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span>
+                    <span className="font-mono text-xs">{r.return_number}</span> · {r.product_name}{" "}
+                    · {num(Number(r.quantity))} {r.unit}
+                    {r.status === "completed" && (
+                      <span className="text-xs text-muted-foreground">
+                        {" "}
+                        (accepted {num(Number(r.accepted ?? 0))}, damaged {num(Number(r.damaged))},
+                        rejected {num(Number(r.rejected))})
+                      </span>
+                    )}
+                  </span>
+                  <Badge variant={r.status === "completed" ? "secondary" : "outline"}>
+                    {returnStatusLabel(r.status)}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </DialogContent>
+  );
+}
+
+function LogRepReturnDialog({
+  factoryId,
+  rep,
+  onDone,
+}: {
+  factoryId: string;
+  rep: RepDay;
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const lines = useMemo(() => productLines(rep).filter((l) => l.outstanding > 0), [rep]);
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const [reason, setReason] = useState("Unsold — returned at close of business");
+
+  const over = lines.filter((l) => (qty[l.product_id] ?? 0) > l.outstanding);
+  const toReturn = lines.filter((l) => (qty[l.product_id] ?? 0) > 0);
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      if (toReturn.length === 0) throw new Error("Enter a quantity for at least one product");
+      if (over.length > 0) throw new Error(`${over[0].name}: more than the rep still holds`);
+      // One sales_returns row per product, same as the Sales Returns page.
+      const results: { id: string; return_number: string }[] = [];
+      for (const l of toReturn) {
+        const { data, error } = await supabase.rpc("create_sales_return", {
+          payload: {
+            factory_id: factoryId,
+            sale_id: l.sale_id || undefined,
+            customer_id: rep.customer_id,
+            product_id: l.product_id,
+            quantity_returned: qty[l.product_id],
+            reason: reason || undefined,
+          } as never,
+        });
+        if (error) throw error;
+        results.push(data as unknown as { id: string; return_number: string });
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      toast.success(
+        `${results.length} return${results.length === 1 ? "" : "s"} logged for ${rep.name} — awaiting inspection`,
+      );
+      results.forEach((r) =>
+        logAudit({ action: "create", entity: "sales_returns", entityId: r.id, factoryId }),
+      );
+      qc.invalidateQueries({ queryKey: ["store-rep-activity"] });
+      qc.invalidateQueries({ queryKey: ["sales-returns-list"] });
+      onDone();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <DialogContent className="max-w-lg">
+      <DialogHeader>
+        <DialogTitle>Log Return — {rep.name}</DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <p className="text-xs text-muted-foreground">
+          Enter what the rep brought back. It is inspected before it goes back into stock and is
+          credited to the rep's account.
+        </p>
+        {lines.map((l) => {
+          const v = qty[l.product_id] ?? 0;
+          return (
+            <div key={l.product_id} className="flex items-end gap-3">
+              <div className="flex-1 text-sm">
+                <div className="font-medium">{l.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  Still with rep: {num(l.outstanding)} {l.unit}
+                </div>
+              </div>
+              <div className="w-32">
+                <Label className="text-xs">Returned</Label>
+                <MoneyInput
+                  min={0}
+                  value={v}
+                  onChange={(n) => setQty((q) => ({ ...q, [l.product_id]: n }))}
+                  className={v > l.outstanding ? "border-destructive text-destructive" : undefined}
+                />
+              </div>
+            </div>
+          );
+        })}
+        <div>
+          <Label>Reason</Label>
+          <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button
+          disabled={submit.isPending || toReturn.length === 0 || over.length > 0}
+          onClick={() => submit.mutate()}
+        >
+          {submit.isPending ? "Logging…" : "Log Return"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}

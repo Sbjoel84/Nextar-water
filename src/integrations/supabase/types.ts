@@ -354,6 +354,7 @@ export type Database = {
           outstanding_balance: number
           phone: string | null
           registered: boolean
+          sales_rep_id: string | null
           total_purchases: number
           total_transactions: number
           updated_at: string
@@ -372,6 +373,7 @@ export type Database = {
           outstanding_balance?: number
           phone?: string | null
           registered?: boolean
+          sales_rep_id?: string | null
           total_purchases?: number
           total_transactions?: number
           updated_at?: string
@@ -390,6 +392,7 @@ export type Database = {
           outstanding_balance?: number
           phone?: string | null
           registered?: boolean
+          sales_rep_id?: string | null
           total_purchases?: number
           total_transactions?: number
           updated_at?: string
@@ -4142,6 +4145,10 @@ export type Database = {
       }
       approve_sale: {
         Args: { p_comment?: string; p_id: string }
+        Returns: Json
+      }
+      store_rep_activity: {
+        Args: { p_factory_id: string; p_date: string }
         Returns: Json
       }
       save_distributor: {

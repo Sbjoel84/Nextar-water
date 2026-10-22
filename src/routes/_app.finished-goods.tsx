@@ -68,6 +68,7 @@ import { generateStockCardPdf } from "@/lib/pdf";
 import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/units";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
 import { PosDialog } from "./_app.sales";
+import { RepActivityCard } from "@/components/store/rep-activity";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
 
@@ -644,7 +645,7 @@ function FinishedGoodsPage() {
             <Dialog open={posOpen} onOpenChange={setPosOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2">
-                  <ShoppingCart className="h-4 w-4" /> New Order
+                  <ShoppingCart className="h-4 w-4" /> Sales & POS
                 </Button>
               </DialogTrigger>
               {posOpen && factoryId && (
@@ -870,6 +871,8 @@ function FinishedGoodsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {factoryId && <RepActivityCard factoryId={factoryId} />}
 
       {(pendingAdjustments.data ?? []).length > 0 && (
         <Card className="rounded-2xl border-dashed">

@@ -76,7 +76,7 @@ export type Customer = {
   total_purchases: number;
   total_transactions: number;
   registered: boolean;
-  // walk_in | marketer | distributor | other — drives which customers the
+  // walk_in | marketer (shown as "Sales-Rep") | distributor | other — drives which customers the
   // Sales & POS box lists for each "Order from" choice.
   customer_type: string;
 };
@@ -573,7 +573,11 @@ function CustomerDialog({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {CUSTOMER_TYPES.map((t) => (
+              {/* Sales-Reps are registered under Distribution → Sales Reps, which
+                  creates their customer account automatically. */}
+              {CUSTOMER_TYPES.filter(
+                (t) => t.value !== "marketer" || editing?.customer_type === "marketer",
+              ).map((t) => (
                 <SelectItem key={t.value} value={t.value}>
                   {t.label}
                 </SelectItem>
