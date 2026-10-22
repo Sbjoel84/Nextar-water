@@ -13,10 +13,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { matchesSearch } from "@/lib/search";
-import { purgeRecycleBin, RECYCLE_BIN_RETENTION_DAYS } from "@/lib/recycle-bin";
+import { purgeRecycleBin, purgeRecycleBinNow, RECYCLE_BIN_RETENTION_DAYS } from "@/lib/recycle-bin";
 import { RefId } from "@/components/shared/ref-id";
 
 type BinRow = {
@@ -77,6 +87,8 @@ function customerContents(details: Record<string, unknown>): string {
 export function RecycleBinTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  // What the "delete permanently" confirmation is for: one entry, or "all".
+  const [wipeTarget, setWipeTarget] = useState<BinRow | "all" | null>(null);
 
   const purge = useMutation({
     mutationFn: purgeRecycleBin,
@@ -138,6 +150,25 @@ export function RecycleBinTab() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const wipe = useMutation({
+    mutationFn: (target: BinRow | "all") =>
+      purgeRecycleBinNow(target === "all" ? undefined : target.id),
+    onSuccess: (data) => {
+      if (data.skipped > 0) {
+        toast.warning(
+          `${data.purged} deleted permanently; ${data.skipped} couldn't be removed yet because other records still depend on them.`,
+        );
+      } else {
+        toast.success(
+          data.purged === 1 ? "Deleted permanently" : `${data.purged} items deleted permanently`,
+        );
+      }
+      setWipeTarget(null);
+      qc.invalidateQueries({ queryKey: ["recycle-bin"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const list = (rows.data ?? []).filter((r) =>
     matchesSearch(
       search,
@@ -153,12 +184,22 @@ export function RecycleBinTab() {
           {rows.data?.length ?? 0} item{rows.data?.length === 1 ? "" : "s"} — each is permanently
           removed {RECYCLE_BIN_RETENTION_DAYS} days after deletion unless restored first.
         </p>
-        <Input
-          className="max-w-xs"
-          placeholder="Search the recycle bin or #ID…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            className="max-w-xs"
+            placeholder="Search the recycle bin or #ID…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Button
+            variant="destructive"
+            className="gap-2"
+            disabled={(rows.data?.length ?? 0) === 0 || wipe.isPending}
+            onClick={() => setWipeTarget("all")}
+          >
+            <Trash2 className="h-4 w-4" /> Empty recycle bin
+          </Button>
+        </div>
       </div>
 
       <Card className="rounded-2xl">
@@ -224,6 +265,15 @@ export function RecycleBinTab() {
                       >
                         <RotateCcw className="h-4 w-4" /> Restore
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-destructive"
+                        disabled={wipe.isPending}
+                        onClick={() => setWipeTarget(r)}
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete now
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
@@ -239,6 +289,35 @@ export function RecycleBinTab() {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!wipeTarget} onOpenChange={(v) => !v && setWipeTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {wipeTarget === "all"
+                ? `Empty the recycle bin (${rows.data?.length ?? 0} items)?`
+                : `Delete "${wipeTarget?.entity_label ?? ""}" permanently?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {wipeTarget === "all" ? "Everything in the recycle bin" : "This item"} is removed for
+              good right now, with any attached files. It can no longer be restored.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={wipe.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={wipe.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (wipeTarget) wipe.mutate(wipeTarget);
+              }}
+            >
+              {wipe.isPending ? "Deleting…" : "Delete permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

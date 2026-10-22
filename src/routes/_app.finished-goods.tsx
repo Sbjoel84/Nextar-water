@@ -61,13 +61,10 @@ import {
   X,
   Factory,
   Trash2,
-  ShoppingCart,
   Search,
 } from "lucide-react";
 import { generateStockCardPdf } from "@/lib/pdf";
-import { useUnitsOfMeasure, UNIT_OPTIONS as UNIT_OPTIONS_FALLBACK } from "@/lib/units";
 import { ADJUSTMENT_REASONS } from "@/lib/adjustment-reasons";
-import { PosDialog } from "./_app.sales";
 import { RepActivityCard } from "@/components/store/rep-activity";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
@@ -228,7 +225,6 @@ function FinishedGoodsPage() {
     usePermissions();
   const write = canWrite("finished-goods");
   const submit = canSubmit("finished-goods");
-  const canSell = canWrite("sales");
   const approve = canApprove("finished-goods");
   const post = canPost("finished-goods");
   const cancel = canCancel("finished-goods");
@@ -264,9 +260,7 @@ function FinishedGoodsPage() {
     ],
   );
   const [formOpen, setFormOpen] = useState(false);
-  const [posOpen, setPosOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
-  const [typeFilter, setTypeFilter] = useState<"all" | "finished" | "semi_finished">("all");
   const [q, setQ] = useSearchQuery();
   const [adjustTarget, setAdjustTarget] = useState<{
     product: Product;
@@ -574,12 +568,9 @@ function FinishedGoodsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const filteredList = (list.data ?? []).filter(
-    (p) => typeFilter === "all" || p.product_type === typeFilter,
-  );
+  const filteredList = list.data ?? [];
   // Search only narrows which rows are shown in the table below — it
-  // deliberately doesn't affect the summary cards above (those reflect the
-  // type filter's overall totals, not "what happens to match this search").
+  // deliberately doesn't affect the summary cards above.
   const searchedList = filteredList.filter((p) => matchesSearch(q, p));
 
   const summary = {
@@ -641,25 +632,6 @@ function FinishedGoodsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canSell && (
-            <Dialog open={posOpen} onOpenChange={setPosOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <ShoppingCart className="h-4 w-4" /> Sales & POS
-                </Button>
-              </DialogTrigger>
-              {posOpen && factoryId && (
-                <PosDialog
-                  factoryId={factoryId}
-                  onDone={() => {
-                    setPosOpen(false);
-                    invalidateAll();
-                    qc.invalidateQueries({ queryKey: ["sales-list"] });
-                  }}
-                />
-              )}
-            </Dialog>
-          )}
           {write && (
             <Dialog
               open={formOpen}
@@ -694,7 +666,7 @@ function FinishedGoodsPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           icon={Boxes}
-          label={typeFilter === "semi_finished" ? "Semi-Finished SKUs" : "Finished Products SKUs"}
+          label="Finished Products SKUs"
           value={String(summary.totalSkus)}
         />
         <SummaryCard icon={Wallet} label="Inventory Value" value={money(summary.totalValue)} />
@@ -725,16 +697,6 @@ function FinishedGoodsPage() {
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
-            <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
-              <SelectTrigger className="h-9 w-[170px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="finished">Finished only</SelectItem>
-                <SelectItem value="semi_finished">Semi-Finished only</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
@@ -743,7 +705,6 @@ function FinishedGoodsPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Product</TableHead>
-                <TableHead>Type</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Available Stock</TableHead>
                 <TableHead className="text-right">Cost Price</TableHead>
@@ -759,11 +720,6 @@ function FinishedGoodsPage() {
                       <RefId id={p.id} />
                     </TableCell>
                     <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={p.product_type === "semi_finished" ? "outline" : "secondary"}>
-                        {p.product_type === "semi_finished" ? "Semi-Finished" : "Finished"}
-                      </Badge>
-                    </TableCell>
                     <TableCell>{p.product_categories?.name ?? "—"}</TableCell>
                     <TableCell className="text-right">
                       <span className={low ? "text-destructive font-medium" : ""}>
@@ -862,7 +818,7 @@ function FinishedGoodsPage() {
               })}
               {searchedList.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     {q.trim() ? "No products match your search." : "No products yet."}
                   </TableCell>
                 </TableRow>
@@ -1328,6 +1284,23 @@ function FinishedGoodsPage() {
   );
 }
 
+// The factory's product lines, same as the Costing page's product types.
+const PRODUCT_LINES = ["Bottle Water", "Dispenser", "Sachet Water", "Ice Block"];
+
+// Recovers the product line from a saved "<product> <SKU>" name; an older
+// free-typed name that matches no line is kept whole as its own line.
+function splitProductName(name: string, sku: string): { line: string; whole: boolean } {
+  const trimmed = name.trim();
+  if (!trimmed) return { line: "", whole: false };
+  const line = PRODUCT_LINES.find((p) => trimmed.toLowerCase().startsWith(p.toLowerCase()));
+  if (line) return { line, whole: false };
+  const s = sku.trim();
+  if (s && trimmed.toLowerCase().endsWith(` ${s.toLowerCase()}`)) {
+    return { line: trimmed.slice(0, -(s.length + 1)), whole: false };
+  }
+  return { line: trimmed, whole: true };
+}
+
 function ProductForm({
   factoryId,
   categories,
@@ -1357,41 +1330,36 @@ function ProductForm({
       return (data ?? []) as unknown as MaterialOption[];
     },
   });
-  const unitsOfMeasure = useUnitsOfMeasure();
-  const unitOptions = unitsOfMeasure.data ?? UNIT_OPTIONS_FALLBACK;
-  const [name, setName] = useState(editing?.name ?? "");
+  // Product is picked from the factory's product lines; the SKU is the
+  // variant (35cl, 50cl, ...). The saved name is "<product> <SKU>" so every
+  // list that only shows the name still tells the sizes apart.
+  const split = splitProductName(editing?.name ?? "", editing?.sku ?? "");
+  const [productLine, setProductLine] = useState(split.line);
   const [sku, setSku] = useState(editing?.sku ?? "");
-  const [productType, setProductType] = useState<"finished" | "semi_finished">(
-    (editing?.product_type as "finished" | "semi_finished") ?? "finished",
-  );
-  const initialUnit = editing?.unit ?? "pieces";
-  const [unitChoice, setUnitChoice] = useState(
-    unitOptions.includes(initialUnit) ? initialUnit : "__custom__",
-  );
-  const [customUnit, setCustomUnit] = useState(
-    unitOptions.includes(initialUnit) ? "" : initialUnit,
-  );
-  const unit = unitChoice === "__custom__" ? customUnit : unitChoice;
-  const [categoryId, setCategoryId] = useState(editing?.category_id ?? "none");
+  // An older product whose name doesn't follow "<product> <SKU>" keeps its
+  // exact name unless the product is changed here.
+  const name =
+    editing && split.whole && productLine === split.line
+      ? editing.name
+      : [productLine, sku.trim()].filter(Boolean).join(" ");
   const [unitPrice, setUnitPrice] = useState(editing ? Number(editing.unit_price) : 0);
   const [costPrice, setCostPrice] = useState(editing ? Number(editing.cost_price) : 0);
-  const [openingStock, setOpeningStock] = useState(editing ? Number(editing.current_stock) : 0);
-  const [reorderLevel, setReorderLevel] = useState(
-    editing ? Number(editing.reorder_level ?? 0) : 0,
-  );
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) throw new Error("Product name is required");
-      if (!unit.trim()) throw new Error("Select or enter a unit of measurement");
+      if (!productLine) throw new Error("Select the product type");
+      if (!editing && !sku.trim()) throw new Error("Enter the SKU (e.g. 35cl, 50cl)");
+      // Unit, type, opening stock and reorder level are no longer asked for:
+      // a new product is a finished product, counted in pieces, starting at 0
+      // stock (stock arrives through production). Editing keeps what's set.
       const payload = {
-        name: name.trim(),
+        name,
         sku: sku.trim() || null,
-        product_type: productType,
-        unit: unit.trim(),
-        category_id: categoryId === "none" ? null : categoryId,
+        product_type: editing?.product_type ?? "finished",
+        unit: editing?.unit ?? "pieces",
+        // Category is no longer asked for; editing keeps any existing one.
+        category_id: editing?.category_id ?? null,
         unit_price: unitPrice,
-        reorder_level: reorderLevel,
       };
       if (editing) {
         // cost_price is column-locked for direct updates; a manual change goes
@@ -1422,7 +1390,8 @@ function ProductForm({
           ...payload,
           cost_price: costPrice,
           factory_id: factoryId,
-          current_stock: openingStock,
+          current_stock: 0,
+          reorder_level: 0,
           active: true,
         });
         if (error) throw error;
@@ -1441,74 +1410,39 @@ function ProductForm({
         <DialogTitle>{editing ? "Edit Product" : "Add New Product"}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
-        <div>
-          <Label>Product name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Type</Label>
-            <Select
-              value={productType}
-              onValueChange={(v) => setProductType(v as typeof productType)}
-            >
+            <Label>Product Type</Label>
+            <Select value={productLine || undefined} onValueChange={setProductLine}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Select product type…" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="finished">Finished product</SelectItem>
-                <SelectItem value="semi_finished">Semi-finished product</SelectItem>
+                {PRODUCT_LINES.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+                {/* An older product named outside these lines stays editable. */}
+                {productLine && !PRODUCT_LINES.includes(productLine) && (
+                  <SelectItem value={productLine}>{productLine}</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
           <div>
             <Label>SKU</Label>
-            <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Optional" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Category</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— None —</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Unit of measurement</Label>
-            <Select value={unitChoice} onValueChange={setUnitChoice}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {unitOptions.map((u) => (
-                  <SelectItem key={u} value={u} className="capitalize">
-                    {u}
-                  </SelectItem>
-                ))}
-                <SelectItem value="__custom__">Other…</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {unitChoice === "__custom__" && (
-          <div>
-            <Label>Custom unit</Label>
             <Input
-              value={customUnit}
-              onChange={(e) => setCustomUnit(e.target.value)}
-              placeholder="e.g. crates"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              placeholder="e.g. 35cl, 50cl"
             />
           </div>
+        </div>
+        {name && (
+          <p className="-mt-1 text-xs text-muted-foreground">
+            Saved as <strong>{name}</strong> · Finished product
+          </p>
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -1523,22 +1457,6 @@ function ProductForm({
                 Stays as entered until changed here or by an approved Costing sheet.
               </p>
             )}
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Opening stock</Label>
-            <MoneyInput
-              min={0}
-              step="0.001"
-              value={openingStock}
-              onChange={setOpeningStock}
-              disabled={!!editing}
-            />
-          </div>
-          <div>
-            <Label>Reorder level</Label>
-            <MoneyInput min={0} step="0.001" value={reorderLevel} onChange={setReorderLevel} />
           </div>
         </div>
         {editing && (

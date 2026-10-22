@@ -16,7 +16,21 @@ type PurgeResult = {
 export async function purgeRecycleBin(): Promise<PurgeResult> {
   const { data, error } = await supabase.rpc("purge_recycle_bin" as any);
   if (error) throw error;
-  const result = data as PurgeResult;
+  return removeStorageFiles(data as PurgeResult);
+}
+
+// Admin "delete permanently" — one entry, or the whole bin when id is omitted,
+// without waiting for the retention period.
+export async function purgeRecycleBinNow(id?: string): Promise<PurgeResult> {
+  const { data, error } = await supabase.rpc(
+    "purge_recycle_bin_now" as any,
+    { p_id: id ?? null } as any,
+  );
+  if (error) throw error;
+  return removeStorageFiles(data as PurgeResult);
+}
+
+async function removeStorageFiles(result: PurgeResult): Promise<PurgeResult> {
   const byBucket = new Map<string, string[]>();
   for (const f of result.files ?? []) {
     if (!f?.bucket || !f?.path) continue;
