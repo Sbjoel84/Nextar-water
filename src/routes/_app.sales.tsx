@@ -1537,15 +1537,29 @@ export function PosDialog({
                   <SelectValue placeholder="Select a product to add…" />
                 </SelectTrigger>
                 <SelectContent>
+                  {/* Every active product is listed, in stock or not, so sales
+                      can see the full range; out-of-stock lines just can't be
+                      added until production posts more to the store. */}
                   {visibleProducts.map((p) => (
                     <SelectItem key={p.id} value={p.id} disabled={effStock(p) <= 0}>
-                      {p.name} · {money(Number(p.unit_price))} · {repMode ? "van" : "stock"}{" "}
-                      {num(effStock(p))} {p.unit}
+                      {p.name}
+                      {p.sku ? ` (${p.sku})` : ""} · {money(Number(p.unit_price))} ·{" "}
+                      {effStock(p) > 0
+                        ? `${repMode ? "van" : "stock"} ${num(effStock(p))} ${p.unit}`
+                        : repMode
+                          ? "not on van"
+                          : "out of stock"}
                     </SelectItem>
                   ))}
                   {visibleProducts.length === 0 && (
                     <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                      No products in this category.
+                      {products.isLoading
+                        ? "Loading products…"
+                        : products.isError
+                          ? "Couldn't load products."
+                          : categoryFilter === "all"
+                            ? "No products yet."
+                            : "No products in this category."}
                     </div>
                   )}
                   <SelectItem value={ADD_NEW_ITEM} className="font-medium text-primary">
