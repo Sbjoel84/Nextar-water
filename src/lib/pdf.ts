@@ -81,7 +81,7 @@ const FALLBACK_LOGO_URL = "/assets/nextar-logo.jpeg";
 // jsPDF's built-in fonts have no glyph for the Naira sign (₦) -- it prints as
 // a broken box on thermal/receipt output. Use a plain currency-code prefix
 // for PDFs instead of the on-screen Intl currency symbol from format.ts.
-const pdfMoney = (n: number, currency: string) => {
+export const pdfMoney = (n: number, currency: string) => {
   const v = typeof n === "number" ? n : 0;
   const formatted = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
@@ -1204,6 +1204,126 @@ export async function generateStatementPdf(
     `${opts.title.replace(/\s+/g, "-")}-${opts.period.replace(/\s+/g, "-")}.pdf`,
     action,
   );
+}
+
+// Sales activity for a period: headline totals, units/value per product, then
+// every transaction in the period (any status) with the products it carried.
+export type SalesReportTransaction = {
+  sale_date: string;
+  invoice_number: string;
+  customer: string;
+  customer_type: string;
+  sales_person: string | null;
+  items: { name: string; quantity: number; unit: string }[];
+  grand_total: number;
+  amount_paid: number;
+  balance: number;
+  status: string;
+  is_pr: boolean;
+};
+
+export async function generateSalesReportPdf(
+  opts: {
+    period: string;
+    company?: { name?: string | null; logo_url?: string | null } | null;
+    currency: string;
+    summary: { label: string; value: string }[];
+    products: { name: string; quantity: number; unit: string; value: number }[];
+    transactions: SalesReportTransaction[];
+  },
+  action: PdfAction = "print",
+) {
+  const m = (n: number) => pdfMoney(n, opts.currency);
+  const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+  const top = await drawLogoHeader(doc, opts.company?.logo_url, 40);
+  let y = top;
+  if (opts.company?.name) {
+    doc.setFontSize(11);
+    doc.text(opts.company.name, 40, y);
+    y += 18;
+  }
+  doc.setFontSize(18);
+  doc.text("Sales Report", 40, y);
+  y += 18;
+  doc.setFontSize(10);
+  doc.text(`Period: ${opts.period}`, 40, y);
+  y += 14;
+  doc.setFontSize(8);
+  doc.setTextColor(110);
+  doc.text(`Generated ${new Date().toLocaleString()}`, 40, y);
+  doc.setTextColor(0);
+  y += 14;
+
+  const lastY = () => {
+    // @ts-expect-error autoTable augments doc
+    return doc.lastAutoTable.finalY as number;
+  };
+
+  autoTable(doc, {
+    startY: y + 8,
+    head: [["Summary", ""]],
+    body: opts.summary.map((s) => [s.label, s.value]),
+    theme: "plain",
+    tableWidth: 360,
+    styles: { fontSize: 10, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 } },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: "bold" },
+    columnStyles: { 1: { halign: "right" } },
+  });
+
+  if (opts.products.length > 0) {
+    autoTable(doc, {
+      startY: lastY() + 14,
+      head: [["Product (approved sales)", "Quantity", "Value"]],
+      body: opts.products.map((p) => [p.name, `${p.quantity} ${p.unit}`, m(p.value)]),
+      tableWidth: 480,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [30, 41, 59] },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
+    });
+  }
+
+  autoTable(doc, {
+    startY: lastY() + 14,
+    head: [
+      [
+        "Date",
+        "Invoice",
+        "Customer",
+        "Type",
+        "Sales person",
+        "Products",
+        "Total",
+        "Paid",
+        "Balance",
+        "Status",
+      ],
+    ],
+    body:
+      opts.transactions.length > 0
+        ? opts.transactions.map((t) => [
+            t.sale_date,
+            t.invoice_number,
+            t.customer,
+            t.is_pr ? `${t.customer_type} (PR)` : t.customer_type,
+            t.sales_person ?? "—",
+            t.items.map((i) => `${i.name} × ${i.quantity} ${i.unit}`).join("\n"),
+            m(t.grand_total),
+            m(t.amount_paid),
+            m(t.balance),
+            t.status.replace(/_/g, " "),
+          ])
+        : [[{ content: "No sales in this period.", colSpan: 10 }]],
+    styles: { fontSize: 8, valign: "top" },
+    headStyles: { fillColor: [30, 41, 59] },
+    columnStyles: {
+      5: { cellWidth: 190 },
+      6: { halign: "right" },
+      7: { halign: "right" },
+      8: { halign: "right" },
+    },
+  });
+
+  outputPdf(doc, `Sales-Report-${opts.period.replace(/\s+/g, "-")}.pdf`, action);
 }
 
 // Customer account statement: advance / debt position for a period, with every

@@ -1645,7 +1645,11 @@ function IssueDialog({ material, onDone }: { material: Material; onDone: () => v
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (quantity <= 0) throw new Error("Quantity must be > 0");
+      if (quantity <= 0) throw new Error("Enter the quantity to issue");
+      if (quantity > Number(material.current_stock))
+        throw new Error(
+          `Only ${num(Number(material.current_stock))} ${material.unit} available to issue`,
+        );
       const { error } = await supabase.rpc("issue_raw_material", {
         payload: {
           material_id: material.id,
@@ -1658,7 +1662,7 @@ function IssueDialog({ material, onDone }: { material: Material; onDone: () => v
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(purpose === "production" ? "Used for production" : "Stock issued");
+      toast.success(purpose === "production" ? "Stock issued to production" : "Stock issued");
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1680,7 +1684,7 @@ function IssueDialog({ material, onDone }: { material: Material; onDone: () => v
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="production">Used for production</SelectItem>
+              <SelectItem value="production">Issue to production</SelectItem>
               <SelectItem value="general">General issue</SelectItem>
             </SelectContent>
           </Select>
@@ -1709,15 +1713,11 @@ function IssueDialog({ material, onDone }: { material: Material; onDone: () => v
         </div>
       </div>
       <DialogFooter>
-        <Button
-          disabled={submit.isPending || quantity <= 0 || quantity > Number(material.current_stock)}
-          onClick={() => submit.mutate()}
-        >
-          {submit.isPending
-            ? "Saving…"
-            : purpose === "production"
-              ? "Use for Production"
-              : "Issue Stock"}
+        {/* Always clickable: a missing or too-large quantity is explained by a
+            toast from the mutation instead of a silently greyed-out button. */}
+        <Button className="gap-2" disabled={submit.isPending} onClick={() => submit.mutate()}>
+          <PackageMinus className="h-4 w-4" />
+          {submit.isPending ? "Issuing…" : "Issue"}
         </Button>
       </DialogFooter>
     </DialogContent>
