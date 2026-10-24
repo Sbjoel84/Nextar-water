@@ -73,6 +73,8 @@ type ReturnRow = {
   customer_id: string | null;
   product_id: string;
   quantity_returned: number;
+  // Damaged units entered by the store at drop-off; pre-fills inspection.
+  reported_damaged: number;
   unit: string | null;
   reason: string | null;
   status: string;
@@ -217,7 +219,7 @@ function SalesReturnsPage() {
       const { data, error } = await supabase
         .from("sales_returns")
         .select(
-          "id,return_number,sale_id,customer_id,product_id,quantity_returned,unit,reason,status,accepted_quantity,damaged_quantity,rejected_quantity,received_by,received_at,inspected_by,inspected_at,notes,products(name,unit),customers(name),sales(invoice_number)",
+          "id,return_number,sale_id,customer_id,product_id,quantity_returned,reported_damaged,unit,reason,status,accepted_quantity,damaged_quantity,rejected_quantity,received_by,received_at,inspected_by,inspected_at,notes,products(name,unit),customers(name),sales(invoice_number)",
         )
         .eq("factory_id", factoryId!)
         .order("received_at", { ascending: false })
@@ -719,8 +721,9 @@ function CreateReturnDialog({
 }
 
 function InspectDialog({ row, onDone }: { row: ReturnRow; onDone: () => void }) {
-  const [accepted, setAccepted] = useState(Number(row.quantity_returned));
-  const [damaged, setDamaged] = useState(0);
+  const reportedDamaged = Number(row.reported_damaged ?? 0);
+  const [accepted, setAccepted] = useState(Number(row.quantity_returned) - reportedDamaged);
+  const [damaged, setDamaged] = useState(reportedDamaged);
   const [rejected, setRejected] = useState(0);
   const [notes, setNotes] = useState("");
 
@@ -772,6 +775,7 @@ function InspectDialog({ row, onDone }: { row: ReturnRow; onDone: () => void }) 
       <div className="grid gap-3">
         <p className="text-sm text-muted-foreground">
           {row.products?.name} · {num(Number(row.quantity_returned))} {row.unit} returned
+          {reportedDamaged > 0 && ` (${num(reportedDamaged)} reported damaged at drop-off)`}
         </p>
         <div className="grid grid-cols-3 gap-3">
           <div>

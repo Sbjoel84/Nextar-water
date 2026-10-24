@@ -398,13 +398,24 @@ function LogRepReturnDialog({
 }) {
   const qc = useQueryClient();
   const lines = useMemo(() => productLines(rep).filter((l) => l.outstanding > 0), [rep]);
+  // Good and damaged units are entered separately; together they are what the
+  // rep handed back. Damaged units are still credited to the rep's account at
+  // inspection (inspect_sales_return()), they just don't go back into stock.
   const [qty, setQty] = useState<Record<string, number>>({});
+  const [damaged, setDamaged] = useState<Record<string, number>>({});
   // Switching Sales-Rep in Return Product starts the quantities afresh.
-  useEffect(() => setQty({}), [rep.sales_rep_id]);
+  useEffect(() => {
+    setQty({});
+    setDamaged({});
+  }, [rep.sales_rep_id]);
   const [reason, setReason] = useState("Unsold — returned at close of business");
+  // The day the rep brought the goods back; defaults to today, can be backdated.
+  const today = new Date().toLocaleDateString("en-CA");
+  const [returnDate, setReturnDate] = useState(today);
 
-  const over = lines.filter((l) => (qty[l.product_id] ?? 0) > l.outstanding);
-  const toReturn = lines.filter((l) => (qty[l.product_id] ?? 0) > 0);
+  const totalOf = (id: string) => (qty[id] ?? 0) + (damaged[id] ?? 0);
+  const over = lines.filter((l) => totalOf(l.product_id) > l.outstanding);
+  const toReturn = lines.filter((l) => totalOf(l.product_id) > 0);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -419,7 +430,9 @@ function LogRepReturnDialog({
             sale_id: l.sale_id || undefined,
             customer_id: rep.customer_id,
             product_id: l.product_id,
-            quantity_returned: qty[l.product_id],
+            quantity_returned: totalOf(l.product_id),
+            damaged_quantity: damaged[l.product_id] ?? 0,
+            return_date: returnDate,
             reason: reason || undefined,
           } as never,
         });
@@ -451,8 +464,8 @@ function LogRepReturnDialog({
       <div className="grid gap-3">
         {picker}
         <p className="text-xs text-muted-foreground">
-          Enter what the rep brought back. It is inspected before it goes back into stock and is
-          credited to the rep's account.
+          Enter what the rep brought back, good and damaged separately. Both are credited to the
+          rep's account after inspection; only good units go back into stock.
         </p>
         {rep.customer_id && lines.length === 0 && (
           <p className="rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -460,27 +473,49 @@ function LogRepReturnDialog({
           </p>
         )}
         {lines.map((l) => {
-          const v = qty[l.product_id] ?? 0;
+          const tooMany = totalOf(l.product_id) > l.outstanding;
+          const bad = tooMany ? "border-destructive text-destructive" : undefined;
           return (
             <div key={l.product_id} className="flex items-end gap-3">
               <div className="flex-1 text-sm">
                 <div className="font-medium">{l.name}</div>
-                <div className="text-xs text-muted-foreground">
+                <div
+                  className={tooMany ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+                >
                   Still with rep: {num(l.outstanding)} {l.unit}
                 </div>
               </div>
-              <div className="w-32">
-                <Label className="text-xs">Returned</Label>
+              <div className="w-24">
+                <Label className="text-xs">Good</Label>
                 <MoneyInput
                   min={0}
-                  value={v}
+                  value={qty[l.product_id] ?? 0}
                   onChange={(n) => setQty((q) => ({ ...q, [l.product_id]: n }))}
-                  className={v > l.outstanding ? "border-destructive text-destructive" : undefined}
+                  className={bad}
+                />
+              </div>
+              <div className="w-24">
+                <Label className="text-xs">Damaged</Label>
+                <MoneyInput
+                  min={0}
+                  value={damaged[l.product_id] ?? 0}
+                  onChange={(n) => setDamaged((d) => ({ ...d, [l.product_id]: n }))}
+                  className={bad}
                 />
               </div>
             </div>
           );
         })}
+        <div>
+          <Label>Return date</Label>
+          <Input
+            type="date"
+            className="w-auto"
+            value={returnDate}
+            max={today}
+            onChange={(e) => e.target.value && setReturnDate(e.target.value)}
+          />
+        </div>
         <div>
           <Label>Reason</Label>
           <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />

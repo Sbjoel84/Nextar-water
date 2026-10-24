@@ -3195,6 +3195,7 @@ export type Database = {
           notes: string | null
           product_id: string
           quantity_returned: number
+          reported_damaged: number
           reason: string | null
           received_at: string
           received_by: string
@@ -3216,6 +3217,7 @@ export type Database = {
           notes?: string | null
           product_id: string
           quantity_returned: number
+          reported_damaged?: number
           reason?: string | null
           received_at?: string
           received_by: string
@@ -3237,6 +3239,7 @@ export type Database = {
           notes?: string | null
           product_id?: string
           quantity_returned?: number
+          reported_damaged?: number
           reason?: string | null
           received_at?: string
           received_by?: string
