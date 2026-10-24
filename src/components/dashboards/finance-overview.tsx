@@ -462,6 +462,64 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
             </CardContent>
           </Card>
 
+          {/* Kept at the top so the channel totals stay in view even when the
+              confirmation queue below is long. Selecting one filters the records. */}
+          <Card className="rounded-2xl">
+            <CardHeader>
+              <CardTitle>Payment channels</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Where the money moved — {from} to {to}. Select a channel to see its records.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {failed && (
+                <p className="text-sm text-destructive">Could not load some payment records.</p>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {channelKeys.map((k) => {
+                  const c = byChannel[k];
+                  const active = channelFilter === k;
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        setChannelFilter(active ? "all" : k);
+                        if (!active)
+                          document
+                            .getElementById("channel-records")
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className={`rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${
+                        active ? "border-primary bg-primary/5" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{channelLabel(k)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {c.count} record{c.count === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <div className="text-xs text-muted-foreground">In</div>
+                          <div className="font-semibold text-success">{money(c.in)}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground">Out</div>
+                          <div className="font-semibold text-destructive">{money(c.out)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Net {money(c.in - c.out)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
           {canConfirmSales && <PendingSalesCard factoryId={factoryId} />}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -532,54 +590,14 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
             />
           </div>
 
-          <Card className="rounded-2xl">
+          <Card className="rounded-2xl" id="channel-records">
             <CardHeader>
-              <CardTitle>Payment channels</CardTitle>
+              <CardTitle>Payment channel records</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Where the money moved — {from} to {to}. Select a channel to see its records.
+                Every payment in and out — {from} to {to}. Filter by channel or direction.
               </p>
             </CardHeader>
             <CardContent className="space-y-5">
-              {failed && (
-                <p className="text-sm text-destructive">Could not load some payment records.</p>
-              )}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {channelKeys.map((k) => {
-                  const c = byChannel[k];
-                  const active = channelFilter === k;
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setChannelFilter(active ? "all" : k)}
-                      className={`rounded-xl border p-4 text-left transition-colors hover:bg-muted/40 ${
-                        active ? "border-primary bg-primary/5" : ""
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{channelLabel(k)}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {c.count} record{c.count === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <div className="text-xs text-muted-foreground">In</div>
-                          <div className="font-semibold text-success">{money(c.in)}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">Out</div>
-                          <div className="font-semibold text-destructive">{money(c.out)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        Net {money(c.in - c.out)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
               <div className="flex flex-wrap items-end gap-3">
                 <div className="w-44">
                   <Label className="text-xs">Channel</Label>

@@ -156,164 +156,135 @@ async function drawLogoHeader(
   return baseTop + h + 10;
 }
 
-// A4 page (printed on a standard office printer, not an 80mm thermal roll)
-// so the receipt fills the printout instead of appearing tiny in a corner.
+// 80mm thermal roll (Xprinter XP-80 and similar POS printers): the page is
+// the roll's width and exactly as long as the receipt, so the printer prints
+// it at full size instead of shrinking an A4 page onto the roll.
+const ROLL_WIDTH_PT = 226.77; // 80mm
+const ROLL_MARGIN_PT = 11; // ~4mm each side, inside the printer's 72mm print area
+
 export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = "download") {
   const currency = data.currency ?? "NGN";
   const cur = (n: number) => pdfMoney(n, currency);
   const logo = await resolveLogo(data.company.logo_url);
 
-  const W = 595; // A4 width in pt
-  const M = 40;
+  const W = ROLL_WIDTH_PT;
+  const M = ROLL_MARGIN_PT;
   const contentW = W - M * 2;
   const center = W / 2;
 
-  // Sized to read comfortably on A4: 12pt body, 18pt heading, large logo.
-  const BODY = 12;
-  const LH = 17; // line height for body text
-  const RULE_GAP = 16; // space after a separator line
+  const BODY = 10;
+  const LH = 13; // line height for body text
 
   const draw = (doc: jsPDF): number => {
-    let y = M;
+    let y = 12;
+
+    const rule = (dashed = false) => {
+      if (dashed) doc.setLineDashPattern([2, 1.5], 0);
+      doc.setLineWidth(0.8);
+      doc.line(M, y, W - M, y);
+      doc.setLineDashPattern([], 0);
+      y += 12;
+    };
+    const centered = (text: string, size: number, bold = false, lh = size + 3) => {
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(size);
+      (doc.splitTextToSize(text, contentW) as string[]).forEach((ln) => {
+        doc.text(ln, center, y, { align: "center" });
+        y += lh;
+      });
+    };
+    const left = (text: string, bold = false) => {
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(BODY);
+      (doc.splitTextToSize(text, contentW) as string[]).forEach((ln) => {
+        doc.text(ln, M, y);
+        y += LH;
+      });
+    };
+    // Label on the left, amount on the right; drops the amount to its own
+    // line when the two wouldn't fit side by side on the roll.
+    const pair = (label: string, value: string, bold = false, size = BODY) => {
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(size);
+      const fits = doc.getTextWidth(label) + doc.getTextWidth(value) + 8 <= contentW;
+      doc.text(label, M, y);
+      if (!fits) y += size + 3;
+      doc.text(value, W - M, y, { align: "right" });
+      y += size + 4;
+    };
 
     if (logo) {
-      const maxW = 170,
-        maxH = 100;
+      const maxW = 150,
+        maxH = 70;
       const ratio = Math.min(maxW / logo.width, maxH / logo.height, 1);
       const w = logo.width * ratio,
         h = logo.height * ratio;
       doc.addImage(logo.dataUrl, "PNG", center - w / 2, y, w, h);
-      y += h + 12;
+      y += h + 14;
+    } else {
+      y += 4;
     }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(20);
-    y += 6;
-    doc.text(data.company.name || "Company", center, y, { align: "center" });
-    y += 22;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    if (data.company.address) {
-      const addr: string[] = doc.splitTextToSize(data.company.address, contentW);
-      addr.forEach((ln) => {
-        doc.text(ln, center, y, { align: "center" });
-        y += 15;
-      });
-    }
+    centered(data.company.name || "Company", 14, true, 17);
+    if (data.company.address) centered(data.company.address, 8.5, false, 11);
     const contact = [data.company.phone, data.company.email].filter(Boolean).join(" · ");
-    if (contact) {
-      doc.text(contact, center, y, { align: "center" });
-      y += 15;
-    }
+    if (contact) centered(contact, 8.5, false, 11);
 
-    y += 6;
-    doc.setLineDashPattern([3, 2], 0);
-    doc.line(M, y, W - M, y);
-    y += RULE_GAP + 8;
-    doc.setLineDashPattern([], 0);
+    y += 3;
+    rule(true);
+    centered(data.is_pr ? "PR — COMPLIMENTARY" : "SALES RECEIPT", 12, true, 15);
+    if (data.is_pr) centered("NO CHARGE", 9, true, 12);
+    y += 2;
+    left(`Invoice: ${data.invoice_number}`);
+    left(`Date: ${data.sale_date}`);
+    y -= 2;
+    rule(true);
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text(data.is_pr ? "PR — COMPLIMENTARY (NO CHARGE)" : "SALES RECEIPT", center, y, {
-      align: "center",
-    });
-    y += 26;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(BODY);
-    doc.text(`Invoice: ${data.invoice_number}`, M, y);
-    doc.text(`Date: ${data.sale_date}`, W - M, y, { align: "right" });
-    y += LH;
-
-    doc.line(M, y - 4, W - M, y - 4);
-    y += RULE_GAP;
-
-    doc.setFont("helvetica", "bold");
-    doc.text(`Customer: ${data.customer.name || "Walk-in"}`, M, y);
-    doc.setFont("helvetica", "normal");
-    y += LH;
-    if (data.customer.phone) {
-      doc.text(`Phone: ${data.customer.phone}`, M, y);
-      y += LH;
-    }
-    if (data.customer.address) {
-      const addr: string[] = doc.splitTextToSize(`Address: ${data.customer.address}`, contentW);
-      addr.forEach((ln) => {
-        doc.text(ln, M, y);
-        y += LH;
-      });
-    }
-
-    doc.line(M, y - 4, W - M, y - 4);
-    y += RULE_GAP;
+    left(`Customer: ${data.customer.name || "Walk-in"}`, true);
+    if (data.customer.phone) left(`Phone: ${data.customer.phone}`);
+    if (data.customer.address) left(`Address: ${data.customer.address}`);
+    y -= 2;
+    rule(true);
 
     data.items.forEach((it) => {
-      doc.setFont("helvetica", "bold");
-      const nameLines: string[] = doc.splitTextToSize(it.name, contentW);
-      nameLines.forEach((ln) => {
-        doc.text(ln, M, y);
-        y += LH - 2;
-      });
-      doc.setFont("helvetica", "normal");
-      doc.text(`${it.quantity} ${it.unit} x ${cur(it.unit_price)}`, M, y);
-      doc.text(cur(it.line_total), W - M, y, { align: "right" });
-      y += LH + 6;
+      left(it.name, true);
+      pair(`${it.quantity} ${it.unit} x ${cur(it.unit_price)}`, cur(it.line_total));
+      y += 3;
     });
 
-    doc.line(M, y - 6, W - M, y - 6);
-    y += RULE_GAP - 2;
-
-    const row = (label: string, value: string, bold = false, size = BODY) => {
-      doc.setFont("helvetica", bold ? "bold" : "normal");
-      doc.setFontSize(size);
-      doc.text(label, M, y);
-      doc.text(value, W - M, y, { align: "right" });
-      y += bold ? 24 : LH + 2;
-    };
+    y -= 2;
+    rule(true);
     if (data.is_pr) {
-      row("Value of products issued", cur(data.subtotal));
-      row("NOT BILLED — no payment due", "N/A", true, 15);
+      pair("Value issued", cur(data.subtotal));
+      pair("NOT BILLED", "N/A", true, 11);
     } else {
-      row("Subtotal", cur(data.subtotal));
-      if (data.discount > 0) row("Discount", `-${cur(data.discount)}`);
-      if (data.vat > 0) row("VAT", cur(data.vat));
-      row("GRAND TOTAL", cur(data.grand_total), true, 15);
-      row("Amount Paid", cur(data.amount_paid));
-      row("Balance Due", cur(data.balance), data.balance > 0);
+      pair("Subtotal", cur(data.subtotal));
+      if (data.discount > 0) pair("Discount", `-${cur(data.discount)}`);
+      if (data.vat > 0) pair("VAT", cur(data.vat));
+      y += 2;
+      pair("TOTAL", cur(data.grand_total), true, 12);
+      y += 2;
+      pair("Amount Paid", cur(data.amount_paid));
+      pair("Balance Due", cur(data.balance), data.balance > 0);
     }
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(BODY);
-    doc.line(M, y - 6, W - M, y - 6);
-    y += RULE_GAP - 2;
+    y += 1;
+    rule(true);
+    if (data.sales_person) left(`Sales person: ${data.sales_person}`);
+    if (data.remarks) left(`Remarks: ${data.remarks}`);
 
-    if (data.sales_person) {
-      doc.text(`Sales person: ${data.sales_person}`, M, y);
-      y += LH;
-    }
-    if (data.remarks) {
-      const remarkLines: string[] = doc.splitTextToSize(`Remarks: ${data.remarks}`, contentW);
-      remarkLines.forEach((ln) => {
-        doc.text(ln, M, y);
-        y += LH;
-      });
-    }
-
-    y += 14;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("Thank you for your patronage!", center, y, { align: "center" });
-    y += 20;
+    y += 8;
+    centered("Thank you for your patronage!", 10, true, 13);
+    y += 10;
 
     return y;
   };
 
-  const A4_H = 842; // A4 height in pt
-  const scratch = new jsPDF({ unit: "pt", format: [W, 4000] });
+  // Lay it out once on a long scratch page to measure, then print on a page
+  // cut to exactly that length.
+  const scratch = new jsPDF({ unit: "pt", format: [W, 5000] });
   const finalY = draw(scratch);
-
-  // Fill a full A4 page — only grow taller than A4 for an unusually long cart
-  // that wouldn't fit, rather than ever clipping content.
-  const doc = new jsPDF({ unit: "pt", format: [W, Math.max(A4_H, finalY + M)] });
+  const doc = new jsPDF({ unit: "pt", format: [W, Math.max(finalY, W + 1)] });
   draw(doc);
 
   outputPdf(doc, `${data.invoice_number}.pdf`, action);
