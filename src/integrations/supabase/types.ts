@@ -341,6 +341,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          credit_account: boolean
           address: string | null
           area: string | null
           contact_person: string | null
@@ -360,6 +361,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          credit_account?: boolean
           address?: string | null
           area?: string | null
           contact_person?: string | null
@@ -379,6 +381,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          credit_account?: boolean
           address?: string | null
           area?: string | null
           contact_person?: string | null
@@ -4092,7 +4095,25 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      customer_account_summary: {
+        Row: {
+          customer_id: string
+          factory_id: string
+          customer_name: string
+          available_advance: number
+          outstanding_debt: number
+          account_status: string
+          total_advance_paid: number
+          advance_used: number
+          goods_collected: number
+          opening_credit: number
+          opening_debt: number
+          total_payments: number
+          last_advance_at: string | null
+          last_transaction_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       admin_provision_user: {
@@ -4392,6 +4413,7 @@ export type Database = {
       process_payroll: { Args: { payload: Json }; Returns: Json }
       purge_expired_deleted_sales: { Args: never; Returns: Json }
       record_customer_advance: { Args: { payload: Json }; Returns: Json }
+      record_marketer_payment: { Args: { payload: Json }; Returns: Json }
       record_payment: { Args: { payload: Json }; Returns: Json }
       record_rep_remittance: { Args: { payload: Json }; Returns: Json }
       record_workflow_action: {

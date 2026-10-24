@@ -60,6 +60,7 @@ import { toast } from "sonner";
 import { generateInvoicePdf } from "@/lib/pdf";
 import { openSaleInvoice } from "@/lib/sale-invoice";
 import { SalesReportPrintDialog } from "@/components/sales/sales-report-print";
+import { CreditAccountsTab } from "@/components/sales/credit-accounts-tab";
 import {
   CUSTOMER_TYPES,
   ConfirmSaleDialog,
@@ -203,6 +204,8 @@ type EditingSaleData = {
   amount_paid: number;
   payment_method: PaymentMethod;
   items: { product_id: string; quantity: number; unit_price: number }[];
+  // Set when re-opening a rejected sale, so the form shows what to fix.
+  rejected_reason: string | null;
 };
 
 const saleStatusBadge = (s: string): "default" | "secondary" | "outline" | "destructive" =>
@@ -228,6 +231,7 @@ function SalesPage() {
     usePermissions();
   const write = canWrite("sales");
   const [reportOpen, setReportOpen] = useState(false);
+  const [tab, setTab] = useState("sales");
   const approve = canApprove("sales");
   const reject = canReject("sales");
   const cancel = canCancel("sales");
@@ -347,7 +351,7 @@ function SalesPage() {
     const { data, error } = await supabase
       .from("sales")
       .select(
-        "id,invoice_number,sale_date,customer_id,customer_name,customer_phone,customer_address,discount,vat,is_pr,sales_person,sales_rep_id,customer_type,remarks,pending_payments,amount_paid,payment_method,sale_items(product_id,quantity,unit_price)",
+        "id,invoice_number,sale_date,customer_id,customer_name,customer_phone,customer_address,discount,vat,is_pr,sales_person,sales_rep_id,customer_type,remarks,pending_payments,amount_paid,payment_method,status,rejected_reason,sale_items(product_id,quantity,unit_price)",
       )
       .eq("id", saleId)
       .single();
@@ -380,6 +384,7 @@ function SalesPage() {
         quantity: Number(it.quantity),
         unit_price: Number(it.unit_price),
       })),
+      rejected_reason: s.status === "rejected" ? (s.rejected_reason ?? "") : null,
     });
     setEditOpen(true);
   };
@@ -520,6 +525,7 @@ function SalesPage() {
                     setPosOpen(false);
                     setPresetCustomerId(undefined);
                     qc.invalidateQueries({ queryKey: ["sales-list"] });
+                    qc.invalidateQueries({ queryKey: ["credit-accounts"] });
                     qc.invalidateQueries({ queryKey: ["customer-account"] });
                     qc.invalidateQueries({ queryKey: ["customer-sales-full"] });
                     qc.invalidateQueries({ queryKey: ["customer-payments-full"] });
@@ -608,267 +614,307 @@ function SalesPage() {
 
       {factoryId && <SalesRevenuePanel factoryId={factoryId} />}
 
-      <Card className="rounded-2xl">
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>
-            Sales · {q.trim() ? "Search results" : periodLabel}
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({filteredSales.length})
-            </span>
-          </CardTitle>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search invoice, customer, product, #ID…"
-              className="pl-8 h-9 w-64"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Invoice</TableHead>
-                <TableHead>Date &amp; Time</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Paid</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-                <TableHead>Payment Status</TableHead>
-                <TableHead>Approval</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSales.map((s) => {
-                const status = salePaymentStatus(s);
-                const isSelf = s.created_by === currentUser.data && !isSuperAdmin;
-                // Every transaction gets a delete button for anyone holding
-                // sales:delete — admin or not, any status. It only requests
-                // the deletion (with a required reason); nothing is actually
-                // removed until an admin approves it (request_delete /
-                // approve_delete), and approve_delete() already knows how to
-                // reverse a posted sale's stock/debt/customer effects, so
-                // there's no status this could leave in a bad state.
-                const canDeleteRow = canRequestDelete;
-                return (
-                  <TableRow key={s.id}>
-                    <TableCell>
-                      <RefId id={s.id} />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{s.invoice_number}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {new Date(s.created_at).toLocaleString()}
-                      {/* sale_date is a business/backdating field, separate
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="sales">Sales</TabsTrigger>
+          <TabsTrigger value="accounts">Credit Accounts</TabsTrigger>
+        </TabsList>
+        <TabsContent value="sales">
+          <Card className="rounded-2xl">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>
+                Sales · {q.trim() ? "Search results" : periodLabel}
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  ({filteredSales.length})
+                </span>
+              </CardTitle>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search invoice, customer, product, #ID…"
+                  className="pl-8 h-9 w-64"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Invoice</TableHead>
+                    <TableHead>Date &amp; Time</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead>Payment Status</TableHead>
+                    <TableHead>Approval</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredSales.map((s) => {
+                    const status = salePaymentStatus(s);
+                    const isSelf = s.created_by === currentUser.data && !isSuperAdmin;
+                    // Every transaction gets a delete button for anyone holding
+                    // sales:delete — admin or not, any status. It only requests
+                    // the deletion (with a required reason); nothing is actually
+                    // removed until an admin approves it (request_delete /
+                    // approve_delete), and approve_delete() already knows how to
+                    // reverse a posted sale's stock/debt/customer effects, so
+                    // there's no status this could leave in a bad state.
+                    const canDeleteRow = canRequestDelete;
+                    return (
+                      <TableRow key={s.id}>
+                        <TableCell>
+                          <RefId id={s.id} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{s.invoice_number}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {new Date(s.created_at).toLocaleString()}
+                          {/* sale_date is a business/backdating field, separate
                           from when the record was actually entered — flag it
                           only when it doesn't match, instead of always
                           showing two dates for the common case. */}
-                      {s.sale_date !== new Date(s.created_at).toLocaleDateString("en-CA") && (
-                        <div className="text-xs text-muted-foreground">
-                          Recorded for {s.sale_date}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {s.customer_id ? (
-                        <button
-                          type="button"
-                          className="text-left font-medium text-primary hover:underline"
-                          title="View this customer's products & transactions"
-                          onClick={() =>
-                            setHistoryTarget({
-                              id: s.customer_id!,
-                              name: s.customer_name ?? "Customer",
-                            })
-                          }
-                        >
-                          {s.customer_name ?? "Customer"}
-                        </button>
-                      ) : (
-                        (s.customer_name ?? "Walk-in")
-                      )}
-                      <div className="text-xs text-muted-foreground">
-                        {customerTypeLabel(s.customer_type)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {money(Number(s.grand_total))}
-                      {s.is_pr && (
-                        <div
-                          className="text-xs text-warning"
-                          title="Value of products given out — not counted in revenue"
-                        >
-                          PR value {money(Number(s.subtotal ?? 0))}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">{money(Number(s.amount_paid))}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={Number(s.balance) > 0 ? "text-destructive font-medium" : ""}>
-                        {money(Number(s.balance))}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={status.variant}
-                        className={s.is_pr ? "text-warning" : "capitalize"}
-                      >
-                        {status.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={saleStatusBadge(s.status)} className="capitalize">
-                        {s.status.replace(/_/g, " ")}
-                      </Badge>
-                      {shortStock(s).length > 0 && (
-                        <Badge
-                          variant="destructive"
-                          className="mt-1 gap-1 whitespace-nowrap"
-                          title={shortStock(s).join("; ")}
-                        >
-                          <AlertTriangle className="h-3 w-3" /> More than in store
-                        </Badge>
-                      )}
-                      {s.status === "rejected" && s.rejected_reason && (
-                        <div
-                          className="mt-1 max-w-[160px] truncate text-xs text-muted-foreground"
-                          title={s.rejected_reason}
-                        >
-                          {s.rejected_reason}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {s.status === "pending_approval" && approve && !isSelf && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Confirm payment & print receipt"
-                            onClick={() => setApproveTarget(s)}
-                          >
-                            <Check className="h-4 w-4 text-success" />
-                          </Button>
-                        )}
-                        {s.status === "pending_approval" && reject && !isSelf && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Reject"
-                            onClick={() => setRejectTarget(s)}
-                          >
-                            <X className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                        {s.status === "pending_approval" && cancel && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Cancel"
-                            onClick={() => setCancelTarget(s)}
-                          >
-                            <Ban className="h-4 w-4 text-muted-foreground" />
-                          </Button>
-                        )}
-                        {canReceivePayment && s.status === "posted" && Number(s.balance) > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => setPayTarget(s)}
-                          >
-                            <HandCoins className="h-4 w-4" /> Receive
-                          </Button>
-                        )}
-                        {write && s.customer_id && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={`Add products to ${s.customer_name ?? "this customer"}'s account`}
-                            onClick={() => {
-                              setPresetCustomerId(s.customer_id!);
-                              setPosOpen(true);
-                            }}
-                          >
-                            <ShoppingCart className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {s.customer_id && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() =>
-                              setHistoryTarget({
-                                id: s.customer_id!,
-                                name: s.customer_name ?? "Customer",
-                              })
-                            }
-                          >
-                            <History className="h-4 w-4" /> History
-                          </Button>
-                        )}
-                        {/* A receipt only exists once the accountant has approved the order. */}
-                        {s.status === "posted" && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => openInvoice(s.id, "print")}
+                          {s.sale_date !== new Date(s.created_at).toLocaleDateString("en-CA") && (
+                            <div className="text-xs text-muted-foreground">
+                              Recorded for {s.sale_date}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {s.customer_id ? (
+                            <button
+                              type="button"
+                              className="text-left font-medium text-primary hover:underline"
+                              title="View this customer's products & transactions"
+                              onClick={() =>
+                                setHistoryTarget({
+                                  id: s.customer_id!,
+                                  name: s.customer_name ?? "Customer",
+                                })
+                              }
                             >
-                              <Printer className="h-4 w-4" /> Print
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => openInvoice(s.id, "download")}
+                              {s.customer_name ?? "Customer"}
+                            </button>
+                          ) : (
+                            (s.customer_name ?? "Walk-in")
+                          )}
+                          <div className="text-xs text-muted-foreground">
+                            {customerTypeLabel(s.customer_type)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {money(Number(s.grand_total))}
+                          {s.is_pr && (
+                            <div
+                              className="text-xs text-warning"
+                              title="Value of products given out — not counted in revenue"
                             >
-                              <FileDown className="h-4 w-4" /> PDF
-                            </Button>
-                          </>
-                        )}
-                        {s.status === "pending_approval" && canEditSale && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Edit"
-                            disabled={loadingEditId === s.id}
-                            onClick={() => openEditSale(s.id)}
+                              PR value {money(Number(s.subtotal ?? 0))}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{money(Number(s.amount_paid))}</TableCell>
+                        <TableCell className="text-right">
+                          <span
+                            className={Number(s.balance) > 0 ? "text-destructive font-medium" : ""}
                           >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {canDeleteRow && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Request deletion"
-                            onClick={() => setDeleteTarget(s)}
+                            {money(Number(s.balance))}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={status.variant}
+                            className={s.is_pr ? "text-warning" : "capitalize"}
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {filteredSales.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
-                    {q.trim() ? "No sales match your search." : "No sales yet."}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                            {status.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={saleStatusBadge(s.status)} className="capitalize">
+                            {s.status.replace(/_/g, " ")}
+                          </Badge>
+                          {shortStock(s).length > 0 && (
+                            <Badge
+                              variant="destructive"
+                              className="mt-1 gap-1 whitespace-nowrap"
+                              title={shortStock(s).join("; ")}
+                            >
+                              <AlertTriangle className="h-3 w-3" /> More than in store
+                            </Badge>
+                          )}
+                          {s.status === "rejected" && s.rejected_reason && (
+                            <div
+                              className="mt-1 max-w-[160px] truncate text-xs text-muted-foreground"
+                              title={s.rejected_reason}
+                            >
+                              {s.rejected_reason}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            {s.status === "pending_approval" && approve && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Confirm payment & print receipt"
+                                onClick={() => setApproveTarget(s)}
+                              >
+                                <Check className="h-4 w-4 text-success" />
+                              </Button>
+                            )}
+                            {s.status === "pending_approval" && reject && !isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Reject"
+                                onClick={() => setRejectTarget(s)}
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                            {s.status === "pending_approval" && cancel && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Cancel"
+                                onClick={() => setCancelTarget(s)}
+                              >
+                                <Ban className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            )}
+                            {canReceivePayment &&
+                              s.status === "posted" &&
+                              Number(s.balance) > 0 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1"
+                                  onClick={() => setPayTarget(s)}
+                                >
+                                  <HandCoins className="h-4 w-4" /> Receive
+                                </Button>
+                              )}
+                            {write && s.customer_id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title={`Add products to ${s.customer_name ?? "this customer"}'s account`}
+                                onClick={() => {
+                                  setPresetCustomerId(s.customer_id!);
+                                  setPosOpen(true);
+                                }}
+                              >
+                                <ShoppingCart className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {s.customer_id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() =>
+                                  setHistoryTarget({
+                                    id: s.customer_id!,
+                                    name: s.customer_name ?? "Customer",
+                                  })
+                                }
+                              >
+                                <History className="h-4 w-4" /> History
+                              </Button>
+                            )}
+                            {/* A receipt only exists once the accountant has approved the order. */}
+                            {s.status === "posted" && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="gap-1"
+                                  onClick={() => openInvoice(s.id, "print")}
+                                >
+                                  <Printer className="h-4 w-4" /> Print
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="gap-1"
+                                  onClick={() => openInvoice(s.id, "download")}
+                                >
+                                  <FileDown className="h-4 w-4" /> PDF
+                                </Button>
+                              </>
+                            )}
+                            {s.status === "pending_approval" && canEditSale && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Edit"
+                                disabled={loadingEditId === s.id}
+                                onClick={() => openEditSale(s.id)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {/* A rejected sale goes back to whoever recorded it:
+                            fix it and re-post on the same invoice (edit_sale()). */}
+                            {s.status === "rejected" &&
+                              canEditSale &&
+                              (s.created_by === currentUser.data || isSuperAdmin) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1"
+                                  title="Fix what was asked and post it again"
+                                  disabled={loadingEditId === s.id}
+                                  onClick={() => openEditSale(s.id)}
+                                >
+                                  <Pencil className="h-4 w-4" /> Fix & Re-post
+                                </Button>
+                              )}
+                            {canDeleteRow && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Request deletion"
+                                onClick={() => setDeleteTarget(s)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {filteredSales.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                        {q.trim() ? "No sales match your search." : "No sales yet."}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="accounts">
+          {factoryId && (
+            <CreditAccountsTab
+              factoryId={factoryId}
+              onSupply={(customerId) => {
+                setPresetCustomerId(customerId);
+                setPosOpen(true);
+              }}
+              onAccount={setHistoryTarget}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!payTarget} onOpenChange={(v) => !v && setPayTarget(null)}>
         {payTarget && (
@@ -1233,12 +1279,13 @@ export function PosDialog({
       setCustomerName(c.name);
       setCustomerPhone(c.phone ?? "");
       setCustomerAddress(c.address ?? "");
-      if (PICK_FROM_LIST.includes(c.customer_type as CustomerType)) {
+      if (CUSTOMER_TYPES.some((t) => t.value === c.customer_type)) {
         setCustomerType(c.customer_type as CustomerType);
       }
     }
   }, [presetCustomerId, customers.data]);
   const [isPr, setIsPr] = useState(editingSale?.is_pr ?? false);
+  const isRejected = editingSale?.rejected_reason != null;
   const [salesPerson, setSalesPerson] = useState(editingSale?.sales_person ?? "");
   const [customerType, setCustomerType] = useState<CustomerType>(
     editingSale?.customer_type ?? "walk_in",
@@ -1491,9 +1538,11 @@ export function PosDialog({
     },
     onSuccess: (res) => {
       toast.success(
-        editingSale
-          ? `${res.invoice_number} updated — awaiting accountant approval`
-          : `${res.invoice_number} posted to the accountant for approval`,
+        isRejected
+          ? `${res.invoice_number} fixed and re-posted for approval`
+          : editingSale
+            ? `${res.invoice_number} updated — awaiting accountant approval`
+            : `${res.invoice_number} posted to the accountant for approval`,
       );
       logAudit({
         action: editingSale ? "edit" : "sale",
@@ -1558,8 +1607,23 @@ export function PosDialog({
     <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-6xl flex-col gap-0 overflow-hidden p-0">
       <DialogHeader className="shrink-0 border-b px-6 py-4">
         <DialogTitle>
-          {editingSale ? `Edit Order — ${editingSale.invoice_number}` : "Sales & POS"}
+          {editingSale
+            ? `${isRejected ? "Fix Rejected Order" : "Edit Order"} — ${editingSale.invoice_number}`
+            : "Sales & POS"}
         </DialogTitle>
+        {isRejected && (
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <span className="font-medium text-destructive">Rejected: </span>
+              {editingSale?.rejected_reason || "No reason given"}
+              <div className="text-xs text-muted-foreground">
+                Make the changes asked for, then Re-post — it goes back for confirmation on the same
+                invoice.
+              </div>
+            </div>
+          </div>
+        )}
       </DialogHeader>
       <div className="grid flex-1 gap-6 overflow-y-auto px-6 py-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="min-w-0 space-y-3">
@@ -1886,7 +1950,13 @@ export function PosDialog({
           className="gap-2"
         >
           <Send className="h-4 w-4" />
-          {submit.isPending ? "Posting…" : editingSale ? "Save & Re-post" : "Post"}
+          {submit.isPending
+            ? "Posting…"
+            : isRejected
+              ? "Fix & Re-post"
+              : editingSale
+                ? "Save & Re-post"
+                : "Post"}
         </Button>
       </DialogFooter>
     </DialogContent>

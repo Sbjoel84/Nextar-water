@@ -51,7 +51,7 @@ export type PaymentLine = { amount: number; method: PaymentMethod };
 export type CustomerType = "walk_in" | "marketer" | "distributor" | "other";
 export const CUSTOMER_TYPES: { value: CustomerType; label: string }[] = [
   { value: "walk_in", label: "Walk-in customer" },
-  { value: "marketer", label: "Sales-Rep" },
+  { value: "marketer", label: "Marketer" },
   { value: "distributor", label: "Distributor" },
   { value: "other", label: "Other" },
 ];
@@ -59,7 +59,13 @@ export const customerTypeLabel = (t: string | null | undefined) =>
   CUSTOMER_TYPES.find((c) => c.value === t)?.label ?? "Walk-in customer";
 
 export const PAY_DIALOG_METHODS: PaymentMethod[] = ["cash", "transfer", "pos", "card", "cheque"];
-export const PAYMENT_TYPES = ["Full Payment", "Part Payment"];
+// "Credit" is a marketer's morning supply: nothing paid now, the balance goes
+// on their account and they settle after close of business.
+export const PAYMENT_TYPES = [
+  "Full Payment",
+  "Part Payment",
+  "Credit (pay after close of business)",
+];
 
 // The fields of a pending order both the Sales table and the Finance page's
 // confirmation list carry.
@@ -581,19 +587,27 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="h-9 w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All buyers</SelectItem>
-              {CUSTOMER_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* One tab per buyer type with its waiting count, so marketer
+              supplies are easy to find and confirm as a batch. */}
+          <div className="flex flex-wrap gap-1">
+            {[{ value: "all", label: "All" }, ...CUSTOMER_TYPES].map((t) => {
+              const count = (pending.data ?? []).filter(
+                (s) => t.value === "all" || s.customer_type === t.value,
+              ).length;
+              if (t.value !== "all" && count === 0 && typeFilter !== t.value) return null;
+              return (
+                <Button
+                  key={t.value}
+                  type="button"
+                  size="sm"
+                  variant={typeFilter === t.value ? "default" : "outline"}
+                  onClick={() => setTypeFilter(t.value)}
+                >
+                  {t.label === "Marketer" ? "Marketers" : t.label} ({count})
+                </Button>
+              );
+            })}
+          </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
