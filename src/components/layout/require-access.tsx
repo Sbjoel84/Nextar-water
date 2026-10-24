@@ -30,10 +30,13 @@ export function RequireAccess({ module, children }: { module: ModuleKey; childre
     // Sign-in always lands on /dashboard. A user limited to their own
     // department's page (new accounts are, by default) goes straight there
     // instead of to an "Access restricted" card.
+    // Updates & Requests is open to everyone, so it's only the fallback: the
+    // user's own work page (e.g. Account Overview for a cashier) comes first.
     if (module === "dashboard") {
-      const home = nav
-        .flatMap((g) => g.items)
-        .find((it) => (it.modules ?? [it.module]).some((m) => m && can(m, "view")));
+      const items = nav.flatMap((g) => g.items);
+      const canOpen = (it: (typeof items)[number]) =>
+        (it.modules ?? [it.module]).some((m) => m && can(m, "view"));
+      const home = items.find((it) => it.url !== "/updates" && canOpen(it)) ?? items.find(canOpen);
       if (home) return <Navigate to={home.url} replace />;
     }
     return (
