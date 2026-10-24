@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { TopBar } from "@/components/layout/top-bar";
+import { PinnedUpdatesBanner } from "@/components/layout/pinned-updates-banner";
+import { NotificationAlerts } from "@/components/layout/notification-alerts";
 import { useIsAdmin } from "@/lib/permissions";
 import { purgeRecycleBin } from "@/lib/recycle-bin";
 
@@ -92,9 +94,11 @@ function AppLayout() {
   return (
     <SidebarProvider>
       <RecycleBinAutoPurge />
+      <NotificationAlerts />
       <AppSidebar />
       <SidebarInset>
         <TopBar />
+        <PinnedUpdatesBanner />
         <main className="flex-1 p-4 md:p-6">
           <Outlet />
         </main>

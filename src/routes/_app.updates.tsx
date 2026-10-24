@@ -3,7 +3,20 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
-import { Bell, Check, Megaphone, Pin, Plus, Send, Trash2, Undo2, X } from "lucide-react";
+import {
+  Bell,
+  Check,
+  Eye,
+  Megaphone,
+  MessageSquare,
+  Pin,
+  Plus,
+  Reply,
+  Send,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { RequireAccess } from "@/components/layout/require-access";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
@@ -84,6 +97,16 @@ type ProposalRow = {
   decided_by_name: string | null;
   decided_at: string | null;
   decision_comment: string | null;
+  recipients: string[];
+  recipient_names: string[];
+};
+
+type MessageRow = {
+  id: string;
+  author_id: string;
+  author_name: string | null;
+  body: string;
+  created_at: string;
 };
 
 const STATUS_BADGE: Record<ProposalStatus, "default" | "secondary" | "outline" | "destructive"> = {
@@ -115,9 +138,23 @@ function UpdatesPage() {
   const isChairman = useIsChairman().data ?? false;
   const { canSubmit } = usePermissions();
   useRealtimeInvalidate(
-    ["updates", "proposals", "notifications"],
-    [["updates-feed"], ["proposals"], ["notifications"]],
+    ["updates", "proposals", "proposal_messages", "notifications"],
+    [["updates-feed"], ["proposals"], ["proposal-messages"], ["notifications"]],
   );
+
+  // Anyone a request was sent to gets the tab, not just senders and the Chairman.
+  const visibleCount = useQuery({
+    queryKey: ["proposals", "visible-count", factoryId],
+    enabled: !!factoryId,
+    queryFn: async () => {
+      const { count, error } = await db
+        .from("proposals")
+        .select("id", { count: "exact", head: true })
+        .eq("factory_id", factoryId);
+      if (error) throw error;
+      return (count ?? 0) as number;
+    },
+  });
 
   const pendingCount = useQuery({
     queryKey: ["proposals", "pending-count", factoryId],
@@ -137,7 +174,7 @@ function UpdatesPage() {
   const [tab, setTab] = useState<string | null>(null);
 
   if (!factoryId) return null;
-  const showRequests = isChairman || canSubmit("updates");
+  const showRequests = isChairman || canSubmit("updates") || (visibleCount.data ?? 0) > 0;
   const currentTab = tab ?? (isChairman && (pendingCount.data ?? 0) > 0 ? "requests" : "updates");
 
   return (
@@ -221,6 +258,7 @@ function UpdatesTab({ factoryId }: { factoryId: string }) {
       setBody("");
       setPinned(false);
       qc.invalidateQueries({ queryKey: ["updates-feed"] });
+      qc.invalidateQueries({ queryKey: ["pinned-updates"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -234,6 +272,7 @@ function UpdatesTab({ factoryId }: { factoryId: string }) {
     onSuccess: () => {
       toast.success("Update removed");
       qc.invalidateQueries({ queryKey: ["updates-feed"] });
+      qc.invalidateQueries({ queryKey: ["pinned-updates"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -266,7 +305,7 @@ function UpdatesTab({ factoryId }: { factoryId: string }) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={pinned} onCheckedChange={(v) => setPinned(v === true)} />
-                Pin to the top
+                Pin to the top of every page for 24 hours
               </label>
               <Button
                 className="gap-2"
@@ -426,8 +465,27 @@ function NotificationsTab({ factoryId }: { factoryId: string }) {
 }
 
 // ============================================================================
-// Requests & Proposals — Operations Manager sends, Chairman decides
+// Requests & Proposals — sent to chosen people, discussed in a reply thread,
+// decided by the Chairman
 // ============================================================================
+function useMessageCounts(factoryId: string) {
+  return useQuery({
+    queryKey: ["proposal-messages", "counts", factoryId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("proposal_messages")
+        .select("proposal_id, proposals!inner(factory_id)")
+        .eq("proposals.factory_id", factoryId);
+      if (error) throw error;
+      const counts = new Map<string, number>();
+      for (const m of (data ?? []) as { proposal_id: string }[]) {
+        counts.set(m.proposal_id, (counts.get(m.proposal_id) ?? 0) + 1);
+      }
+      return counts;
+    },
+  });
+}
+
 function RequestsTab({ factoryId }: { factoryId: string }) {
   const qc = useQueryClient();
   const settings = useFactorySettings(factoryId);
@@ -436,7 +494,9 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
   const isChairman = useIsChairman().data ?? false;
   const { data: uid } = useCurrentUserId();
   const [filter, setFilter] = useState<"all" | ProposalStatus>(isChairman ? "pending" : "all");
+  const [box, setBox] = useState<"all" | "inbox" | "sent">("all");
   const [newOpen, setNewOpen] = useState(false);
+  const [thread, setThread] = useState<{ id: string; reply: boolean } | null>(null);
   const [decide, setDecide] = useState<{
     row: ProposalRow;
     decision: "approved" | "rejected";
@@ -455,9 +515,16 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
       return (data ?? []) as ProposalRow[];
     },
   });
-  const rows = (proposals.data ?? []).filter((p) => filter === "all" || p.status === filter);
+  const messageCounts = useMessageCounts(factoryId);
+  const rows = (proposals.data ?? []).filter(
+    (p) =>
+      (filter === "all" || p.status === filter) &&
+      (box === "all" || (box === "sent" ? p.requested_by === uid : p.requested_by !== uid)),
+  );
+  const threadRow = thread ? (proposals.data ?? []).find((p) => p.id === thread.id) : undefined;
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["proposals"] });
+    qc.invalidateQueries({ queryKey: ["proposal-messages"] });
     qc.invalidateQueries({ queryKey: ["pending-attention"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
   };
@@ -477,18 +544,30 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-          <SelectTrigger className="h-9 w-44" aria-label="Status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="pending">Awaiting review</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-            <SelectItem value="cancelled">Withdrawn</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap gap-2">
+          <Select value={box} onValueChange={(v) => setBox(v as typeof box)}>
+            <SelectTrigger className="h-9 w-36" aria-label="Mailbox">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Inbox &amp; sent</SelectItem>
+              <SelectItem value="inbox">Inbox</SelectItem>
+              <SelectItem value="sent">Sent</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <SelectTrigger className="h-9 w-44" aria-label="Status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="pending">Awaiting review</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="cancelled">Withdrawn</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         {canSubmit("updates") && (
           <Button className="gap-2" onClick={() => setNewOpen(true)}>
             <Plus className="h-4 w-4" /> New request / proposal
@@ -505,101 +584,81 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
           </CardContent>
         </Card>
       ) : (
-        rows.map((p) => (
-          <Card key={p.id} className="rounded-2xl">
-            <CardContent className="space-y-3 p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-muted-foreground">{p.reference}</span>
-                    <Badge variant="outline" className="capitalize">
-                      {p.kind}
-                    </Badge>
-                    <Badge variant={STATUS_BADGE[p.status]} className="capitalize">
-                      {p.status === "pending"
-                        ? "Awaiting review"
-                        : p.status === "cancelled"
-                          ? "Withdrawn"
-                          : p.status}
-                    </Badge>
-                    <span className={`text-xs capitalize ${PRIORITY_CLASS[p.priority]}`}>
-                      {p.priority} priority
-                    </span>
-                  </div>
-                  <h3 className="font-semibold">{p.title}</h3>
-                </div>
-                {p.amount != null && (
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">Amount</div>
-                    <div className="font-semibold">{money(Number(p.amount), currency)}</div>
-                  </div>
-                )}
-              </div>
-              <p className="whitespace-pre-wrap text-sm">{p.details}</p>
-              <p className="text-xs text-muted-foreground" title={when(p.requested_at)}>
-                Sent by {p.requested_by_name ?? "—"} · {ago(p.requested_at)}
-              </p>
-              {(p.status === "approved" || p.status === "rejected") && (
-                <div
-                  className={`rounded-md border p-3 text-sm ${
-                    p.status === "approved"
-                      ? "border-success/40 bg-success/5"
-                      : "border-destructive/40 bg-destructive/5"
-                  }`}
-                >
-                  <div className="font-medium capitalize">
-                    {p.status} by {p.decided_by_name ?? "the Chairman"}
-                    {p.decided_at && (
-                      <span className="font-normal text-muted-foreground">
-                        {" "}
-                        · {when(p.decided_at)}
-                      </span>
-                    )}
-                  </div>
-                  {p.decision_comment && (
-                    <p className="mt-1 whitespace-pre-wrap">{p.decision_comment}</p>
-                  )}
-                </div>
-              )}
-              {p.status === "pending" && (
-                <div className="flex flex-wrap justify-end gap-2">
-                  {p.requested_by === uid && canCancel("updates") && (
+        rows.map((p) => {
+          const replies = messageCounts.data?.get(p.id) ?? 0;
+          return (
+            <Card key={p.id} className="rounded-2xl">
+              <CardContent className="space-y-3 p-5">
+                <ProposalHeader p={p} currency={currency} />
+                <p className="line-clamp-3 whitespace-pre-wrap text-sm">{p.details}</p>
+                <p className="text-xs text-muted-foreground" title={when(p.requested_at)}>
+                  From {p.requested_by_name ?? "—"} to {recipientsLabel(p)} · {ago(p.requested_at)}
+                </p>
+                {(p.status === "approved" || p.status === "rejected") && <DecisionBox p={p} />}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {replies === 0
+                      ? "No replies"
+                      : `${replies} ${replies === 1 ? "reply" : "replies"}`}
+                  </span>
+                  <div className="flex flex-wrap justify-end gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       className="gap-1"
-                      disabled={cancel.isPending}
-                      onClick={() => {
-                        if (confirm(`Withdraw ${p.reference}?`)) cancel.mutate(p.id);
-                      }}
+                      onClick={() => setThread({ id: p.id, reply: false })}
                     >
-                      <Undo2 className="h-4 w-4" /> Withdraw
+                      <Eye className="h-4 w-4" /> View
                     </Button>
-                  )}
-                  {isChairman && (
-                    <>
+                    {p.status !== "cancelled" && (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1 text-destructive"
-                        onClick={() => setDecide({ row: p, decision: "rejected" })}
+                        className="gap-1"
+                        onClick={() => setThread({ id: p.id, reply: true })}
                       >
-                        <X className="h-4 w-4" /> Reject
+                        <Reply className="h-4 w-4" /> Reply
                       </Button>
+                    )}
+                    {p.status === "pending" && p.requested_by === uid && canCancel("updates") && (
                       <Button
+                        variant="outline"
                         size="sm"
                         className="gap-1"
-                        onClick={() => setDecide({ row: p, decision: "approved" })}
+                        disabled={cancel.isPending}
+                        onClick={() => {
+                          if (confirm(`Withdraw ${p.reference}?`)) cancel.mutate(p.id);
+                        }}
                       >
-                        <Check className="h-4 w-4" /> Approve
+                        <Undo2 className="h-4 w-4" /> Withdraw
                       </Button>
-                    </>
-                  )}
+                    )}
+                    {p.status === "pending" && isChairman && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1 text-destructive"
+                          onClick={() => setDecide({ row: p, decision: "rejected" })}
+                        >
+                          <X className="h-4 w-4" /> Reject
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => setDecide({ row: p, decision: "approved" })}
+                        >
+                          <Check className="h-4 w-4" /> Approve
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))
+              </CardContent>
+            </Card>
+          );
+        })
       )}
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
@@ -610,6 +669,21 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
               setNewOpen(false);
               refresh();
             }}
+          />
+        )}
+      </Dialog>
+      <Dialog open={!!threadRow} onOpenChange={(v) => !v && setThread(null)}>
+        {threadRow && (
+          <ThreadDialog
+            row={threadRow}
+            currency={currency}
+            focusReply={thread!.reply}
+            canDecide={isChairman && threadRow.status === "pending"}
+            onDecide={(decision) => {
+              setThread(null);
+              setDecide({ row: threadRow, decision });
+            }}
+            onReplied={refresh}
           />
         )}
       </Dialog>
@@ -629,12 +703,230 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
   );
 }
 
+const recipientsLabel = (p: ProposalRow) =>
+  p.recipient_names?.length ? p.recipient_names.join(", ") : "the Chairman";
+
+function ProposalHeader({ p, currency }: { p: ProposalRow; currency: string }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground">{p.reference}</span>
+          <Badge variant="outline" className="capitalize">
+            {p.kind}
+          </Badge>
+          <Badge variant={STATUS_BADGE[p.status]} className="capitalize">
+            {p.status === "pending"
+              ? "Awaiting review"
+              : p.status === "cancelled"
+                ? "Withdrawn"
+                : p.status}
+          </Badge>
+          <span className={`text-xs capitalize ${PRIORITY_CLASS[p.priority]}`}>
+            {p.priority} priority
+          </span>
+        </div>
+        <h3 className="font-semibold">{p.title}</h3>
+      </div>
+      {p.amount != null && (
+        <div className="text-right">
+          <div className="text-xs text-muted-foreground">Amount</div>
+          <div className="font-semibold">{money(Number(p.amount), currency)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DecisionBox({ p }: { p: ProposalRow }) {
+  return (
+    <div
+      className={`rounded-md border p-3 text-sm ${
+        p.status === "approved"
+          ? "border-success/40 bg-success/5"
+          : "border-destructive/40 bg-destructive/5"
+      }`}
+    >
+      <div className="font-medium capitalize">
+        {p.status} by {p.decided_by_name ?? "the Chairman"}
+        {p.decided_at && (
+          <span className="font-normal text-muted-foreground"> · {when(p.decided_at)}</span>
+        )}
+      </div>
+      {p.decision_comment && <p className="mt-1 whitespace-pre-wrap">{p.decision_comment}</p>}
+    </div>
+  );
+}
+
+// The full request with its reply thread, like an email conversation.
+function ThreadDialog({
+  row,
+  currency,
+  focusReply,
+  canDecide,
+  onDecide,
+  onReplied,
+}: {
+  row: ProposalRow;
+  currency: string;
+  focusReply: boolean;
+  canDecide: boolean;
+  onDecide: (decision: "approved" | "rejected") => void;
+  onReplied: () => void;
+}) {
+  const { data: uid } = useCurrentUserId();
+  const [body, setBody] = useState("");
+  const messages = useQuery({
+    queryKey: ["proposal-messages", "thread", row.id],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("proposal_messages")
+        .select("id,author_id,author_name,body,created_at")
+        .eq("proposal_id", row.id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as MessageRow[];
+    },
+  });
+
+  const reply = useMutation({
+    mutationFn: async () => {
+      const { error } = await db.rpc("reply_proposal", { p_id: row.id, p_body: body });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Reply sent");
+      setBody("");
+      onReplied();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>{row.reference}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <ProposalHeader p={row} currency={currency} />
+        <div className="rounded-md border bg-muted/30 p-3 text-sm">
+          <div className="mb-2 text-xs text-muted-foreground" title={when(row.requested_at)}>
+            <span className="font-medium text-foreground">{row.requested_by_name ?? "—"}</span> to{" "}
+            {recipientsLabel(row)} · {when(row.requested_at)}
+          </div>
+          <p className="whitespace-pre-wrap">{row.details}</p>
+        </div>
+        {(row.status === "approved" || row.status === "rejected") && <DecisionBox p={row} />}
+
+        <div className="space-y-2">
+          <div className="text-sm font-medium">
+            Replies{messages.data?.length ? ` (${messages.data.length})` : ""}
+          </div>
+          {messages.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (messages.data?.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">No replies yet.</p>
+          ) : (
+            messages.data!.map((m) => (
+              <div
+                key={m.id}
+                className={`rounded-md border p-3 text-sm ${
+                  m.author_id === uid ? "ml-6 border-primary/30 bg-primary/5" : "mr-6"
+                }`}
+              >
+                <div className="mb-1 text-xs text-muted-foreground" title={when(m.created_at)}>
+                  <span className="font-medium text-foreground">
+                    {m.author_id === uid ? "You" : (m.author_name ?? "—")}
+                  </span>{" "}
+                  · {ago(m.created_at)}
+                </div>
+                <p className="whitespace-pre-wrap">{m.body}</p>
+              </div>
+            ))
+          )}
+        </div>
+
+        {row.status !== "cancelled" ? (
+          <div className="space-y-2">
+            <Label>Reply</Label>
+            <Textarea
+              rows={4}
+              autoFocus={focusReply}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write your response…"
+            />
+            <p className="text-xs text-muted-foreground">
+              Everyone on this {row.kind} is notified of your reply.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">This {row.kind} was withdrawn.</p>
+        )}
+      </div>
+      <DialogFooter className="flex-wrap gap-2">
+        {canDecide && (
+          <>
+            <Button
+              variant="outline"
+              className="gap-1 text-destructive"
+              onClick={() => onDecide("rejected")}
+            >
+              <X className="h-4 w-4" /> Reject
+            </Button>
+            <Button variant="outline" className="gap-1" onClick={() => onDecide("approved")}>
+              <Check className="h-4 w-4" /> Approve
+            </Button>
+          </>
+        )}
+        {row.status !== "cancelled" && (
+          <Button
+            className="gap-2"
+            disabled={reply.isPending || !body.trim()}
+            onClick={() => reply.mutate()}
+          >
+            <Send className="h-4 w-4" />
+            {reply.isPending ? "Sending…" : "Send reply"}
+          </Button>
+        )}
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+type Recipient = { id: string; full_name: string; roles: string; is_chairman: boolean };
+
 function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
+  const [step, setStep] = useState<"compose" | "recipients">("compose");
   const [kind, setKind] = useState<"request" | "proposal">("request");
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [amount, setAmount] = useState(0);
   const [priority, setPriority] = useState<Priority>("normal");
+  const [search, setSearch] = useState("");
+  const [chosen, setChosen] = useState<Set<string> | null>(null);
+
+  const people = useQuery({
+    queryKey: ["message-recipients", factoryId],
+    queryFn: async () => {
+      const { data, error } = await db.rpc("list_message_recipients", { p_factory: factoryId });
+      if (error) throw error;
+      return (data ?? []) as Recipient[];
+    },
+  });
+  // The Chairman is picked by default; the sender can add or remove anyone.
+  const selected =
+    chosen ?? new Set((people.data ?? []).filter((p) => p.is_chairman).map((p) => p.id));
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setChosen(next);
+  };
+  const q = search.trim().toLowerCase();
+  const visible = (people.data ?? []).filter(
+    (p) => !q || p.full_name.toLowerCase().includes(q) || p.roles.toLowerCase().includes(q),
+  );
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -646,17 +938,74 @@ function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: (
           details,
           amount: amount > 0 ? amount : null,
           priority,
+          recipients: [...selected],
         },
       });
       if (error) throw error;
-      return (data as { reference: string }).reference;
+      return data as { reference: string; recipients?: string[] };
     },
-    onSuccess: (ref) => {
-      toast.success(`${ref} sent to the Chairman`);
+    onSuccess: (r) => {
+      toast.success(`${r.reference} sent to ${r.recipients?.join(", ") ?? "the Chairman"}`);
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  if (step === "recipients") {
+    return (
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Who should receive this {kind}?</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or role"
+          />
+          <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
+            {people.isLoading ? (
+              <p className="p-2 text-sm text-muted-foreground">Loading…</p>
+            ) : visible.length === 0 ? (
+              <p className="p-2 text-sm text-muted-foreground">No one found.</p>
+            ) : (
+              visible.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-accent"
+                >
+                  <Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{p.full_name}</div>
+                    {p.roles && <div className="text-xs text-muted-foreground">{p.roles}</div>}
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {selected.size === 0
+              ? "Choose at least one person."
+              : `${selected.size} selected. Each gets a notification and can reply.`}{" "}
+            Only the Chairman can approve or reject.
+          </p>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setStep("compose")}>
+            Back
+          </Button>
+          <Button
+            className="gap-2"
+            disabled={submit.isPending || selected.size === 0}
+            onClick={() => submit.mutate()}
+          >
+            <Send className="h-4 w-4" />
+            {submit.isPending ? "Sending…" : `Send to ${selected.size}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    );
+  }
 
   return (
     <DialogContent>
@@ -717,11 +1066,10 @@ function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: (
       <DialogFooter>
         <Button
           className="gap-2"
-          disabled={submit.isPending || !title.trim() || !details.trim()}
-          onClick={() => submit.mutate()}
+          disabled={!title.trim() || !details.trim()}
+          onClick={() => setStep("recipients")}
         >
-          <Send className="h-4 w-4" />
-          {submit.isPending ? "Sending…" : "Send to Chairman"}
+          <Send className="h-4 w-4" /> Send…
         </Button>
       </DialogFooter>
     </DialogContent>
