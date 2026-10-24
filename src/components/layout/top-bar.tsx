@@ -23,6 +23,7 @@ import { useTheme } from "@/lib/theme";
 import { Moon, Sun, LogOut, User as UserIcon, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { markIntentionalSignOut } from "@/lib/auth-session";
 
 function NotificationsBell() {
   const { data: factoryId } = useFactoryId();
@@ -178,6 +179,7 @@ export function TopBar() {
   }, []);
 
   const signOut = async () => {
+    markIntentionalSignOut();
     await supabase.auth.signOut();
     toast.success("Signed out");
     navigate({ to: "/", replace: true });

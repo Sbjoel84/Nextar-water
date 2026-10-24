@@ -10,6 +10,11 @@ import { PinnedUpdatesBanner } from "@/components/layout/pinned-updates-banner";
 import { NotificationAlerts } from "@/components/layout/notification-alerts";
 import { useIsAdmin } from "@/lib/permissions";
 import { purgeRecycleBin } from "@/lib/recycle-bin";
+import {
+  consumeIntentionalSignOut,
+  consumeJustSignedIn,
+  markIntentionalSignOut,
+} from "@/lib/auth-session";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -49,6 +54,7 @@ function AppLayout() {
         userId.current = null;
         qc.clear();
         setReady(false);
+        markIntentionalSignOut();
         await supabase.auth.signOut({ scope: "local" });
         return goToLogin();
       }
@@ -57,7 +63,17 @@ function AppLayout() {
 
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      if (!data.session) return goToLogin();
+      const justSignedIn = consumeJustSignedIn();
+      if (!data.session) {
+        if (justSignedIn) {
+          toast.error("Your session ended right after signing in.", {
+            description:
+              "Check that this device's date & time are set to automatic, then sign in again.",
+            duration: 12000,
+          });
+        }
+        return goToLogin();
+      }
       userId.current = data.session.user.id;
       admit(data.session.user.id);
     });
@@ -65,6 +81,16 @@ function AppLayout() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session) {
         if (event === "SIGNED_OUT") {
+          // Not from the Sign out menu: the session ended on its own (expired,
+          // refresh rejected, cleared in another tab). Say so instead of
+          // silently dropping the user on the login page.
+          if (!consumeIntentionalSignOut()) {
+            toast.error("You were signed out. Please sign in again.", {
+              description:
+                "If this keeps happening right after signing in, check that this device's date & time are set to automatic.",
+              duration: 12000,
+            });
+          }
           userId.current = null;
           qc.clear();
           setReady(false);

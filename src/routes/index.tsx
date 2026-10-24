@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAllRoles, type Role } from "@/lib/permissions";
+import { clockSkewMessage, markJustSignedIn } from "@/lib/auth-session";
 import { DEPARTMENT_OPTIONS } from "@/lib/departments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +174,13 @@ function Landing() {
       return toast.error(error.message);
     }
 
+    const skewMessage = clockSkewMessage(data.session.access_token);
+    if (skewMessage) {
+      setLoading(false);
+      await supabase.auth.signOut({ scope: "local" });
+      return toast.error(skewMessage, { duration: 15000 });
+    }
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("status, rejected_reason")
@@ -192,6 +200,7 @@ function Landing() {
     }
 
     toast.success("Welcome back");
+    markJustSignedIn();
     navigate({ to: "/dashboard" });
   };
 
