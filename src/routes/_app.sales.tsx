@@ -115,9 +115,10 @@ type Customer = {
 // Sales-reps (stored as "marketer") and distributors are picked from their own registered list; the
 // "Walk-in" entry and everyone else sit under walk-in customer / other.
 const PICK_FROM_LIST: CustomerType[] = ["marketer", "distributor"];
-// Smallest quantity of any one product a sale may carry (store and van sales
-// alike). Enforced again in the database by sale_items_min_quantity.
-const MIN_SALE_QTY = 5;
+// Smallest quantity of one product a sale may carry (store and van sales
+// alike): 20 bags for sachet water, 5 for everything else. Keep in step with
+// public.min_sale_qty(), which the sale_items_min_quantity trigger enforces.
+const minSaleQty = (name: string) => (/sachet/i.test(name) ? 20 : 5);
 const customerMatchesType = (c: Customer, t: CustomerType) =>
   PICK_FROM_LIST.includes(t)
     ? c.customer_type === t && (t !== "marketer" || !!c.sales_rep_id)
@@ -1367,7 +1368,7 @@ export function PosDialog({
   // and are flagged, rather than being quietly cut down to what's available.
   const overStock = useMemo(() => cart.filter((c) => c.quantity > c.stock), [cart]);
   const underMin = useMemo(
-    () => sellableCart.filter((c) => c.quantity < MIN_SALE_QTY),
+    () => sellableCart.filter((c) => c.quantity < minSaleQty(c.name)),
     [sellableCart],
   );
 
@@ -1392,9 +1393,10 @@ export function PosDialog({
         toast.error(repMode ? "Not on the van" : "Out of stock");
         return prev;
       }
-      if (avail < MIN_SALE_QTY) {
+      const min = minSaleQty(p.name);
+      if (avail < min) {
         toast.error(
-          `Only ${avail} ${p.unit} ${repMode ? "on the van" : "in the store"} — minimum per product is ${MIN_SALE_QTY}`,
+          `Only ${avail} ${p.unit} ${repMode ? "on the van" : "in the store"} — minimum for ${p.name} is ${min}`,
         );
         return prev;
       }
@@ -1404,7 +1406,7 @@ export function PosDialog({
           product_id: p.id,
           name: p.name,
           unit: p.unit,
-          quantity: MIN_SALE_QTY,
+          quantity: min,
           unit_price: Number(p.unit_price),
           stock: avail,
         },
@@ -1438,7 +1440,7 @@ export function PosDialog({
       if (sellableCart.length === 0) throw new Error("Cart is empty");
       if (underMin.length > 0)
         throw new Error(
-          `${underMin.map((c) => c.name).join(", ")}: minimum per product is ${MIN_SALE_QTY}`,
+          underMin.map((c) => `${c.name}: minimum is ${minSaleQty(c.name)} ${c.unit}`).join("; "),
         );
       if (overStock.length > 0)
         throw new Error(
@@ -1573,12 +1575,12 @@ export function PosDialog({
                       can see the full range; out-of-stock lines just can't be
                       added until production posts more to the store. */}
                   {visibleProducts.map((p) => (
-                    <SelectItem key={p.id} value={p.id} disabled={effStock(p) < MIN_SALE_QTY}>
+                    <SelectItem key={p.id} value={p.id} disabled={effStock(p) < minSaleQty(p.name)}>
                       {p.name}
                       {p.sku ? ` (${p.sku})` : ""} · {money(Number(p.unit_price))} ·{" "}
                       {effStock(p) > 0
                         ? `${repMode ? "van" : "stock"} ${num(effStock(p))} ${p.unit}${
-                            effStock(p) < MIN_SALE_QTY ? ` (min ${MIN_SALE_QTY})` : ""
+                            effStock(p) < minSaleQty(p.name) ? ` (min ${minSaleQty(p.name)})` : ""
                           }`
                         : repMode
                           ? "not on van"
@@ -1650,10 +1652,10 @@ export function PosDialog({
                             Only {num(c.stock)} {c.unit} {repMode ? "on the van" : "in the store"} —{" "}
                             {num(c.quantity - c.stock)} too many
                           </div>
-                        ) : c.quantity > 0 && c.quantity < MIN_SALE_QTY ? (
+                        ) : c.quantity > 0 && c.quantity < minSaleQty(c.name) ? (
                           <div className="flex items-center gap-1 text-xs font-medium text-destructive">
                             <AlertTriangle className="h-3 w-3" />
-                            Minimum {MIN_SALE_QTY} {c.unit} per product
+                            Minimum {minSaleQty(c.name)} {c.unit}
                           </div>
                         ) : (
                           <div className="text-xs text-muted-foreground">
@@ -1861,7 +1863,7 @@ export function PosDialog({
           <p className="mr-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
             <AlertTriangle className="h-4 w-4" />
             {underMin.length === 1 ? "1 item is" : `${underMin.length} items are`} below the minimum
-            of {MIN_SALE_QTY} per product.
+            quantity (sachet water 20, other products 5).
           </p>
         )}
         <Button
