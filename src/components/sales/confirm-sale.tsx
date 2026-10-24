@@ -196,7 +196,8 @@ export function ConfirmSaleDialog({
   const vatRate = Number(settings.data?.vat_rate ?? 0);
   const [discountInput, setDiscountInput] = useState(0);
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
-  const [applyVat, setApplyVat] = useState(true);
+  // Off by default: most sales go out without VAT; tick it when it applies.
+  const [applyVat, setApplyVat] = useState(false);
   const [payments, setPayments] = useState<PaymentLine[]>([{ amount: 0, method: "cash" }]);
   const [paymentType, setPaymentType] = useState("");
   const [comment, setComment] = useState("");
