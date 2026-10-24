@@ -82,7 +82,7 @@ export const nav: { section: string; items: NavItem[] }[] = [
       },
       { title: "Inventory", url: "/raw-materials", icon: Boxes, module: "raw-materials" },
       { title: "Store", url: "/finished-goods", icon: Package, module: "finished-goods" },
-      { title: "Distribution", url: "/distribution", icon: Truck, module: "distribution" },
+      { title: "Marketers/Distributors", url: "/distribution", icon: Truck, module: "distribution" },
       { title: "Costing", url: "/costing", icon: Calculator, module: "costing" },
     ],
   },

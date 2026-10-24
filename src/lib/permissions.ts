@@ -180,7 +180,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   settings: "Settings",
   costing: "Costing",
   logistics: "Logistics",
-  distribution: "Distribution (Sales Reps)",
+  distribution: "Marketers/Distributors",
   approvals: "Approvals",
   "goods-receiving": "Items Receiving",
   updates: "Updates & Requests",

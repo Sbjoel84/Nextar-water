@@ -168,121 +168,141 @@ export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = 
   const contentW = W - M * 2;
   const center = W / 2;
 
+  // Sized to read comfortably on A4: 12pt body, 18pt heading, large logo.
+  const BODY = 12;
+  const LH = 17; // line height for body text
+  const RULE_GAP = 16; // space after a separator line
+
   const draw = (doc: jsPDF): number => {
     let y = M;
 
     if (logo) {
-      const maxW = 90,
-        maxH = 50;
+      const maxW = 170,
+        maxH = 100;
       const ratio = Math.min(maxW / logo.width, maxH / logo.height, 1);
       const w = logo.width * ratio,
         h = logo.height * ratio;
       doc.addImage(logo.dataUrl, "PNG", center - w / 2, y, w, h);
-      y += h + 6;
+      y += h + 12;
     }
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFontSize(20);
+    y += 6;
     doc.text(data.company.name || "Company", center, y, { align: "center" });
-    y += 14;
+    y += 22;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(11);
     if (data.company.address) {
-      doc.text(data.company.address, center, y, { align: "center" });
-      y += 11;
+      const addr: string[] = doc.splitTextToSize(data.company.address, contentW);
+      addr.forEach((ln) => {
+        doc.text(ln, center, y, { align: "center" });
+        y += 15;
+      });
     }
     const contact = [data.company.phone, data.company.email].filter(Boolean).join(" · ");
     if (contact) {
       doc.text(contact, center, y, { align: "center" });
-      y += 11;
+      y += 15;
     }
 
-    y += 4;
-    doc.setLineDashPattern([2, 1], 0);
+    y += 6;
+    doc.setLineDashPattern([3, 2], 0);
     doc.line(M, y, W - M, y);
-    y += 12;
+    y += RULE_GAP + 8;
     doc.setLineDashPattern([], 0);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(18);
     doc.text(data.is_pr ? "PR — COMPLIMENTARY (NO CHARGE)" : "SALES RECEIPT", center, y, {
       align: "center",
     });
-    y += 14;
+    y += 26;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(BODY);
     doc.text(`Invoice: ${data.invoice_number}`, M, y);
-    y += 11;
-    doc.text(`Date: ${data.sale_date}`, M, y);
-    y += 11;
+    doc.text(`Date: ${data.sale_date}`, W - M, y, { align: "right" });
+    y += LH;
 
-    doc.line(M, y, W - M, y);
-    y += 12;
+    doc.line(M, y - 4, W - M, y - 4);
+    y += RULE_GAP;
 
+    doc.setFont("helvetica", "bold");
     doc.text(`Customer: ${data.customer.name || "Walk-in"}`, M, y);
-    y += 11;
+    doc.setFont("helvetica", "normal");
+    y += LH;
     if (data.customer.phone) {
       doc.text(`Phone: ${data.customer.phone}`, M, y);
-      y += 11;
+      y += LH;
+    }
+    if (data.customer.address) {
+      const addr: string[] = doc.splitTextToSize(`Address: ${data.customer.address}`, contentW);
+      addr.forEach((ln) => {
+        doc.text(ln, M, y);
+        y += LH;
+      });
     }
 
-    doc.line(M, y, W - M, y);
-    y += 12;
+    doc.line(M, y - 4, W - M, y - 4);
+    y += RULE_GAP;
 
     data.items.forEach((it) => {
+      doc.setFont("helvetica", "bold");
       const nameLines: string[] = doc.splitTextToSize(it.name, contentW);
       nameLines.forEach((ln) => {
         doc.text(ln, M, y);
-        y += 10;
+        y += LH - 2;
       });
+      doc.setFont("helvetica", "normal");
       doc.text(`${it.quantity} ${it.unit} x ${cur(it.unit_price)}`, M, y);
       doc.text(cur(it.line_total), W - M, y, { align: "right" });
-      y += 12;
+      y += LH + 6;
     });
 
-    doc.line(M, y, W - M, y);
-    y += 12;
+    doc.line(M, y - 6, W - M, y - 6);
+    y += RULE_GAP - 2;
 
-    const row = (label: string, value: string, bold = false, size = 8) => {
+    const row = (label: string, value: string, bold = false, size = BODY) => {
       doc.setFont("helvetica", bold ? "bold" : "normal");
       doc.setFontSize(size);
       doc.text(label, M, y);
       doc.text(value, W - M, y, { align: "right" });
-      y += bold ? 16 : 12;
+      y += bold ? 24 : LH + 2;
     };
     if (data.is_pr) {
       row("Value of products issued", cur(data.subtotal));
-      row("NOT BILLED — no payment due", "N/A", true, 10);
+      row("NOT BILLED — no payment due", "N/A", true, 15);
     } else {
       row("Subtotal", cur(data.subtotal));
       if (data.discount > 0) row("Discount", `-${cur(data.discount)}`);
       if (data.vat > 0) row("VAT", cur(data.vat));
-      row("GRAND TOTAL", cur(data.grand_total), true, 10);
+      row("GRAND TOTAL", cur(data.grand_total), true, 15);
       row("Amount Paid", cur(data.amount_paid));
       row("Balance Due", cur(data.balance), data.balance > 0);
     }
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.line(M, y, W - M, y);
-    y += 12;
+    doc.setFontSize(BODY);
+    doc.line(M, y - 6, W - M, y - 6);
+    y += RULE_GAP - 2;
 
     if (data.sales_person) {
       doc.text(`Sales person: ${data.sales_person}`, M, y);
-      y += 11;
+      y += LH;
     }
     if (data.remarks) {
       const remarkLines: string[] = doc.splitTextToSize(`Remarks: ${data.remarks}`, contentW);
       remarkLines.forEach((ln) => {
         doc.text(ln, M, y);
-        y += 10;
+        y += LH;
       });
     }
 
-    y += 6;
-    doc.setFont("helvetica", "bold");
-    doc.text("Thank you for your patronage!", center, y, { align: "center" });
     y += 14;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("Thank you for your patronage!", center, y, { align: "center" });
+    y += 20;
 
     return y;
   };

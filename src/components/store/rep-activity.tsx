@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye, Undo2 } from "lucide-react";
+import { Eye, Plus, Trash2, Undo2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -384,6 +384,14 @@ function RepDayDialog({ rep, day }: { rep: RepDay; day: string }) {
   );
 }
 
+type ReturnRow = { key: number; product_id: string; good: number; damaged: number };
+const blankRow = (): ReturnRow => ({
+  key: Date.now() + Math.random(),
+  product_id: "",
+  good: 0,
+  damaged: 0,
+});
+
 function LogRepReturnDialog({
   factoryId,
   rep,
@@ -398,40 +406,47 @@ function LogRepReturnDialog({
 }) {
   const qc = useQueryClient();
   const lines = useMemo(() => productLines(rep).filter((l) => l.outstanding > 0), [rep]);
-  // Good and damaged units are entered separately; together they are what the
+  // One row per product brought back: pick the product from the dropdown,
+  // then enter the good and damaged quantities. Together they are what the
   // rep handed back. Damaged units are still credited to the rep's account at
   // inspection (inspect_sales_return()), they just don't go back into stock.
-  const [qty, setQty] = useState<Record<string, number>>({});
-  const [damaged, setDamaged] = useState<Record<string, number>>({});
-  // Switching Sales-Rep in Return Product starts the quantities afresh.
+  const [rows, setRows] = useState<ReturnRow[]>(() => [blankRow()]);
+  // Switching Sales-Rep in Return Product starts the rows afresh.
   useEffect(() => {
-    setQty({});
-    setDamaged({});
+    setRows([blankRow()]);
   }, [rep.sales_rep_id]);
+  const updateRow = (key: number, patch: Partial<ReturnRow>) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const [reason, setReason] = useState("Unsold — returned at close of business");
   // The day the rep brought the goods back; defaults to today, can be backdated.
   const today = new Date().toLocaleDateString("en-CA");
   const [returnDate, setReturnDate] = useState(today);
 
-  const totalOf = (id: string) => (qty[id] ?? 0) + (damaged[id] ?? 0);
-  const over = lines.filter((l) => totalOf(l.product_id) > l.outstanding);
-  const toReturn = lines.filter((l) => totalOf(l.product_id) > 0);
+  const lineOf = (id: string) => lines.find((l) => l.product_id === id);
+  const totalOf = (r: ReturnRow) => r.good + r.damaged;
+  const filled = rows.filter((r) => r.product_id && totalOf(r) > 0);
+  const over = filled.filter((r) => totalOf(r) > (lineOf(r.product_id)?.outstanding ?? 0));
+  const toReturn = filled.map((r) => ({ row: r, line: lineOf(r.product_id)! }));
+  const unpicked = rows.some((r) => !r.product_id && totalOf(r) > 0);
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (toReturn.length === 0) throw new Error("Enter a quantity for at least one product");
-      if (over.length > 0) throw new Error(`${over[0].name}: more than the rep still holds`);
+      if (unpicked) throw new Error("Select the product for each quantity entered");
+      if (toReturn.length === 0)
+        throw new Error("Select a product and enter the quantity returned");
+      if (over.length > 0)
+        throw new Error(`${lineOf(over[0].product_id)?.name}: more than the rep still holds`);
       // One sales_returns row per product, same as the Sales Returns page.
       const results: { id: string; return_number: string }[] = [];
-      for (const l of toReturn) {
+      for (const { row, line: l } of toReturn) {
         const { data, error } = await supabase.rpc("create_sales_return", {
           payload: {
             factory_id: factoryId,
             sale_id: l.sale_id || undefined,
             customer_id: rep.customer_id,
             product_id: l.product_id,
-            quantity_returned: totalOf(l.product_id),
-            damaged_quantity: damaged[l.product_id] ?? 0,
+            quantity_returned: totalOf(row),
+            damaged_quantity: row.damaged,
             return_date: returnDate,
             reason: reason || undefined,
           } as never,
@@ -472,40 +487,93 @@ function LogRepReturnDialog({
             {rep.name} has no supplied products left to return.
           </p>
         )}
-        {lines.map((l) => {
-          const tooMany = totalOf(l.product_id) > l.outstanding;
-          const bad = tooMany ? "border-destructive text-destructive" : undefined;
-          return (
-            <div key={l.product_id} className="flex items-end gap-3">
-              <div className="flex-1 text-sm">
-                <div className="font-medium">{l.name}</div>
-                <div
-                  className={tooMany ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
-                >
-                  Still with rep: {num(l.outstanding)} {l.unit}
+        {lines.length > 0 &&
+          rows.map((r) => {
+            const l = lineOf(r.product_id);
+            const tooMany = !!l && totalOf(r) > l.outstanding;
+            const bad = tooMany ? "border-destructive text-destructive" : undefined;
+            // A product already picked on another row isn't offered again.
+            const taken = new Set(
+              rows.filter((x) => x.key !== r.key && x.product_id).map((x) => x.product_id),
+            );
+            return (
+              <div key={r.key} className="grid gap-2 rounded-md border p-2">
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Label className="text-xs">Product</Label>
+                    <Select
+                      value={r.product_id || undefined}
+                      onValueChange={(v) => updateRow(r.key, { product_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select product returned…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lines
+                          .filter((x) => !taken.has(x.product_id))
+                          .map((x) => (
+                            <SelectItem key={x.product_id} value={x.product_id}>
+                              {x.name} · with rep {num(x.outstanding)} {x.unit}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {rows.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Remove this product"
+                      onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="w-36">
+                    <Label className="text-xs">Quantity returned</Label>
+                    <MoneyInput
+                      min={0}
+                      value={r.good}
+                      onChange={(n) => updateRow(r.key, { good: n })}
+                      className={bad}
+                    />
+                  </div>
+                  <div className="w-28">
+                    <Label className="text-xs">Damaged</Label>
+                    <MoneyInput
+                      min={0}
+                      value={r.damaged}
+                      onChange={(n) => updateRow(r.key, { damaged: n })}
+                      className={bad}
+                    />
+                  </div>
+                  {l && (
+                    <div
+                      className={`pb-2 text-xs ${tooMany ? "text-destructive" : "text-muted-foreground"}`}
+                    >
+                      {tooMany
+                        ? `Only ${num(l.outstanding)} ${l.unit} with rep`
+                        : `Still with rep: ${num(l.outstanding)} ${l.unit}`}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="w-24">
-                <Label className="text-xs">Good</Label>
-                <MoneyInput
-                  min={0}
-                  value={qty[l.product_id] ?? 0}
-                  onChange={(n) => setQty((q) => ({ ...q, [l.product_id]: n }))}
-                  className={bad}
-                />
-              </div>
-              <div className="w-24">
-                <Label className="text-xs">Damaged</Label>
-                <MoneyInput
-                  min={0}
-                  value={damaged[l.product_id] ?? 0}
-                  onChange={(n) => setDamaged((d) => ({ ...d, [l.product_id]: n }))}
-                  className={bad}
-                />
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        {lines.length > 0 && rows.length < lines.length && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit gap-1"
+            onClick={() => setRows((rs) => [...rs, blankRow()])}
+          >
+            <Plus className="h-4 w-4" /> Add another product
+          </Button>
+        )}
         <div>
           <Label>Return date</Label>
           <Input
@@ -523,7 +591,7 @@ function LogRepReturnDialog({
       </div>
       <DialogFooter>
         <Button
-          disabled={submit.isPending || toReturn.length === 0 || over.length > 0}
+          disabled={submit.isPending || toReturn.length === 0 || over.length > 0 || unpicked}
           onClick={() => submit.mutate()}
         >
           {submit.isPending ? "Logging…" : "Log Return"}

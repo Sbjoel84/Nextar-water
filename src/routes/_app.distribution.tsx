@@ -51,7 +51,7 @@ import { matchesSearch, useSearchQuery } from "@/lib/search";
 
 export const Route = createFileRoute("/_app/distribution")({
   head: () => ({
-    meta: [{ title: "Distribution — FMIS" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Marketers/Distributors — FMIS" }, { name: "robots", content: "noindex" }],
   }),
   component: () => (
     <RequireAccess module="distribution">
@@ -208,7 +208,7 @@ function DistributionPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Distribution</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Marketers/Distributors</h1>
         <p className="text-sm text-muted-foreground">
           Every product leaves the store on a dispatch to a sales rep. The rep sells from van stock,
           returns what's unsold for inspection, and remits cash — their account nets it all against
