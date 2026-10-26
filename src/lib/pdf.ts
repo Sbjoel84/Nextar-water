@@ -164,7 +164,7 @@ const ROLL_MARGIN_PT = 11; // ~4mm each side, inside the printer's 72mm print ar
 
 // Printed receipts come out as this many copies, one per page: a web page
 // can't set the print dialog's "Copies" box, so the PDF itself repeats.
-export const RECEIPT_PRINT_COPIES = 4;
+export const RECEIPT_PRINT_COPIES = 1;
 
 export async function generateInvoicePdf(
   data: InvoiceData,
