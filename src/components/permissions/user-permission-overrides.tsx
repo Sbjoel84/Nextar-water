@@ -78,6 +78,23 @@ export function UserPermissionOverridesEditor({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // One click instead of revoking every action separately: keep `view` on the
+  // selected module and explicitly revoke everything else, so the user can see
+  // activity there but not create, approve, confirm or change anything.
+  const viewOnly = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("permission_overrides").upsert(
+        ALL_ACTIONS.map((a) => ({ user_id: userId, module, action: a, granted: a === "view" })),
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success(`${MODULE_LABELS[module]} set to view-only`);
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const remove = useMutation({
     mutationFn: async (row: { module: string; action: string }) => {
       const { error } = await supabase
@@ -151,6 +168,14 @@ export function UserPermissionOverridesEditor({
             </div>
             <Button onClick={() => add.mutate()} disabled={add.isPending}>
               {add.isPending ? "Saving…" : "Add override"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => viewOnly.mutate()}
+              disabled={viewOnly.isPending}
+              title="Keep View on the selected module and revoke every other action"
+            >
+              {viewOnly.isPending ? "Saving…" : "Make module view-only"}
             </Button>
           </div>
         )}

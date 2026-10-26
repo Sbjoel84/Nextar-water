@@ -452,7 +452,7 @@ function ProductionPage() {
                             <FileDown className="h-4 w-4" />
                           </Button>
                         )}
-                        {row.status === "pending_confirmation" && (
+                        {row.status === "pending_confirmation" && requestEdit && (
                           <Button
                             variant="ghost"
                             size="icon"
