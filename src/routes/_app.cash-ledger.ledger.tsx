@@ -197,6 +197,7 @@ function LedgerPage() {
         .select("id,invoice_number,customer_id,customer_name,balance")
         .eq("factory_id", factoryId!)
         .gt("balance", 0)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;

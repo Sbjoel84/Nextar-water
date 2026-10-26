@@ -141,7 +141,7 @@ type SaleRow = {
   payment_method: string;
   is_pr: boolean;
   status: string;
-  // Only visible to super_admin (see the "deleted sales" RLS policy).
+  // Always null here — the list query excludes soft-deleted sales.
   deleted_at: string | null;
   created_by: string | null;
   rejected_reason: string | null;
@@ -278,6 +278,8 @@ function SalesPage() {
               "id,invoice_number,sale_date,customer_id,customer_name,grand_total,subtotal,amount_paid,balance,credit_applied,payment_method,created_at,is_pr,status,deleted_at,created_by,rejected_reason,sales_person,customer_type,sales_rep_id,sale_items(product_id,quantity,products(name,current_stock))",
             )
             .eq("factory_id", factoryId!)
+            // Approved deletions are soft-deleted; they live in the Recycle Bin.
+            .is("deleted_at", null)
             .order("created_at", { ascending: false })
             .order("id")
             .range(a, b) as any,

@@ -110,6 +110,9 @@ export function DeleteRequestsTab() {
       toast.success("Deletion approved — moved to the Recycle Bin for 30 days");
       invalidate();
       qc.invalidateQueries({ queryKey: ["recycle-bin"] });
+      // A deleted sale leaves the Sales list and its stock is returned.
+      qc.invalidateQueries({ queryKey: ["sales-list"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

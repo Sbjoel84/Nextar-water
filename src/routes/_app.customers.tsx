@@ -387,6 +387,7 @@ export function CustomerProfileDialog({ customer }: { customer: Customer }) {
         .from("sales")
         .select("id,invoice_number,sale_date,grand_total,balance")
         .eq("customer_id", customer.id)
+        .is("deleted_at", null)
         .order("sale_date", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Invoice[];

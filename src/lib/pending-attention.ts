@@ -63,7 +63,8 @@ export function usePendingAttention() {
       .from("sales")
       .select("id", { count: "exact", head: true })
       .eq("factory_id", scope.factoryId ?? "")
-      .eq("status", "pending_approval");
+      .eq("status", "pending_approval")
+      .is("deleted_at", null);
     return isSuperAdmin ? q : q.neq("created_by", uid ?? "");
   });
   // Expenses: the Operations Manager reviews pending ones, the Chairman gives

@@ -107,6 +107,7 @@ export function CustomerAccountDialog({
           "id,invoice_number,sale_date,created_at,status,is_pr,grand_total,amount_paid,credit_applied,balance,payment_method",
         )
         .eq("customer_id", customerId)
+        .is("deleted_at", null)
         .order("sale_date", { ascending: false });
       if (error) throw error;
       return (data ?? []) as unknown as CustomerSaleRow[];

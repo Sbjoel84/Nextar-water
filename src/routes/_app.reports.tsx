@@ -232,6 +232,7 @@ async function fetchReport(
             "invoice_number,sale_date,customer_name,grand_total,amount_paid,balance,payment_method,sales_person",
           )
           .eq("factory_id", factoryId)
+          .is("deleted_at", null)
           .order("sale_date", { ascending: false }),
       );
       if (error) throw error;

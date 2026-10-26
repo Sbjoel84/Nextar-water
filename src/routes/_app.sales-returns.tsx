@@ -205,6 +205,7 @@ function SalesReturnsPage() {
         .from("sales")
         .select("id,invoice_number,customer_name")
         .eq("factory_id", factoryId!)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;

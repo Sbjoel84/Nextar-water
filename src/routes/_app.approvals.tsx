@@ -139,6 +139,7 @@ function ApprovalsPage() {
         .from("sales")
         .select("id,invoice_number,customer_name,grand_total,sale_date,created_by")
         .eq("status", "pending_approval")
+        .is("deleted_at", null)
         .order("sale_date", { ascending: false })
         .limit(50);
       if (error) throw error;
