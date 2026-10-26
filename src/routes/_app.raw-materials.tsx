@@ -703,13 +703,13 @@ function RawMaterialsPage() {
                           <>
                             {canSubmitReceipt && m.active && (
                               <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1"
+                                variant="ghost"
+                                size="icon"
                                 title="Restock — record goods supplied by a supplier"
+                                aria-label="Restock"
                                 onClick={() => setReceiveTarget(m)}
                               >
-                                <PackagePlus className="h-4 w-4 text-success" /> Restock
+                                <PackagePlus className="h-4 w-4 text-success" />
                               </Button>
                             )}
                             {write && (

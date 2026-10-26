@@ -1390,7 +1390,9 @@ export function PosDialog({
           name: p?.name ?? "Unknown product",
           unit: p?.unit ?? "",
           quantity: it.quantity,
-          unit_price: it.unit_price,
+          // Re-priced from the current price list, so a sale rejected for a
+          // missing/wrong price picks up the price Costing has since set.
+          unit_price: p && Number(p.unit_price) > 0 ? Number(p.unit_price) : it.unit_price,
           stock: avail,
         };
       }),
@@ -1440,6 +1442,11 @@ export function PosDialog({
         toast.error(repMode ? "Not on the van" : "Out of stock");
         return prev;
       }
+      // Prices come from the Costing page's price list, never typed here.
+      if (Number(p.unit_price) <= 0) {
+        toast.error(`${p.name} has no price yet — ask Costing to set it under Product Prices`);
+        return prev;
+      }
       const min = minSaleQty(p.name);
       if (avail < min) {
         toast.error(
@@ -1476,15 +1483,14 @@ export function PosDialog({
       }),
     );
   };
-  const updatePrice = (id: string, price: number) => {
-    setCart((prev) =>
-      prev.map((c) => (c.product_id === id ? { ...c, unit_price: Math.max(0, price) } : c)),
-    );
-  };
-
   const submit = useMutation({
     mutationFn: async () => {
       if (sellableCart.length === 0) throw new Error("Cart is empty");
+      const unpriced = sellableCart.filter((c) => c.unit_price <= 0);
+      if (unpriced.length > 0)
+        throw new Error(
+          `${unpriced.map((c) => c.name).join(", ")}: no price set — ask Costing to set it under Product Prices`,
+        );
       if (underMin.length > 0)
         throw new Error(
           underMin.map((c) => `${c.name}: minimum is ${minSaleQty(c.name)} ${c.unit}`).join("; "),
@@ -1639,9 +1645,14 @@ export function PosDialog({
                       can see the full range; out-of-stock lines just can't be
                       added until production posts more to the store. */}
                   {visibleProducts.map((p) => (
-                    <SelectItem key={p.id} value={p.id} disabled={effStock(p) < minSaleQty(p.name)}>
+                    <SelectItem
+                      key={p.id}
+                      value={p.id}
+                      disabled={effStock(p) < minSaleQty(p.name) || Number(p.unit_price) <= 0}
+                    >
                       {p.name}
-                      {p.sku ? ` (${p.sku})` : ""} · {money(Number(p.unit_price))} ·{" "}
+                      {p.sku ? ` (${p.sku})` : ""} ·{" "}
+                      {Number(p.unit_price) > 0 ? money(Number(p.unit_price)) : "no price set"} ·{" "}
                       {effStock(p) > 0
                         ? `${repMode ? "van" : "stock"} ${num(effStock(p))} ${p.unit}${
                             effStock(p) < minSaleQty(p.name) ? ` (min ${minSaleQty(p.name)})` : ""
@@ -1735,12 +1746,13 @@ export function PosDialog({
                           className={over ? "h-8 border-destructive text-destructive" : "h-8"}
                         />
                       </TableCell>
-                      <TableCell>
-                        <MoneyInput
-                          value={c.unit_price}
-                          onChange={(v) => updatePrice(c.product_id, v)}
-                          className="h-8"
-                        />
+                      {/* Read-only: the unit price comes from Costing → Product Prices. */}
+                      <TableCell title="Set on the Costing page (Product Prices)">
+                        {c.unit_price > 0 ? (
+                          money(c.unit_price)
+                        ) : (
+                          <span className="text-xs font-medium text-destructive">No price set</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {money(c.quantity * c.unit_price)}

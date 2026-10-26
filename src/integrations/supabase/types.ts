@@ -4551,6 +4551,10 @@ export type Database = {
         Args: { p_id: string; p_reason?: string }
         Returns: Json
       }
+      set_product_price: {
+        Args: { p_price: number; p_product_id: string }
+        Returns: Json
+      }
       set_production_scope: {
         Args: { p_scope: string; p_user_id: string }
         Returns: Json
@@ -4571,6 +4575,10 @@ export type Database = {
       update_costing_sheet: { Args: { payload: Json }; Returns: Json }
       update_delivery_status: {
         Args: { p_id: string; p_status: string }
+        Returns: Json
+      }
+      update_product_details: {
+        Args: { p_id: string; p_name: string; p_price: number; p_sku: string; p_unit: string }
         Returns: Json
       }
       update_production: { Args: { payload: Json }; Returns: Json }

@@ -200,8 +200,8 @@ export function QuickAddProductDialog({
                 automatically.{" "}
               </>
             ) : null}
-            Starts at zero stock — the production batch adds stock once Store confirms it. Prices
-            are set by approving a Costing sheet.
+            Starts at zero stock — the production batch adds stock once Store confirms it. Set its
+            selling price on Costing → Product Prices before it can be sold.
           </p>
         </div>
         <DialogFooter>

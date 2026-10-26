@@ -198,7 +198,8 @@ export function ConfirmSaleDialog({
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
   // Off by default: most sales go out without VAT; tick it when it applies.
   const [applyVat, setApplyVat] = useState(false);
-  const [payments, setPayments] = useState<PaymentLine[]>([{ amount: 0, method: "cash" }]);
+  // POS is the usual way customers pay at the counter, so it's preselected.
+  const [payments, setPayments] = useState<PaymentLine[]>([{ amount: 0, method: "pos" }]);
   const [paymentType, setPaymentType] = useState("");
   const [comment, setComment] = useState("");
 

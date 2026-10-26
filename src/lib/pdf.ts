@@ -162,7 +162,15 @@ async function drawLogoHeader(
 const ROLL_WIDTH_PT = 226.77; // 80mm
 const ROLL_MARGIN_PT = 11; // ~4mm each side, inside the printer's 72mm print area
 
-export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = "download") {
+// Printed receipts come out as this many copies, one per page: a web page
+// can't set the print dialog's "Copies" box, so the PDF itself repeats.
+export const RECEIPT_PRINT_COPIES = 4;
+
+export async function generateInvoicePdf(
+  data: InvoiceData,
+  action: PdfAction = "download",
+  copies = action === "print" ? RECEIPT_PRINT_COPIES : 1,
+) {
   const currency = data.currency ?? "NGN";
   const cur = (n: number) => pdfMoney(n, currency);
   const logo = await resolveLogo(data.company.logo_url);
@@ -175,7 +183,7 @@ export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = 
   const BODY = 10;
   const LH = 13; // line height for body text
 
-  const draw = (doc: jsPDF): number => {
+  const draw = (doc: jsPDF, copyLabel?: string): number => {
     let y = 12;
 
     const rule = (dashed = false) => {
@@ -275,17 +283,24 @@ export async function generateInvoicePdf(data: InvoiceData, action: PdfAction = 
 
     y += 8;
     centered("Thank you for your patronage!", 10, true, 13);
+    if (copyLabel) centered(copyLabel, 8.5, false, 11);
     y += 10;
 
     return y;
   };
 
-  // Lay it out once on a long scratch page to measure, then print on a page
-  // cut to exactly that length.
+  // Lay it out once on a long scratch page to measure, then print each copy
+  // on its own page cut to exactly that length.
+  const n = Math.max(1, Math.floor(copies));
+  const labelFor = (i: number) => (n > 1 ? `Copy ${i + 1} of ${n}` : undefined);
   const scratch = new jsPDF({ unit: "pt", format: [W, 5000] });
-  const finalY = draw(scratch);
-  const doc = new jsPDF({ unit: "pt", format: [W, Math.max(finalY, W + 1)] });
-  draw(doc);
+  const finalY = draw(scratch, labelFor(0));
+  const pageSize: [number, number] = [W, Math.max(finalY, W + 1)];
+  const doc = new jsPDF({ unit: "pt", format: pageSize });
+  for (let i = 0; i < n; i++) {
+    if (i > 0) doc.addPage(pageSize);
+    draw(doc, labelFor(i));
+  }
 
   outputPdf(doc, `${data.invoice_number}.pdf`, action);
 }

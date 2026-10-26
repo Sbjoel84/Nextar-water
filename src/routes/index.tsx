@@ -248,16 +248,22 @@ function Landing() {
     <div className="flex min-h-screen flex-col bg-[#06112e]">
       {/* Hero */}
       <section className="relative isolate flex flex-1 flex-col justify-center overflow-hidden bg-[#06112e]">
+        {/* ?v= busts the browser cache whenever the photo file is replaced. */}
         <img
-          src="/assets/nextar-homepage.jpeg"
+          src="/assets/nextar-homepage.jpeg?v=20261024"
           alt=""
           aria-hidden="true"
-          className="absolute inset-0 -z-20 h-full w-full object-cover"
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
         />
-        {/* Darken the photo so the headline and form stay readable over it. */}
+        {/* Darken only the edges: the headline (left) and form (right) stay
+            readable while the lit factory sign in the middle shows through. */}
         <div
           aria-hidden="true"
-          className="absolute inset-0 -z-10 bg-gradient-to-r from-[#06112e]/85 via-[#06112e]/50 to-[#06112e]/75"
+          className="absolute inset-0 -z-10 bg-gradient-to-r from-[#06112e]/80 via-[#06112e]/15 to-[#06112e]/60"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 -z-10 h-1/3 bg-gradient-to-t from-[#06112e]/70 to-transparent"
         />
 
         <div className="relative mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:py-20">
