@@ -259,8 +259,10 @@ function FinishedGoodsPage() {
       "product_units",
       "damage_records",
       "production_corrections",
+      "sales",
     ],
     [
+      ["store-stock-awaiting-confirmation"],
       ["production-corrections-pending"],
       ["finished-goods"],
       ["product-categories"],
@@ -458,6 +460,29 @@ function FinishedGoodsPage() {
     },
   });
 
+  // Stock only comes off products.current_stock when the cashier / accountant
+  // confirms an order, but the goods leave the store as soon as Sales posts
+  // it. Take what's in unconfirmed orders off so Available matches the shelf.
+  const awaitingConfirmation = useQuery({
+    queryKey: ["store-stock-awaiting-confirmation", factoryId],
+    enabled: !!factoryId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("store_stock_awaiting_confirmation", {
+        p_factory_id: factoryId!,
+      });
+      // Optional until 20261026090000_store_stock_awaiting_confirmation.sql is applied.
+      if (error) return {} as Record<string, { quantity: number; orders: number }>;
+      return Object.fromEntries(
+        (data ?? []).map((r) => [
+          r.product_id,
+          { quantity: Number(r.quantity), orders: Number(r.orders) },
+        ]),
+      );
+    },
+  });
+  const awaitingOf = (p: Product) => awaitingConfirmation.data?.[p.id]?.quantity ?? 0;
+  const availableOf = (p: Product) => Number(p.current_stock) - awaitingOf(p);
+
   // A wrongly created product: goes to admin approval, then the Recycle Bin.
   const removeProduct = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
@@ -472,6 +497,7 @@ function FinishedGoodsPage() {
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["finished-goods"] });
+    qc.invalidateQueries({ queryKey: ["store-stock-awaiting-confirmation"] });
     qc.invalidateQueries({ queryKey: ["products-active"] });
     qc.invalidateQueries({ queryKey: ["products-for-production"] });
     qc.invalidateQueries({ queryKey: ["stock-adjustment-requests"] });
@@ -596,7 +622,7 @@ function FinishedGoodsPage() {
       (s, p) => s + Number(p.current_stock) * Number(p.cost_price),
       0,
     ),
-    lowStock: filteredList.filter((p) => isLowStock(p.current_stock, p.reorder_level)).length,
+    lowStock: filteredList.filter((p) => isLowStock(availableOf(p), p.reorder_level)).length,
   };
 
   const printCard = async (p: Product) => {
@@ -740,7 +766,9 @@ function FinishedGoodsPage() {
             </TableHeader>
             <TableBody>
               {searchedList.map((p) => {
-                const low = isLowStock(p.current_stock, p.reorder_level);
+                const awaiting = awaitingOf(p);
+                const available = availableOf(p);
+                const low = isLowStock(available, p.reorder_level);
                 return (
                   <TableRow key={p.id}>
                     <TableCell>
@@ -757,12 +785,18 @@ function FinishedGoodsPage() {
                     <TableCell>{p.product_categories?.name ?? "—"}</TableCell>
                     <TableCell className="text-right">
                       <span className={low ? "text-destructive font-medium" : ""}>
-                        {num(Number(p.current_stock))} {p.unit}
+                        {num(available)} {p.unit}
                       </span>
                       {low && (
                         <Badge variant="destructive" className="ml-2">
                           Low
                         </Badge>
+                      )}
+                      {awaiting > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          {num(Number(p.current_stock))} on record − {num(awaiting)} in{" "}
+                          {awaitingConfirmation.data?.[p.id]?.orders} order(s) awaiting confirmation
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="text-right">{money(Number(p.cost_price))}</TableCell>

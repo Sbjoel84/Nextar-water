@@ -225,6 +225,7 @@ function SalesPage() {
       ["customer-sales-full"],
       ["customer-payments-full"],
       ["sales-revenue"],
+      ["store-stock-awaiting-confirmation"],
     ],
   );
   const { canWrite, canApprove, canReject, canCancel, canDelete, canEdit, canPrint } =
@@ -536,6 +537,7 @@ function SalesPage() {
                     // already mounted elsewhere, instead of relying only on
                     // realtime or a fresh navigation.
                     qc.invalidateQueries({ queryKey: ["finished-goods"] });
+                    qc.invalidateQueries({ queryKey: ["store-stock-awaiting-confirmation"] });
                     qc.invalidateQueries({ queryKey: ["products-active"] });
                     qc.invalidateQueries({ queryKey: ["products-for-production"] });
                   }}
@@ -1364,13 +1366,27 @@ export function PosDialog({
       return (data ?? []) as { product_id: string; quantity: number }[];
     },
   });
+  // Store stock already taken by orders still awaiting confirmation (stock
+  // only comes off current_stock when they're confirmed) — create_sale()
+  // checks against the same figure.
+  const awaiting = useQuery({
+    queryKey: ["store-stock-awaiting-confirmation", factoryId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("store_stock_awaiting_confirmation", {
+        p_factory_id: factoryId,
+      });
+      // Optional until 20261026090000_store_stock_awaiting_confirmation.sql is applied.
+      if (error) return {} as Record<string, number>;
+      return Object.fromEntries((data ?? []).map((r) => [r.product_id, Number(r.quantity)]));
+    },
+  });
   const repMode = salesRepId !== "none";
   // When a rep is selling, the goods left the store at dispatch time, so the
   // sellable quantity is what's on the rep's van — not products.current_stock.
   const effStock = (p: { id: string; current_stock: number }) =>
     repMode
       ? Number(repStock.data?.find((r) => r.product_id === p.id)?.quantity ?? 0)
-      : Number(p.current_stock);
+      : Number(p.current_stock) - (awaiting.data?.[p.id] ?? 0);
 
   // Rebuilds the cart from the sale being edited once products (and rep
   // stock, if this was a rep sale) have loaded — runs once, not on every
@@ -1380,13 +1396,15 @@ export function PosDialog({
     if (!editingSale || editCartInitialized.current) return;
     if (!products.data) return;
     if (editingSale.sales_rep_id && repStock.isLoading) return;
+    if (!editingSale.sales_rep_id && awaiting.isLoading) return;
     setCart(
       editingSale.items.map((it) => {
         const p = products.data?.find((x) => x.id === it.product_id);
-        // The item's own quantity is already "spoken for" by this same sale
-        // (nothing has been decremented for a pending sale), so it's added
-        // back on top of current availability rather than excluded from it.
-        const avail = (p ? effStock(p) : 0) + it.quantity;
+        // A pending sale's own quantity is counted in the store's "awaiting
+        // confirmation" figure, so it's added back on top of availability. A
+        // rejected sale isn't counted there (and van stock never is).
+        const ownQty = !editingSale.sales_rep_id && !editingSale.rejected_reason ? it.quantity : 0;
+        const avail = (p ? effStock(p) : 0) + ownQty;
         return {
           product_id: it.product_id,
           name: p?.name ?? "Unknown product",
@@ -1401,7 +1419,7 @@ export function PosDialog({
     );
     editCartInitialized.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingSale, products.data, repStock.isLoading]);
+  }, [editingSale, products.data, repStock.isLoading, awaiting.isLoading]);
 
   const visibleProducts = useMemo(() => {
     const all = products.data ?? [];

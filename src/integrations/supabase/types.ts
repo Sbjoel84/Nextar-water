@@ -4182,6 +4182,14 @@ export type Database = {
         Args: { p_factory_id: string }
         Returns: Json
       }
+      store_stock_awaiting_confirmation: {
+        Args: { p_factory_id: string }
+        Returns: {
+          orders: number
+          product_id: string
+          quantity: number
+        }[]
+      }
       store_rep_activity: {
         Args: { p_factory_id: string; p_date: string }
         Returns: Json

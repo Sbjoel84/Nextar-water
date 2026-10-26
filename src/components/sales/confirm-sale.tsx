@@ -154,6 +154,7 @@ function invalidateAfterConfirm(qc: ReturnType<typeof useQueryClient>) {
     "customer-payments-full",
     "customers",
     "finished-goods",
+    "store-stock-awaiting-confirmation",
     "products-active",
     "products-for-production",
     "fin",
