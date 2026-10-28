@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GlobalSearch } from "./global-search";
+import { PrintPageReport } from "./print-page-report";
 import { useTheme } from "@/lib/theme";
 import { Moon, Sun, LogOut, User as UserIcon, Bell } from "lucide-react";
 import { toast } from "sonner";
@@ -194,6 +195,7 @@ export function TopBar() {
         <GlobalSearch />
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <PrintPageReport />
         <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
