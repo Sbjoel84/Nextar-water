@@ -50,7 +50,7 @@ import {
   ShieldAlert,
   Sparkles,
 } from "lucide-react";
-import { num, money } from "@/lib/format";
+import { num, money, fmtDate, fmtDateTime } from "@/lib/format";
 import { toast } from "sonner";
 import { generateProductionRequestPdf, generatePurchaseOrderPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
@@ -314,7 +314,7 @@ function RequestsSection({
           logo_url: settings.data?.logo_url,
         },
         request_number: row.request_number,
-        request_date: new Date(row.request_date).toLocaleString(),
+        request_date: fmtDateTime(row.request_date),
         requested_by_name: row.requested_by_name,
         department: row.department,
         product_name: row.raw_materials?.name ?? "—",
@@ -390,7 +390,7 @@ function RequestsSection({
                     </TableCell>
                     <TableCell className="font-mono text-xs">{row.request_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(row.request_date).toLocaleString()}
+                      {fmtDateTime(row.request_date)}
                     </TableCell>
                     <TableCell>{row.requested_by_name}</TableCell>
                     <TableCell className="font-medium">
@@ -828,7 +828,7 @@ function RequestDetailDialog({ row }: { row: RequestRow }) {
           )}
           <div>
             <span className="text-muted-foreground">Requested:</span>{" "}
-            {new Date(row.request_date).toLocaleString()}
+            {fmtDateTime(row.request_date)}
           </div>
           <div>
             <span className="text-muted-foreground">Approval:</span>{" "}
@@ -929,7 +929,7 @@ function OrdersSection({
           logo_url: settings.data?.logo_url,
         },
         po_number: row.po_number,
-        issued_at: new Date(row.issued_at).toLocaleString(),
+        issued_at: fmtDateTime(row.issued_at),
         issued_by_name: row.issued_by_name,
         supplier: row.suppliers,
         material_name: row.raw_materials?.name ?? "—",
@@ -986,7 +986,7 @@ function OrdersSection({
                     </TableCell>
                     <TableCell className="font-mono text-xs">{row.po_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(row.issued_at).toLocaleDateString()}
+                      {fmtDate(row.issued_at)}
                     </TableCell>
                     <TableCell className="font-medium">{row.raw_materials?.name ?? "—"}</TableCell>
                     <TableCell>{row.suppliers?.name ?? "—"}</TableCell>
@@ -1431,7 +1431,7 @@ function OrderDetailDialog({ row }: { row: PoRow }) {
           </div>
           <div>
             <span className="text-muted-foreground">Expected delivery:</span>{" "}
-            {row.expected_delivery_date ?? "—"}
+            {fmtDate(row.expected_delivery_date)}
           </div>
           <div>
             <span className="text-muted-foreground">Created by:</span> {row.issued_by_name}
@@ -1441,8 +1441,7 @@ function OrderDetailDialog({ row }: { row: PoRow }) {
             {row.approved_by_name ?? "—"}
           </div>
           <div>
-            <span className="text-muted-foreground">Issued:</span>{" "}
-            {new Date(row.issued_at).toLocaleString()}
+            <span className="text-muted-foreground">Issued:</span> {fmtDateTime(row.issued_at)}
           </div>
           <div>
             <span className="text-muted-foreground">From request:</span>{" "}

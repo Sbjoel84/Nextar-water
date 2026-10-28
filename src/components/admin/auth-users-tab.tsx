@@ -28,6 +28,7 @@ import { RefreshCw, Trash2, AlertTriangle } from "lucide-react";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDateTime } from "@/lib/format";
 
 // The raw Supabase Auth record list -- separate from `profiles`, since
 // that's a client-readable app table while auth.users only exists via the
@@ -110,10 +111,10 @@ export function AuthUsersTab() {
                       </TableCell>
                       <TableCell className="text-xs">{u.email ?? "—"}</TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
-                        {new Date(u.created_at).toLocaleString()}
+                        {fmtDateTime(u.created_at)}
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
-                        {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : "Never"}
+                        {u.last_sign_in_at ? fmtDateTime(u.last_sign_in_at) : "Never"}
                       </TableCell>
                       <TableCell>
                         {orphan ? (

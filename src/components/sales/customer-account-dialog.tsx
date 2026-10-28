@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FileDown, Printer, Sheet } from "lucide-react";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDateTime, fmtDate } from "@/lib/format";
 import { exportCsv } from "@/lib/export";
 import { generateCustomerStatementPdf, type PdfAction } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
@@ -373,7 +373,7 @@ export function CustomerAccountDialog({
                       <TableCell className="font-mono text-xs">
                         {inv?.invoice_number ?? "—"}
                       </TableCell>
-                      <TableCell>{inv?.sale_date ?? "—"}</TableCell>
+                      <TableCell>{fmtDate(inv?.sale_date)}</TableCell>
                       <TableCell>
                         {it.products?.name ?? "—"}
                         {it.products?.unit ? ` (${it.products.unit})` : ""}
@@ -422,7 +422,7 @@ export function CustomerAccountDialog({
                         <RefId id={inv.id} />
                       </TableCell>
                       <TableCell className="font-mono text-xs">{inv.invoice_number}</TableCell>
-                      <TableCell>{inv.sale_date}</TableCell>
+                      <TableCell>{fmtDate(inv.sale_date)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
                           {inv.payment_method}
@@ -478,7 +478,7 @@ export function CustomerAccountDialog({
                     </TableCell>
                     <TableCell className="font-mono text-xs">{p.receipt_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(p.created_at).toLocaleString()}
+                      {fmtDateTime(p.created_at)}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">

@@ -64,8 +64,8 @@ function CashFlowOverview() {
     setTo(format(new Date(), "yyyy-MM-dd"));
   };
 
-  const dayStart = `${from}T00:00:00`;
-  const dayEnd = `${to}T23:59:59`;
+  const dayStart = new Date(`${from}T00:00:00`).toISOString();
+  const dayEnd = new Date(`${to}T23:59:59.999`).toISOString();
 
   const salesIncome = useQuery({
     queryKey: ["cf-sales-income", factoryId, from, to],

@@ -264,7 +264,7 @@ function AdminDashboard({ factoryId }: { factoryId: string }) {
   const monthProfit = profitOf(monthTotals);
   const [chartMetric, setChartMetric] = useState<ChartMetric>("sales");
   const chartData = lastSevenDays().map((day) => ({
-    date: format(new Date(day + "T00:00:00"), "MMM d"),
+    date: format(new Date(day + "T00:00:00"), "dd/MM"),
     total: metricOf(finance.data?.[day] ?? EMPTY_DAY, chartMetric),
   }));
   const chartOption = CHART_METRICS.find((m) => m.key === chartMetric)!;

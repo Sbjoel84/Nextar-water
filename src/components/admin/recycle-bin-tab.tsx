@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { matchesSearch } from "@/lib/search";
 import { purgeRecycleBin, purgeRecycleBinNow, RECYCLE_BIN_RETENTION_DAYS } from "@/lib/recycle-bin";
 import { RefId } from "@/components/shared/ref-id";
+import { fmtDateTime } from "@/lib/format";
 
 type BinRow = {
   id: string;
@@ -243,7 +244,7 @@ export function RecycleBinTab() {
                       {r.reason ?? "—"}
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(r.deleted_at).toLocaleString()}
+                      {fmtDateTime(r.deleted_at)}
                       {r.deleted_by && (
                         <div className="text-muted-foreground">
                           by {deleters.data?.[r.deleted_by] ?? "…"}

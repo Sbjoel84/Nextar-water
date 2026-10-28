@@ -17,7 +17,7 @@ import {
 } from "@/lib/finance-summary";
 import { generateStatementPdf, type StatementSection } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,10 +65,7 @@ function periodBounds(key: PeriodKey, from: string, to: string) {
             ? dayKey(startOfYear(now))
             : from;
   const end = key === "custom" ? to : today;
-  const label =
-    start === end
-      ? format(new Date(`${start}T00:00:00`), "d MMM yyyy")
-      : `${format(new Date(`${start}T00:00:00`), "d MMM yyyy")} – ${format(new Date(`${end}T00:00:00`), "d MMM yyyy")}`;
+  const label = start === end ? fmtDate(start) : `${fmtDate(start)} – ${fmtDate(end)}`;
   return { start, end, label };
 }
 
@@ -187,8 +184,8 @@ async function operationsSections(
           .from("sales_returns")
           .select("quantity_returned")
           .eq("factory_id", factoryId)
-          .gte("received_at", `${start}T00:00:00`)
-          .lte("received_at", `${end}T23:59:59.999`)
+          .gte("received_at", new Date(`${start}T00:00:00`).toISOString())
+          .lte("received_at", new Date(`${end}T23:59:59.999`).toISOString())
           .order("id")
           .range(a, b) as any,
     ),
@@ -199,8 +196,8 @@ async function operationsSections(
           .select("quantity_ordered,unit_cost")
           .eq("factory_id", factoryId)
           .neq("status", "cancelled")
-          .gte("issued_at", `${start}T00:00:00`)
-          .lte("issued_at", `${end}T23:59:59.999`)
+          .gte("issued_at", new Date(`${start}T00:00:00`).toISOString())
+          .lte("issued_at", new Date(`${end}T23:59:59.999`).toISOString())
           .order("id")
           .range(a, b) as any,
     ),

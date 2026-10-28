@@ -8,7 +8,7 @@ import { useFactorySettings } from "@/lib/use-factory";
 import { dayKey, fetchAll, sum } from "@/lib/metrics";
 import { generateSalesReportPdf, pdfMoney, type SalesReportTransaction } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
-import { num } from "@/lib/format";
+import { num, fmtDate } from "@/lib/format";
 import { customerTypeLabel } from "@/components/sales/confirm-sale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,10 +45,7 @@ function periodBounds(key: PeriodKey, from: string, to: string) {
             ? dayKey(startOfYear(now))
             : from;
   const end = key === "custom" ? to : today;
-  const label =
-    start === end
-      ? format(new Date(`${start}T00:00:00`), "d MMM yyyy")
-      : `${format(new Date(`${start}T00:00:00`), "d MMM yyyy")} – ${format(new Date(`${end}T00:00:00`), "d MMM yyyy")}`;
+  const label = start === end ? fmtDate(start) : `${fmtDate(start)} – ${fmtDate(end)}`;
   return { start, end, label };
 }
 

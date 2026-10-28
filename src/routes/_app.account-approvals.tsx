@@ -61,6 +61,7 @@ import {
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/account-approvals")({
   head: () => ({
@@ -289,7 +290,7 @@ export function AccountApprovalsPage() {
     id ? (factories.data?.find((f) => f.id === id)?.name ?? "—") : "—";
   const lastLoginLabel = (id: string) => {
     const v = lastLogins.data?.get(id);
-    return v ? new Date(v).toLocaleString() : "Never";
+    return v ? fmtDateTime(v) : "Never";
   };
 
   return (
@@ -386,7 +387,7 @@ export function AccountApprovalsPage() {
                       {a.created_by ? "Admin-created" : "Self-registered"}
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(a.created_at).toLocaleDateString()}
+                      {fmtDate(a.created_at)}
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap">
                       {lastLoginLabel(a.id)}
@@ -545,7 +546,7 @@ export function AccountApprovalsPage() {
               </div>
               <div>
                 <span className="text-muted-foreground">Created date:</span>{" "}
-                {new Date(detail.created_at).toLocaleString()}
+                {fmtDateTime(detail.created_at)}
               </div>
               <div>
                 <span className="text-muted-foreground">Last login:</span>{" "}
@@ -560,14 +561,14 @@ export function AccountApprovalsPage() {
               {detail.approved_at && (
                 <div className="col-span-2">
                   <span className="text-muted-foreground">Approved:</span>{" "}
-                  {new Date(detail.approved_at).toLocaleString()}
+                  {fmtDateTime(detail.approved_at)}
                 </div>
               )}
               {detail.rejected_at && (
                 <>
                   <div className="col-span-2">
                     <span className="text-muted-foreground">Rejected:</span>{" "}
-                    {new Date(detail.rejected_at).toLocaleString()}
+                    {fmtDateTime(detail.rejected_at)}
                   </div>
                   <div className="col-span-2">
                     <span className="text-muted-foreground">Reason:</span> {detail.rejected_reason}

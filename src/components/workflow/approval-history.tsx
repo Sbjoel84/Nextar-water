@@ -7,6 +7,7 @@ import {
 import type { ModuleKey } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
 import { History } from "lucide-react";
+import { fmtDateTime } from "@/lib/format";
 
 const ACTION_TONE: Record<string, string> = {
   submit: "bg-blue-100 text-blue-700",
@@ -69,9 +70,7 @@ export function ApprovalHistory({
                     ? `${WORKFLOW_STATUS_LABELS[h.from_status]} → ${WORKFLOW_STATUS_LABELS[h.to_status]}`
                     : WORKFLOW_STATUS_LABELS[h.to_status]}
                 </span>
-                <span className="text-muted-foreground">
-                  {new Date(h.created_at).toLocaleString()}
-                </span>
+                <span className="text-muted-foreground">{fmtDateTime(h.created_at)}</span>
               </div>
               {h.comment && <p className="mt-0.5 text-muted-foreground">"{h.comment}"</p>}
             </li>

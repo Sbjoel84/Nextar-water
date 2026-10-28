@@ -49,7 +49,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
-import { money } from "@/lib/format";
+import { money, fmtDate } from "@/lib/format";
 import { EXPENSES_CASH_IN_CATEGORY, SALES_CASH_OUT, fetchAll, paymentCounts } from "@/lib/metrics";
 import { toast } from "sonner";
 import { generateReceiptPdf } from "@/lib/pdf";
@@ -612,7 +612,7 @@ function LedgerPage() {
                     <RefId id={r.id} />
                   </TableCell>
                   <TableCell className="font-mono text-xs">{r.number}</TableCell>
-                  <TableCell>{r.date}</TableCell>
+                  <TableCell>{fmtDate(r.date)}</TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -720,7 +720,7 @@ function LedgerPage() {
             </DialogHeader>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <span className="text-muted-foreground">Date:</span> {detailTarget.date}
+                <span className="text-muted-foreground">Date:</span> {fmtDate(detailTarget.date)}
               </div>
               <div>
                 <span className="text-muted-foreground">Type:</span>{" "}
@@ -850,7 +850,7 @@ function NewPaymentDialog({
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [remarks, setRemarks] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [addingCustomer, setAddingCustomer] = useState(false);
   // Customers added from this dialog, shown until the list refetches.
   const [added, setAdded] = useState<Customer[]>([]);
@@ -1197,7 +1197,7 @@ function CashOutDialog({
 function TransactionForm({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
   const [type, setType] = useState<TxType>("receipt");
   const [category, setCategory] = useState("other_income");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");

@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate } from "@/lib/format";
 import {
   buildDisplayRows,
   type AccountSummary,
@@ -132,9 +132,7 @@ export function AccountLedgerTable({
             <TableCell>
               <RefId id={r.key.replace(/^pending-/, "")} />
             </TableCell>
-            <TableCell className="whitespace-nowrap">
-              {new Date(r.date).toLocaleDateString()}
-            </TableCell>
+            <TableCell className="whitespace-nowrap">{fmtDate(r.date)}</TableCell>
             {!compact && <TableCell className="font-mono text-xs">{r.reference}</TableCell>}
             <TableCell>
               {r.description}

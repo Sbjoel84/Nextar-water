@@ -28,7 +28,7 @@ WITH plan(table_name, action) AS (
     'rep_remittances','rep_return_items','rep_returns','rep_stock','rep_stock_movements',
     'role_grant_requests','sale_items','sales','sales_returns','staff_deductions','staff_loan_repayments',
     'staff_loans','stock_adjustment_requests','stock_dispatch_items','stock_dispatches',
-    'workflow_approval_history'
+    'workflow_approval_history','proposal_messages','proposals','updates'
   ]) AS t
   UNION ALL
   SELECT t, 'KEEP' FROM unnest(ARRAY[

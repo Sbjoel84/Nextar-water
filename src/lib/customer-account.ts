@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAll } from "@/lib/metrics";
-import { money } from "@/lib/format";
+import { money, fmtDate } from "@/lib/format";
 
 // Customer account = the append-only ledger (customer_account_transactions)
 // plus the summary view built on it. These tables/views were added after the
@@ -474,7 +474,6 @@ export const STATEMENT_COLUMNS = [
   { key: "debt_balance", label: "Debt balance" },
 ] as const;
 
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB");
 const plain = (v: number | null) => (v === null ? "" : v.toFixed(2));
 
 // Plain numbers (no currency symbol) so the CSV opens cleanly in a spreadsheet.

@@ -6,7 +6,7 @@ import { RequireAccess } from "@/components/layout/require-access";
 import { usePermissions } from "@/lib/permissions";
 import { useFactoryId } from "@/lib/use-factory";
 import { useHydratedFactoryCode } from "@/lib/factory-store";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate, fmtDateTime } from "@/lib/format";
 import { logAudit } from "@/lib/audit";
 import { WORKFLOW_STATUS_LABELS, type WorkflowStatus } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -530,7 +530,7 @@ function CostingPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs whitespace-nowrap">
-                            {new Date(s.created_at).toLocaleDateString()}
+                            {fmtDate(s.created_at)}
                           </TableCell>
                           <TableCell>
                             {s.status === "pending_approval" && (
@@ -605,7 +605,7 @@ function CostingPage() {
                             <TableCell>{s.products?.name ?? "—"}</TableCell>
                             <TableCell className="text-right">{money(s.cost_per_pack)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">
-                              {new Date(s.created_at).toLocaleString()}
+                              {fmtDateTime(s.created_at)}
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-1">

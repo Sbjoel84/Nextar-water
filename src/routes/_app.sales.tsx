@@ -55,7 +55,7 @@ import {
   Send,
   AlertTriangle,
 } from "lucide-react";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDateTime, fmtDate } from "@/lib/format";
 import { toast } from "sonner";
 import { generateInvoicePdf } from "@/lib/pdf";
 import { openSaleInvoice } from "@/lib/sale-invoice";
@@ -677,14 +677,14 @@ function SalesPage() {
                         </TableCell>
                         <TableCell className="font-mono text-xs">{s.invoice_number}</TableCell>
                         <TableCell className="whitespace-nowrap">
-                          {new Date(s.created_at).toLocaleString()}
+                          {fmtDateTime(s.created_at)}
                           {/* sale_date is a business/backdating field, separate
                           from when the record was actually entered — flag it
                           only when it doesn't match, instead of always
                           showing two dates for the common case. */}
                           {s.sale_date !== new Date(s.created_at).toLocaleDateString("en-CA") && (
                             <div className="text-xs text-muted-foreground">
-                              Recorded for {s.sale_date}
+                              Recorded for {fmtDate(s.sale_date)}
                             </div>
                           )}
                         </TableCell>
@@ -1264,7 +1264,7 @@ export function PosDialog({
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [saleDate, setSaleDate] = useState<string>(
-    () => editingSale?.sale_date ?? new Date().toISOString().slice(0, 10),
+    () => editingSale?.sale_date ?? new Date().toLocaleDateString("en-CA"),
   );
   const [customerId, setCustomerId] = useState<string>(
     editingSale?.customer_id ?? presetCustomerId ?? "walkin",

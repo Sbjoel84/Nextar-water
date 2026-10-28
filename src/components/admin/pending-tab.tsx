@@ -34,6 +34,7 @@ import { Check, X, UserCheck } from "lucide-react";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDate } from "@/lib/format";
 
 export function PendingTab() {
   const [q, setQ] = useSearchQuery();
@@ -94,7 +95,7 @@ export function PendingTab() {
                     <TableCell>{a.department ?? "—"}</TableCell>
                     <TableCell className="text-xs">{roleLabel(a.role_requested)}</TableCell>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(a.created_at).toLocaleDateString()}
+                      {fmtDate(a.created_at)}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">

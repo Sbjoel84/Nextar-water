@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Ban, Undo2, Loader2, Trash2 } from "lucide-react";
-import { num } from "@/lib/format";
+import { num, fmtDate, fmtDateTime } from "@/lib/format";
 import { toast } from "sonner";
 import { logAudit } from "@/lib/audit";
 import { QuickAddProductDialog, ADD_NEW_ITEM } from "@/components/shared/quick-add-item";
@@ -230,6 +230,19 @@ function SalesReturnsPage() {
     },
   });
 
+  // The period picked on the stock summary narrows the returns list too. A
+  // search looks across every return, like the Sales page.
+  const visibleReturns = useMemo(() => {
+    const rows = list.data ?? [];
+    if (q.trim()) return rows.filter((x) => matchesSearch(q, x));
+    const start = new Date(stockBounds.start).getTime();
+    const end = new Date(stockBounds.end).getTime();
+    return rows.filter((x) => {
+      const t = new Date(x.received_at).getTime();
+      return t >= start && t <= end;
+    });
+  }, [list.data, q, stockBounds]);
+
   const stockSummary = useQuery({
     queryKey: ["stock-movement-summary", factoryId, stockBounds.start, stockBounds.end],
     enabled: !!factoryId,
@@ -365,7 +378,10 @@ function SalesReturnsPage() {
 
       <Card className="rounded-2xl">
         <CardHeader>
-          <CardTitle>Returns</CardTitle>
+          <CardTitle>
+            Returns ·{" "}
+            {q.trim() ? "Search results" : RANGES.find((r) => r.key === stockRange)?.label}
+          </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <SearchBox value={q} onChange={setQ} className="mb-3" />
@@ -387,79 +403,81 @@ function SalesReturnsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(list.data ?? [])
-                .filter((x) => matchesSearch(q, x))
-                .map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <RefId id={row.id} />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{row.return_number}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(row.received_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="font-medium">{row.products?.name ?? "—"}</TableCell>
-                    <TableCell>{row.customers?.name ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {row.sales?.invoice_number ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {num(Number(row.quantity_returned))} {row.unit}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.accepted_quantity != null ? num(Number(row.accepted_quantity)) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.damaged_quantity > 0 ? num(Number(row.damaged_quantity)) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.rejected_quantity > 0 ? num(Number(row.rejected_quantity)) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadge(row.status)} className="capitalize">
-                        {row.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {row.status === "received" &&
-                          inspectPerm &&
-                          row.received_by !== currentUser.data && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Inspect"
-                              onClick={() => setInspectTarget(row)}
-                            >
-                              <Undo2 className="h-4 w-4 text-warning" />
-                            </Button>
-                          )}
-                        {row.status === "received" && cancelPerm && (
+              {visibleReturns.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <RefId id={row.id} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{row.return_number}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    {fmtDate(row.received_at)}
+                  </TableCell>
+                  <TableCell className="font-medium">{row.products?.name ?? "—"}</TableCell>
+                  <TableCell>{row.customers?.name ?? "—"}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {row.sales?.invoice_number ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {num(Number(row.quantity_returned))} {row.unit}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.accepted_quantity != null ? num(Number(row.accepted_quantity)) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.damaged_quantity > 0 ? num(Number(row.damaged_quantity)) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.rejected_quantity > 0 ? num(Number(row.rejected_quantity)) : "—"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadge(row.status)} className="capitalize">
+                      {row.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      {row.status === "received" &&
+                        inspectPerm &&
+                        row.received_by !== currentUser.data && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            title="Cancel"
-                            onClick={() => setCancelTarget(row)}
+                            title="Inspect"
+                            onClick={() => setInspectTarget(row)}
                           >
-                            <Ban className="h-4 w-4 text-destructive" />
+                            <Undo2 className="h-4 w-4 text-warning" />
                           </Button>
                         )}
+                      {row.status === "received" && cancelPerm && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="View"
-                          onClick={() => setDetailTarget(row)}
+                          title="Cancel"
+                          onClick={() => setCancelTarget(row)}
                         >
-                          <Eye className="h-4 w-4" />
+                          <Ban className="h-4 w-4 text-destructive" />
                         </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              {(list.data ?? []).length === 0 && (
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="View"
+                        onClick={() => setDetailTarget(row)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {visibleReturns.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
-                    No sales returns logged yet.
+                    {(list.data ?? []).length === 0
+                      ? "No sales returns logged yet."
+                      : q.trim()
+                        ? "No returns match your search."
+                        : "No returns in this period."}
                   </TableCell>
                 </TableRow>
               )}
@@ -887,8 +905,7 @@ function DetailDialog({ row }: { row: ReturnRow }) {
             </Badge>
           </div>
           <div>
-            <span className="text-muted-foreground">Received:</span>{" "}
-            {new Date(row.received_at).toLocaleString()}
+            <span className="text-muted-foreground">Received:</span> {fmtDateTime(row.received_at)}
           </div>
           {row.status === "completed" && (
             <>
@@ -906,7 +923,7 @@ function DetailDialog({ row }: { row: ReturnRow }) {
               </div>
               <div>
                 <span className="text-muted-foreground">Inspected:</span>{" "}
-                {row.inspected_at ? new Date(row.inspected_at).toLocaleString() : "—"}
+                {row.inspected_at ? fmtDateTime(row.inspected_at) : "—"}
               </div>
             </>
           )}

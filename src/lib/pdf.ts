@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { money } from "./format";
+import { fmtDate, fmtDateTime, fmtIfDate } from "@/lib/format";
 
 export type InvoiceItem = {
   name: string;
@@ -244,7 +245,7 @@ export async function generateInvoicePdf(
     if (data.is_pr) centered("NO CHARGE", 9, true, 12);
     y += 2;
     left(`Invoice: ${data.invoice_number}`);
-    left(`Date: ${data.sale_date}`);
+    left(`Date: ${fmtDate(data.sale_date)}`);
     y -= 2;
     rule(true);
 
@@ -343,7 +344,7 @@ export async function generateReceiptPdf(
   doc.text("RECEIPT", 555, top, { align: "right" });
   doc.setFontSize(10);
   doc.text(`# ${opts.receipt_number}`, 555, top + 16, { align: "right" });
-  doc.text(`Date: ${opts.payment_date}`, 555, top + 30, { align: "right" });
+  doc.text(`Date: ${fmtDate(opts.payment_date)}`, 555, top + 30, { align: "right" });
 
   doc.setFontSize(11);
   let y = top + 80;
@@ -418,7 +419,7 @@ export async function generateProductionSlipPdf(
   doc.text("PRODUCTION REPORT", 380, top, { align: "right" });
   doc.setFontSize(10);
   doc.text(`# ${opts.production_number}`, 380, top + 16, { align: "right" });
-  doc.text(`Date: ${opts.production_date}`, 380, top + 30, { align: "right" });
+  doc.text(`Date: ${fmtDate(opts.production_date)}`, 380, top + 30, { align: "right" });
 
   doc.setFontSize(11);
   let y = top + 80;
@@ -456,7 +457,7 @@ export async function generateProductionSlipPdf(
     y += 16;
     doc.setFontSize(10);
     const confRows: [string, string][] = [
-      ["Confirmed on", new Date(opts.confirmed_at).toLocaleString()],
+      ["Confirmed on", fmtDateTime(opts.confirmed_at)],
       ["Accepted", opts.accepted_quantity != null ? `${opts.accepted_quantity} ${opts.unit}` : "—"],
       ["Damaged", opts.damaged_quantity ? `${opts.damaged_quantity} ${opts.unit}` : "—"],
       ["Rejected", opts.rejected_quantity ? `${opts.rejected_quantity} ${opts.unit}` : "—"],
@@ -566,7 +567,7 @@ export async function generateDebtStatementPdf(
       startY: y,
       head: [["Date", "Amount", "Method", "Received by"]],
       body: opts.payments.map((p) => [
-        p.payment_date,
+        fmtDate(p.payment_date),
         money(p.amount, currency),
         p.payment_method,
         p.received_by || "—",
@@ -710,7 +711,7 @@ export async function generateExpenseVoucherPdf(
   doc.setFontSize(10);
   if (opts.receipt_number)
     doc.text(`Ref: ${opts.receipt_number}`, 380, top + 16, { align: "right" });
-  doc.text(`Date: ${opts.expense_date}`, 380, top + 30, { align: "right" });
+  doc.text(`Date: ${fmtDate(opts.expense_date)}`, 380, top + 30, { align: "right" });
 
   doc.setFontSize(11);
   let y = top + 80;
@@ -798,7 +799,8 @@ export async function generatePayslipPdf(
   doc.text("PAYSLIP", 555, top, { align: "right" });
   doc.setFontSize(10);
   doc.text(`Period: ${opts.period}`, 555, top + 18, { align: "right" });
-  if (opts.payment_date) doc.text(`Paid: ${opts.payment_date}`, 555, top + 32, { align: "right" });
+  if (opts.payment_date)
+    doc.text(`Paid: ${fmtDate(opts.payment_date)}`, 555, top + 32, { align: "right" });
 
   doc.setFontSize(11);
   doc.text("Employee", 40, top + 60);
@@ -930,13 +932,10 @@ export async function generateProductionRequestPdf(
     ["Quantity requested", `${opts.quantity_requested} ${opts.unit}`],
     ["Approval status", opts.approval_status.toUpperCase()],
     ["Approved by", opts.approved_by_name || "—"],
-    [
-      "Approval date/time",
-      opts.approval_date ? new Date(opts.approval_date).toLocaleString() : "—",
-    ],
+    ["Approval date/time", opts.approval_date ? fmtDateTime(opts.approval_date) : "—"],
     ["Materials issued", opts.materials_issued ? "Yes" : "No"],
     ["Issued by", opts.issued_by_name || "—"],
-    ["Issued date/time", opts.issued_at ? new Date(opts.issued_at).toLocaleString() : "—"],
+    ["Issued date/time", opts.issued_at ? fmtDateTime(opts.issued_at) : "—"],
     ["Production status", opts.production_status.replace(/_/g, " ").toUpperCase()],
   ];
   headerRows.forEach(([l, v]) => {
@@ -1074,7 +1073,7 @@ export async function generatePurchaseOrderPdf(
   // @ts-expect-error autoTable augments doc
   let endY: number = doc.lastAutoTable.finalY + 20;
   doc.setFontSize(10);
-  doc.text(`Expected delivery: ${opts.expected_delivery_date ?? "—"}`, 40, endY);
+  doc.text(`Expected delivery: ${fmtDate(opts.expected_delivery_date)}`, 40, endY);
   endY += 16;
   doc.text(`Issued by: ${opts.issued_by_name}`, 40, endY);
   endY += 16;
@@ -1113,13 +1112,15 @@ export async function generateReportPdf(
   doc.text(title, 40, y);
   y += 16;
   doc.setFontSize(9);
-  doc.text(`Generated ${new Date().toLocaleString()}`, 40, y);
+  doc.text(`Generated ${fmtDateTime(new Date())}`, 40, y);
   y += 16;
 
   autoTable(doc, {
     startY: y,
     head: [columns.map((c) => c.label)],
-    body: rows.map((r) => columns.map((c) => (r[c.key] == null ? "—" : String(r[c.key])))),
+    body: rows.map((r) =>
+      columns.map((c) => (r[c.key] == null ? "—" : String(fmtIfDate(r[c.key])))),
+    ),
     styles: { fontSize: 8 },
     headStyles: { fillColor: [30, 41, 59] },
   });
@@ -1163,7 +1164,7 @@ export async function generateStatementPdf(
   y += 14;
   doc.setFontSize(8);
   doc.setTextColor(110);
-  doc.text(`Generated ${new Date().toLocaleString()}`, 40, y);
+  doc.text(`Generated ${fmtDateTime(new Date())}`, 40, y);
   doc.setTextColor(0);
   y += 14;
 
@@ -1256,7 +1257,7 @@ export async function generateSalesReportPdf(
   y += 14;
   doc.setFontSize(8);
   doc.setTextColor(110);
-  doc.text(`Generated ${new Date().toLocaleString()}`, 40, y);
+  doc.text(`Generated ${fmtDateTime(new Date())}`, 40, y);
   doc.setTextColor(0);
   y += 14;
 
@@ -1307,7 +1308,7 @@ export async function generateSalesReportPdf(
     body:
       opts.transactions.length > 0
         ? opts.transactions.map((t) => [
-            t.sale_date,
+            fmtDate(t.sale_date),
             t.invoice_number,
             t.customer,
             t.is_pr ? `${t.customer_type} (PR)` : t.customer_type,
@@ -1369,7 +1370,7 @@ export async function generateCustomerStatementPdf(
   doc.text("CUSTOMER ACCOUNT STATEMENT", right, top, { align: "right" });
   doc.setFontSize(9);
   doc.text(`Period: ${opts.periodLabel}`, right, top + 14, { align: "right" });
-  doc.text(`Generated ${new Date().toLocaleString()}`, right, top + 26, { align: "right" });
+  doc.text(`Generated ${fmtDateTime(new Date())}`, right, top + 26, { align: "right" });
 
   let y = top + 52;
   doc.setFontSize(11);
@@ -1405,7 +1406,7 @@ export async function generateCustomerStatementPdf(
   doc.setFont("helvetica", "normal");
   y += 4 * 14 + 14;
 
-  const dateStr = (iso: string) => new Date(iso).toLocaleDateString("en-GB");
+  const dateStr = fmtDate;
   const body: string[][] = [];
   if (opts.statement.range.from) {
     body.push([
@@ -1679,7 +1680,7 @@ export async function generateGoodsReceivedNotePdf(
   doc.setFontSize(9);
   doc.text("Expiry Date", left + 420, y);
   doc.setFontSize(10);
-  doc.text(opts.expiry_date || "DD / MM / YYYY", left + 420, y + 14);
+  doc.text(opts.expiry_date ? fmtDate(opts.expiry_date) : "DD / MM / YYYY", left + 420, y + 14);
   y += 34;
 
   section("DISCREPANCIES / OBSERVATIONS");

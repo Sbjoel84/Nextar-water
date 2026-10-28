@@ -41,7 +41,7 @@ import {
   GoodsReceivedNoteFormDialog,
   GoodsReceivedNotesTable,
 } from "@/components/suppliers/goods-received-notes";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate } from "@/lib/format";
 import { toast } from "sonner";
 import { requestDelete } from "@/lib/request-delete";
 import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
@@ -556,7 +556,7 @@ function SupplierProfileDialog({
                   <TableCell>
                     <RefId id={p.id} />
                   </TableCell>
-                  <TableCell>{new Date(p.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>{fmtDate(p.created_at)}</TableCell>
                   <TableCell>{p.raw_materials?.name ?? "—"}</TableCell>
                   <TableCell className="text-right">
                     {num(Number(p.quantity))} {p.raw_materials?.unit ?? ""}

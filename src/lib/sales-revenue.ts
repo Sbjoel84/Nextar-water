@@ -107,7 +107,7 @@ export function dailyAccumulated(
     running += b.revenue;
     return {
       key,
-      label: format(new Date(`${key}T00:00:00`), "MMM d"),
+      label: format(new Date(`${key}T00:00:00`), "dd/MM/yyyy"),
       salesCount: b.count,
       revenue: b.revenue,
       accumulated: running,

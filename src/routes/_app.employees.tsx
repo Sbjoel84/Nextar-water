@@ -895,7 +895,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
 
   // ---- loan form ----
   const [principal, setPrincipal] = useState(0);
-  const [disbursedOn, setDisbursedOn] = useState(new Date().toISOString().slice(0, 10));
+  const [disbursedOn, setDisbursedOn] = useState(new Date().toLocaleDateString("en-CA"));
   const [repayType, setRepayType] = useState<"one_time" | "installment">("one_time");
   const [instMode, setInstMode] = useState<"amount" | "months">("amount");
   const [instAmount, setInstAmount] = useState(0);

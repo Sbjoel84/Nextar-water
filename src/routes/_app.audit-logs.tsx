@@ -28,6 +28,7 @@ import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { refHex, uuidPrefix, uuidRange } from "@/lib/ref";
 import { auditRecordLabel, RECORD_LABEL_KEYS } from "@/lib/audit";
 import { RefId } from "@/components/shared/ref-id";
+import { fmtDateTime } from "@/lib/format";
 
 // Everything that touches a customer's advance / debt account. The quick
 // filter below narrows the trail to exactly these, server-side, so it isn't
@@ -361,7 +362,7 @@ export function AuditLogsPage() {
                     <RefId id={l.id} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(l.created_at).toLocaleString()}
+                    {fmtDateTime(l.created_at)}
                   </TableCell>
                   <TableCell>
                     {l.user_id ? (
@@ -451,7 +452,7 @@ export function AuditLogsPage() {
                   Record ID <RefId id={detail.entity_id} />
                 </span>
               )}
-              <span>{new Date(detail.created_at).toLocaleString()}</span>
+              <span>{fmtDateTime(detail.created_at)}</span>
               <span>By {userName(detail.user_id)}</span>
               {detail.ip_address && <span>IP {detail.ip_address}</span>}
             </div>
@@ -503,7 +504,7 @@ function FieldValue({ value }: { value: unknown }) {
     if (UUID_VALUE_RE.test(value)) return <RefId id={value} className="px-0" />;
     if (ISO_TS_RE.test(value)) {
       const d = new Date(value);
-      if (!Number.isNaN(d.getTime())) return <>{d.toLocaleString()}</>;
+      if (!Number.isNaN(d.getTime())) return <>{fmtDateTime(d)}</>;
     }
     return <span className="whitespace-pre-wrap break-words">{value}</span>;
   }
@@ -710,9 +711,7 @@ function RecordHistoryDialog({
                     {actionLabel(e.action)}
                   </Badge>
                   <span className="font-medium">{userName(e.user_id)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(e.created_at).toLocaleString()}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{fmtDateTime(e.created_at)}</span>
                   {e.ip_address && (
                     <span className="text-xs text-muted-foreground">· {e.ip_address}</span>
                   )}

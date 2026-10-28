@@ -42,6 +42,7 @@ import { RequestDeleteDialog } from "@/components/shared/request-delete-dialog";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDate } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/logistics")({
   head: () => ({ meta: [{ title: "Logistics — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -402,7 +403,7 @@ function LogisticsPage() {
                         <TableCell>{d.drivers?.full_name ?? "—"}</TableCell>
                         <TableCell>{d.delivery_routes?.name ?? "—"}</TableCell>
                         <TableCell className="text-xs whitespace-nowrap">
-                          {new Date(d.scheduled_date).toLocaleDateString()}
+                          {fmtDate(d.scheduled_date)}
                         </TableCell>
                         <TableCell>
                           <Badge variant={statusVariant(d.status)} className="capitalize">

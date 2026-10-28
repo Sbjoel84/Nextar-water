@@ -563,7 +563,7 @@ function ApprovePayrollDialog({ row, onDone }: { row: PayrollRow; onDone: () => 
 }
 
 function PostPayrollDialog({ row, onDone }: { row: PayrollRow; onDone: () => void }) {
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(new Date().toLocaleDateString("en-CA"));
 
   const submit = useMutation({
     mutationFn: async () => {

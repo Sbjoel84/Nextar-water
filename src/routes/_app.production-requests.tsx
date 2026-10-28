@@ -58,7 +58,7 @@ import {
   Sparkles,
   ChevronsUpDown,
 } from "lucide-react";
-import { num } from "@/lib/format";
+import { num, fmtDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { generateProductionRequestPdf } from "@/lib/pdf";
@@ -208,7 +208,7 @@ function ProductionRequestsPage() {
           logo_url: settings.data?.logo_url,
         },
         request_number: row.request_number,
-        request_date: new Date(row.request_date).toLocaleString(),
+        request_date: fmtDateTime(row.request_date),
         requested_by_name: row.requested_by_name,
         department: row.department,
         product_name: row.products?.name ?? "—",
@@ -304,7 +304,7 @@ function ProductionRequestsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-xs">{row.request_number}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(row.request_date).toLocaleString()}
+                      {fmtDateTime(row.request_date)}
                     </TableCell>
                     <TableCell>{row.requested_by_name}</TableCell>
                     <TableCell>{row.department ?? "—"}</TableCell>
@@ -1105,7 +1105,7 @@ function DetailDialog({
           </div>
           <div>
             <span className="text-muted-foreground">Requested:</span>{" "}
-            {new Date(row.request_date).toLocaleString()}
+            {fmtDateTime(row.request_date)}
           </div>
           <div>
             <span className="text-muted-foreground">Approval:</span>{" "}
@@ -1119,7 +1119,7 @@ function DetailDialog({
           </div>
           <div>
             <span className="text-muted-foreground">Approval date:</span>{" "}
-            {row.approval_date ? new Date(row.approval_date).toLocaleString() : "—"}
+            {row.approval_date ? fmtDateTime(row.approval_date) : "—"}
           </div>
           <div>
             <span className="text-muted-foreground">Materials issued:</span>{" "}

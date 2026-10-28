@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate, fmtDateTime } from "@/lib/format";
 import { isLowStock } from "@/lib/metrics";
 import { toast } from "sonner";
 import { requestDelete } from "@/lib/request-delete";
@@ -655,7 +655,7 @@ function FinishedGoodsPage() {
         ["Selling price", money(Number(p.unit_price), settings.data?.currency ?? "NGN")],
       ],
       movements: (data ?? []).map((mv: any) => ({
-        date: new Date(mv.created_at).toLocaleDateString(),
+        date: fmtDate(mv.created_at),
         type: mv.movement_type,
         quantity: Number(mv.quantity),
         reference: mv.reference,
@@ -942,7 +942,7 @@ function FinishedGoodsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {new Date(a.submitted_at).toLocaleString()}
+                          {fmtDateTime(a.submitted_at)}
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-1">
@@ -1050,7 +1050,7 @@ function FinishedGoodsPage() {
                           {num(Number(b.quantity_produced))} {b.products?.unit ?? b.unit}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {new Date(b.created_at).toLocaleString()}
+                          {fmtDateTime(b.created_at)}
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-1">
@@ -1163,7 +1163,7 @@ function FinishedGoodsPage() {
                         <TableCell className="text-xs text-muted-foreground">
                           {c.requested_by_name ?? "—"}
                           <br />
-                          {new Date(c.requested_at).toLocaleString()}
+                          {fmtDateTime(c.requested_at)}
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-1">
@@ -1247,7 +1247,7 @@ function FinishedGoodsPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{d.reason ?? "—"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {new Date(d.created_at).toLocaleDateString()}
+                        {fmtDate(d.created_at)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -2044,7 +2044,7 @@ function HistoryDialog({ product }: { product: Product }) {
               <TableCell>
                 <RefId id={m.id} />
               </TableCell>
-              <TableCell>{new Date(m.created_at).toLocaleString()}</TableCell>
+              <TableCell>{fmtDateTime(m.created_at)}</TableCell>
               <TableCell>
                 <Badge variant={movementBadge(m.movement_type)} className="capitalize">
                   {m.movement_type.replace(/_/g, " ")}
@@ -2089,7 +2089,7 @@ function HistoryDialog({ product }: { product: Product }) {
               <TableCell>
                 <RefId id={h.id} />
               </TableCell>
-              <TableCell>{new Date(h.effective_date).toLocaleString()}</TableCell>
+              <TableCell>{fmtDateTime(h.effective_date)}</TableCell>
               <TableCell className="text-right text-muted-foreground">
                 {h.previous_price === null ? "—" : money(Number(h.previous_price))}
               </TableCell>

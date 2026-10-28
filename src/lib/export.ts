@@ -1,3 +1,5 @@
+import { fmtIfDate } from "@/lib/format";
+
 export type ReportColumn = { key: string; label: string };
 
 function downloadBlob(filename: string, content: string, mimeType: string) {
@@ -18,7 +20,8 @@ function downloadBlob(filename: string, content: string, mimeType: string) {
 const FORMULA_START = /^[=+\-@\t\r]/;
 const PLAIN_NUMBER = /^[+-]?\d+(\.\d+)?$/;
 
-export function csvCell(value: unknown): string {
+export function csvCell(raw: unknown): string {
+  const value = fmtIfDate(raw);
   let s = value == null ? "" : String(value);
   if (typeof value === "string" && FORMULA_START.test(s) && !PLAIN_NUMBER.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -55,7 +58,10 @@ export function exportExcel(
 ) {
   const head = columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("");
   const body = rows
-    .map((r) => `<tr>${columns.map((c) => `<td>${escapeHtml(r[c.key])}</td>`).join("")}</tr>`)
+    .map(
+      (r) =>
+        `<tr>${columns.map((c) => `<td>${escapeHtml(fmtIfDate(r[c.key]))}</td>`).join("")}</tr>`,
+    )
     .join("");
   const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8">
     <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>

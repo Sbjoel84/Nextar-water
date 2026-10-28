@@ -48,6 +48,7 @@ import { Eye, EyeOff, RefreshCw, Copy, KeyRound, Trash2, Pencil, ShieldCheck } f
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDateTime } from "@/lib/format";
 
 const statusVariant = (status: string): "default" | "secondary" | "outline" | "destructive" => {
   if (status === "active") return "secondary";
@@ -81,7 +82,7 @@ export function UsersTab() {
 
   const lastLoginLabel = (id: string) => {
     const v = lastLogins.data?.get(id);
-    return v ? new Date(v).toLocaleString() : "Never";
+    return v ? fmtDateTime(v) : "Never";
   };
 
   const rows = (accounts.data ?? []).filter((a) => a.status !== "pending");

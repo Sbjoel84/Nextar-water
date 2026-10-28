@@ -46,7 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { money } from "@/lib/format";
+import { money, fmtDate } from "@/lib/format";
 import { financeSummary, profitOf } from "@/lib/finance-summary";
 import {
   TrendingUp,
@@ -385,7 +385,7 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
   // Same records as the CSV, opened as a PDF in a new tab to view, print or save.
   const previewRecordsPdf = () =>
     generateReportPdf(
-      `Payment Channels ${from} to ${to}${channelFilter === "all" ? "" : ` (${channelLabel(channelFilter)})`}`,
+      `Payment Channels ${fmtDate(from)} to ${fmtDate(to)}${channelFilter === "all" ? "" : ` (${channelLabel(channelFilter)})`}`,
       recordColumns,
       [
         ...recordRows().map((r) => ({

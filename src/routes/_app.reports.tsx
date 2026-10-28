@@ -52,6 +52,7 @@ import {
   startOfYear,
   format,
 } from "date-fns";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/reports")({
   head: () => ({ meta: [{ title: "Reports — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -128,13 +129,14 @@ function rangeBounds(
     const y = subDays(now, 1);
     return { start: startOfDay(y).toISOString(), end: endOfDay(y).toISOString() };
   }
-  if (key === "daily") return { start: startOfDay(now).toISOString(), end: null };
+  if (key === "daily")
+    return { start: new Date(now.getTime() - 86_400_000).toISOString(), end: null };
   if (key === "weekly") return { start: startOfWeek(now).toISOString(), end: null };
   if (key === "monthly") return { start: startOfMonth(now).toISOString(), end: null };
   if (key === "yearly") return { start: startOfYear(now).toISOString(), end: null };
   if (key === "custom")
     return {
-      start: from ? new Date(from).toISOString() : null,
+      start: from ? new Date(from + "T00:00:00").toISOString() : null,
       end: to ? new Date(to + "T23:59:59").toISOString() : null,
     };
   return { start: null, end: null };
@@ -216,10 +218,16 @@ async function fetchReport(
     };
   }
 
+  // *_date columns are plain calendar dates. Postgres casts a timestamp
+  // literal to the column's type, so "today" sent as 2026-10-27T23:00:00Z
+  // (local midnight in UTC+1) became 27 Oct and pulled in yesterday's rows.
+  // Compare those columns against local day keys instead.
+  const isDateColumn = dateField.endsWith("_date");
+  const bound = (iso: string) => (isDateColumn ? dayKey(new Date(iso)) : iso);
   const applyRange = <T,>(q: T): T => {
     let query = q as any;
-    if (start) query = query.gte(dateField, start);
-    if (end) query = query.lte(dateField, end);
+    if (start) query = query.gte(dateField, bound(start));
+    if (end) query = query.lte(dateField, bound(end));
     return query;
   };
 
@@ -283,7 +291,7 @@ async function fetchReport(
         rows: (data ?? []).map((r: any) => ({
           ...r,
           product: r.products?.name ?? "—",
-          created_at: new Date(r.created_at).toLocaleString(),
+          created_at: fmtDateTime(r.created_at),
           status: String(r.status ?? "").replace(/_/g, " "),
         })),
       };
@@ -310,7 +318,7 @@ async function fetchReport(
         rows: (data ?? []).map((r: any) => ({
           ...r,
           product: r.products?.name ?? "—",
-          created_at: new Date(r.created_at).toLocaleString(),
+          created_at: fmtDateTime(r.created_at),
         })),
       };
     }
@@ -339,7 +347,7 @@ async function fetchReport(
         rows: (data ?? []).map((r: any) => ({
           ...r,
           material: r.raw_materials?.name ?? "—",
-          created_at: new Date(r.created_at).toLocaleString(),
+          created_at: fmtDateTime(r.created_at),
         })),
       };
     }
@@ -371,7 +379,7 @@ async function fetchReport(
           ...r,
           material: r.raw_materials?.name ?? "—",
           supplier: r.suppliers?.name ?? "—",
-          issued_at: new Date(r.issued_at).toLocaleDateString(),
+          issued_at: fmtDate(r.issued_at),
         })),
       };
     }
@@ -401,7 +409,7 @@ async function fetchReport(
         rows: (data ?? []).map((r: any) => ({
           ...r,
           item: r.products?.name ?? r.raw_materials?.name ?? "—",
-          created_at: new Date(r.created_at).toLocaleString(),
+          created_at: fmtDateTime(r.created_at),
         })),
       };
     }
@@ -435,7 +443,7 @@ async function fetchReport(
           product: r.products?.name ?? "—",
           customer: r.customers?.name ?? "—",
           invoice: r.sales?.invoice_number ?? "—",
-          received_at: new Date(r.received_at).toLocaleDateString(),
+          received_at: fmtDate(r.received_at),
         })),
       };
     }
@@ -517,7 +525,7 @@ async function fetchReport(
           ...r,
           customer: r.customers?.name ?? "—",
           invoice: r.sales?.invoice_number ?? "—",
-          created_at: new Date(r.created_at).toLocaleDateString(),
+          created_at: fmtDate(r.created_at),
         })),
       };
     }

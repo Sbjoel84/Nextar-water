@@ -7,7 +7,7 @@ import { salePosition, useCustomerAccount } from "@/lib/customer-account";
 import { openSaleInvoice } from "@/lib/sale-invoice";
 import { logAudit } from "@/lib/audit";
 import { fetchAll } from "@/lib/metrics";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDateTime, fmtDate } from "@/lib/format";
 import { matchesSearch } from "@/lib/search";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -277,7 +277,7 @@ export function ConfirmSaleDialog({
         <div className="rounded-md bg-muted/30 p-3 text-sm">
           <div className="flex flex-wrap justify-between gap-2">
             <span className="font-mono">{sale.invoice_number}</span>
-            <span>{sale.sale_date}</span>
+            <span>{fmtDate(sale.sale_date)}</span>
           </div>
           <div className="mt-1 font-medium">
             {sale.customer_name ?? "Walk-in"}{" "}
@@ -657,9 +657,7 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
                       <RefId id={s.id} />
                     </TableCell>
                     <TableCell className="font-mono text-xs">{s.invoice_number}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {new Date(s.created_at).toLocaleString()}
-                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{fmtDateTime(s.created_at)}</TableCell>
                     <TableCell>
                       <div className="font-medium">{s.customer_name ?? "Walk-in"}</div>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">

@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePermissions, useMyRoles } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { useCustomerAccount } from "@/lib/customer-account";
-import { money } from "@/lib/format";
+import { money, fmtDate } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -473,7 +473,7 @@ export function AccountAdjustmentsCard({
                       <RefId id={r.id} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {new Date(r.submitted_at).toLocaleDateString()}
+                      {fmtDate(r.submitted_at)}
                     </TableCell>
                     {!customerId && (
                       <TableCell className="font-medium">{r.customers?.name ?? "—"}</TableCell>

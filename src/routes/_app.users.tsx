@@ -54,6 +54,7 @@ import { toast } from "sonner";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/users")({
   head: () => ({
@@ -317,7 +318,7 @@ export function UsersPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {new Date(r.requested_at).toLocaleString()}
+                          {fmtDateTime(r.requested_at)}
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-1">

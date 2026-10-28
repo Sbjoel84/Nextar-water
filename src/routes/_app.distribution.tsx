@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Pencil, Undo2, Ban, Eye, Loader2, Send, FileDown } from "lucide-react";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate } from "@/lib/format";
 import { exportCsv } from "@/lib/export";
 import { toast } from "sonner";
 import { logAudit } from "@/lib/audit";
@@ -583,7 +583,7 @@ function DispatchesTab({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{d.dispatch_number}</TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(d.dispatch_date).toLocaleDateString()}
+                    {fmtDate(d.dispatch_date)}
                   </TableCell>
                   <TableCell className="font-medium">{d.sales_reps?.full_name ?? "—"}</TableCell>
                   <TableCell className="text-right">
@@ -799,7 +799,7 @@ function NewDispatchDialog({
   onDone: () => void;
 }) {
   const [repId, setRepId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [vehicleId, setVehicleId] = useState("none");
   const [driverId, setDriverId] = useState("none");
   const [routeId, setRouteId] = useState("none");
@@ -1075,7 +1075,7 @@ function ReturnsTab({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(r.return_date).toLocaleDateString()}
+                    {fmtDate(r.return_date)}
                   </TableCell>
                   <TableCell className="font-medium">{r.sales_reps?.full_name ?? "—"}</TableCell>
                   <TableCell className="text-right">{r.rep_return_items?.length ?? 0}</TableCell>
@@ -1172,7 +1172,7 @@ function LogReturnDialog({
   onDone: () => void;
 }) {
   const [repId, setRepId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([{ product_id: "", quantity: 0 }]);
 
@@ -1495,7 +1495,7 @@ function RemittancesTab({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{r.remittance_number}</TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(r.remittance_date).toLocaleDateString()}
+                    {fmtDate(r.remittance_date)}
                   </TableCell>
                   <TableCell className="font-medium">{r.sales_reps?.full_name ?? "—"}</TableCell>
                   <TableCell className="capitalize">{r.payment_method}</TableCell>
@@ -1542,7 +1542,7 @@ function RemittanceDialog({
   const [repId, setRepId] = useState("");
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState("cash");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [remarks, setRemarks] = useState("");
 
   const submit = useMutation({

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import { refHex, shortRef, uuidPrefix, uuidRange } from "@/lib/ref";
 import { auditRecordLabel, RECORD_LABEL_KEYS } from "@/lib/audit";
+import { fmtDate } from "@/lib/format";
 
 type Hit = { key: string; label: string; sub: string | null; to: string; q: string };
 
@@ -106,7 +107,7 @@ const SOURCES: Source[] = [
     columns: ["receipt_number", "remarks"],
     select: "id,receipt_number,payment_date,amount",
     to: "/cash-ledger/ledger",
-    toHit: (r) => ({ label: r.receipt_number, sub: r.payment_date, q: r.receipt_number }),
+    toHit: (r) => ({ label: r.receipt_number, sub: fmtDate(r.payment_date), q: r.receipt_number }),
   },
   {
     group: "Production",
@@ -117,7 +118,7 @@ const SOURCES: Source[] = [
     to: "/production",
     toHit: (r) => ({
       label: r.production_number ?? r.batch_number ?? "Production batch",
-      sub: r.production_date,
+      sub: fmtDate(r.production_date),
       q: r.production_number ?? r.batch_number ?? "",
     }),
   },
@@ -130,7 +131,7 @@ const SOURCES: Source[] = [
     to: "/production-requests",
     toHit: (r) => ({
       label: r.request_number ?? r.po_number ?? "Request",
-      sub: r.request_date,
+      sub: fmtDate(r.request_date),
       q: r.request_number ?? r.po_number ?? "",
     }),
   },
@@ -178,7 +179,7 @@ const SOURCES: Source[] = [
     to: "/logistics",
     toHit: (r) => ({
       label: r.delivery_number ?? "Delivery",
-      sub: r.scheduled_date,
+      sub: fmtDate(r.scheduled_date),
       q: r.delivery_number ?? "",
     }),
   },
@@ -191,7 +192,7 @@ const SOURCES: Source[] = [
     to: "/distribution",
     toHit: (r) => ({
       label: r.dispatch_number ?? "Dispatch",
-      sub: r.dispatch_date,
+      sub: fmtDate(r.dispatch_date),
       q: r.dispatch_number ?? "",
     }),
   },
@@ -282,7 +283,7 @@ async function searchTrail(term: string, hex: string | null) {
         sub: [
           deleted ? "Deleted" : r.action.replace(/_/g, " "),
           r.entity?.replace(/_/g, " "),
-          new Date(r.created_at).toLocaleDateString(),
+          fmtDate(r.created_at),
         ]
           .filter(Boolean)
           .join(" · "),

@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { fmtDateTime } from "@/lib/format";
 
 type DeleteRequestRow = {
   id: string;
@@ -171,7 +172,7 @@ export function DeleteRequestsTab() {
                       {requesterNames.data?.[r.requested_by] ?? "—"}
                     </TableCell>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(r.requested_at).toLocaleString()}
+                      {fmtDateTime(r.requested_at)}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">

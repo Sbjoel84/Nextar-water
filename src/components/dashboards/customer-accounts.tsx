@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { fetchAll, sum } from "@/lib/metrics";
 import { exportCsv } from "@/lib/export";
-import { money } from "@/lib/format";
+import { money, fmtDate } from "@/lib/format";
 import type { AccountSummary } from "@/lib/customer-account";
 import { AccountStatusBadge } from "@/components/sales/account-ledger";
 import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
@@ -114,9 +114,7 @@ export function CustomerAccountsCard({ factoryId }: { factoryId: string }) {
         status: r.account_status,
         goods: r.goods_collected.toFixed(2),
         advance_paid: r.total_advance_paid.toFixed(2),
-        last: r.last_transaction_at
-          ? new Date(r.last_transaction_at).toLocaleDateString("en-GB")
-          : "",
+        last: r.last_transaction_at ? fmtDate(r.last_transaction_at) : "",
       })),
     );
 
@@ -229,9 +227,7 @@ export function CustomerAccountsCard({ factoryId }: { factoryId: string }) {
                     <AccountStatusBadge status={r.account_status} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {r.last_transaction_at
-                      ? new Date(r.last_transaction_at).toLocaleDateString()
-                      : "—"}
+                    {r.last_transaction_at ? fmtDate(r.last_transaction_at) : "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

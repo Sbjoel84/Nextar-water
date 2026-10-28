@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Workflow, History } from "lucide-react";
 import { RefId } from "@/components/shared/ref-id";
+import { fmtDateTime } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/approval-workflows")({
   head: () => ({
@@ -226,7 +227,7 @@ export function ApprovalWorkflowsPage() {
                       <RefId id={h.id} />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(h.created_at).toLocaleString()}
+                      {fmtDateTime(h.created_at)}
                     </TableCell>
                     <TableCell>{MODULE_LABELS[h.module as ModuleKey] ?? h.module}</TableCell>
                     <TableCell>

@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { money } from "@/lib/format";
+import { money, fmtDateTime, fmtDate } from "@/lib/format";
 import {
   COUNTED_STATUSES,
   EXPENSES_CASH_IN_CATEGORY,
@@ -694,7 +694,7 @@ function ExpensesPage() {
                       <RefId id={row.expense?.id ?? row.cashIn?.id} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {row.date}
+                      {fmtDate(row.date)}
                     </TableCell>
                     <TableCell className="min-w-[280px]">
                       <div className="font-medium">{row.details}</div>
@@ -1522,9 +1522,7 @@ function EntryForm({
             {editingExpense && editingExpense.status !== "pending_approval" && (
               <p className="text-xs text-muted-foreground">
                 Status: {editingExpense.status.replace(/_/g, " ")}
-                {editingExpense.approved_at
-                  ? ` · ${new Date(editingExpense.approved_at).toLocaleString()}`
-                  : ""}
+                {editingExpense.approved_at ? ` · ${fmtDateTime(editingExpense.approved_at)}` : ""}
               </p>
             )}
             <div>

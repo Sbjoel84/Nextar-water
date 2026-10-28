@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { money } from "@/lib/format";
+import { money, fmtDate, fmtDateTime } from "@/lib/format";
 import { toast } from "sonner";
 import {
   HandCoins,
@@ -271,7 +271,7 @@ function DebtsPage() {
             logo_url: settings.data?.logo_url,
           },
           receipt_number: res.receipt_number,
-          payment_date: new Date().toISOString().slice(0, 10),
+          payment_date: new Date().toLocaleDateString("en-CA"),
           customer_name: input.debt.customers?.name,
           invoice_number: input.debt.sales?.invoice_number,
           amount: input.amount,
@@ -472,7 +472,7 @@ function DebtsPage() {
                   <TableCell>
                     <RefId id={d.id} />
                   </TableCell>
-                  <TableCell>{new Date(d.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>{fmtDate(d.created_at)}</TableCell>
                   <TableCell>{d.customers?.name ?? "—"}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {d.customers?.phone ?? "—"}
@@ -752,7 +752,7 @@ function DebtDetailDialog({
                     <RefId id={p.id} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {new Date(p.created_at).toLocaleString()}
+                    {fmtDateTime(p.created_at)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="capitalize">

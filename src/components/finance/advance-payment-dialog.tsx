@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAccount } from "@/lib/customer-account";
-import { money } from "@/lib/format";
+import { money, fmtDate } from "@/lib/format";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,13 @@ type Customer = { id: string; name: string; phone: string | null; address: strin
 // Records money a registered customer pays. The server settles the customer's
 // oldest debts first and only the excess becomes advance (record_customer_advance
 // -> _customer_receive_money), so this dialog shows that split before saving.
-export function AdvancePaymentDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
+export function AdvancePaymentDialog({
+  factoryId,
+  onDone,
+}: {
+  factoryId: string;
+  onDone: () => void;
+}) {
   const customers = useQuery({
     queryKey: ["customers-brief", factoryId],
     queryFn: async () => {
@@ -186,7 +192,7 @@ export function AdvancePaymentDialog({ factoryId, onDone }: { factoryId: string;
           </div>
           <div>
             <Label>Date</Label>
-            <Input value={new Date().toLocaleDateString()} disabled />
+            <Input value={fmtDate(new Date())} disabled />
           </div>
         </div>
         <div>

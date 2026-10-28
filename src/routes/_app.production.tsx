@@ -60,7 +60,7 @@ import {
   Trash2,
   Clock,
 } from "lucide-react";
-import { money, num } from "@/lib/format";
+import { money, num, fmtDate } from "@/lib/format";
 import { toast } from "sonner";
 import { generateProductionSlipPdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
@@ -389,7 +389,7 @@ function ProductionPage() {
                       <RefId id={row.id} />
                     </TableCell>
                     <TableCell className="font-mono text-xs">{row.production_number}</TableCell>
-                    <TableCell>{row.production_date}</TableCell>
+                    <TableCell>{fmtDate(row.production_date)}</TableCell>
                     <TableCell className="font-medium">
                       {row.products?.name ?? "—"}
                       {row.packaging_unit && row.packaging_quantity != null && (
@@ -727,7 +727,7 @@ function ProductionForm({
   const [productId, setProductId] = useState(editing?.product_id ?? "");
   const [addingProduct, setAddingProduct] = useState(false);
   const [date, setDate] = useState(
-    editing?.production_date ?? new Date().toISOString().slice(0, 10),
+    editing?.production_date ?? new Date().toLocaleDateString("en-CA"),
   );
   const [quantityUnit, setQuantityUnit] = useState(editing?.packaging_unit ?? "__base__");
   const [quantity, setQuantity] = useState(
