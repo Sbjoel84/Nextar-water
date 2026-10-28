@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/employees")({
   head: () => ({ meta: [{ title: "Employees — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -567,7 +568,7 @@ function EmployeeForm({
           </div>
           <div>
             <Label>Date of birth</Label>
-            <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+            <DateInput value={dob} onChange={(e) => setDob(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -623,11 +624,7 @@ function EmployeeForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Employment date</Label>
-            <Input
-              type="date"
-              value={employmentDate}
-              onChange={(e) => setEmploymentDate(e.target.value)}
-            />
+            <DateInput value={employmentDate} onChange={(e) => setEmploymentDate(e.target.value)} />
           </div>
           <div>
             <Label>Status</Label>
@@ -1120,11 +1117,7 @@ function LoansDeductionsDialog({ employee, factoryId }: { employee: Employee; fa
                 </div>
                 <div>
                   <Label className="text-xs">Disbursed on</Label>
-                  <Input
-                    type="date"
-                    value={disbursedOn}
-                    onChange={(e) => setDisbursedOn(e.target.value)}
-                  />
+                  <DateInput value={disbursedOn} onChange={(e) => setDisbursedOn(e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

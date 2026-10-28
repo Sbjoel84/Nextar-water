@@ -48,6 +48,7 @@ import { RefId } from "@/components/shared/ref-id";
 import { DistributorsTab } from "@/components/distribution/distributors-tab";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/distribution")({
   head: () => ({
@@ -867,7 +868,7 @@ function NewDispatchDialog({
           </div>
           <div>
             <Label>Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
@@ -1243,7 +1244,7 @@ function LogReturnDialog({
           </div>
           <div>
             <Label>Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
         <div>
@@ -1614,7 +1615,7 @@ function RemittanceDialog({
         </div>
         <div>
           <Label>Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <div>
           <Label>Remarks</Label>
@@ -1717,11 +1718,11 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
           </div>
           <div>
             <Label>From</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
             <Label>To</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           {s && (
             <Button

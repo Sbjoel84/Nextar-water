@@ -84,6 +84,7 @@ import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { fetchAll } from "@/lib/metrics";
 import { RefId } from "@/components/shared/ref-id";
 import { SalesRevenuePanel } from "@/components/sales/sales-revenue";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/sales")({
   head: () => ({ meta: [{ title: "Sales & POS — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -565,8 +566,7 @@ function SalesPage() {
               </SelectContent>
             </Select>
             {period === "day" && (
-              <Input
-                type="date"
+              <DateInput
                 className="h-9 w-auto"
                 value={summaryDay}
                 onChange={(e) => e.target.value && setSummaryDay(e.target.value)}
@@ -1825,7 +1825,7 @@ export function PosDialog({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Sales date</Label>
-              <Input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
+              <DateInput value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
             </div>
             <div>
               <Label className="text-xs">Customer</Label>

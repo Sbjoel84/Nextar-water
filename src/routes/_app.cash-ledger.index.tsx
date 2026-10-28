@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -31,6 +30,7 @@ import { money } from "@/lib/format";
 import { COUNTED_STATUSES, UNCOUNTED_PAYMENT_FILTER, fetchAll } from "@/lib/metrics";
 import { TrendingDown, Banknote, CreditCard, Landmark, Coins } from "lucide-react";
 import { startOfWeek, startOfMonth, startOfYear, format } from "date-fns";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/cash-ledger/")({
   head: () => ({
@@ -281,21 +281,11 @@ function CashFlowOverview() {
         <CardContent className="p-4 flex flex-wrap items-end gap-3">
           <div>
             <Label>From</Label>
-            <Input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-40"
-            />
+            <DateInput value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
           </div>
           <div>
             <Label>To</Label>
-            <Input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="w-40"
-            />
+            <DateInput value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
           </div>
           <div className="flex gap-2">
             {PRESETS.map((p) => (

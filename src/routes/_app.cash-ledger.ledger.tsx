@@ -57,6 +57,7 @@ import { logAudit } from "@/lib/audit";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
 import { usePrefillFromProfile } from "@/lib/use-my-profile";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/cash-ledger/ledger")({
   head: () => ({ meta: [{ title: "Cash Ledger — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -937,7 +938,7 @@ function NewPaymentDialog({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
             <Label>Amount</Label>
@@ -1300,7 +1301,7 @@ function TransactionForm({ factoryId, onDone }: { factoryId: string; onDone: () 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
             <Label>Amount</Label>

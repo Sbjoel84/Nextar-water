@@ -29,6 +29,7 @@ import { refHex, uuidPrefix, uuidRange } from "@/lib/ref";
 import { auditRecordLabel, RECORD_LABEL_KEYS } from "@/lib/audit";
 import { RefId } from "@/components/shared/ref-id";
 import { fmtDateTime } from "@/lib/format";
+import { DateInput } from "@/components/shared/date-input";
 
 // Everything that touches a customer's advance / debt account. The quick
 // filter below narrows the trail to exactly these, server-side, so it isn't
@@ -301,16 +302,14 @@ export function AuditLogsPage() {
                 <SelectItem value="customers">Customer accounts only</SelectItem>
               </SelectContent>
             </Select>
-            <Input
-              type="date"
+            <DateInput
               className="h-9 w-[150px]"
               value={from}
               max={to || undefined}
               onChange={(e) => setFrom(e.target.value)}
               aria-label="From date"
             />
-            <Input
-              type="date"
+            <DateInput
               className="h-9 w-[150px]"
               value={to}
               min={from || undefined}

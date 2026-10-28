@@ -42,6 +42,7 @@ import { generatePayslipPdf } from "@/lib/pdf";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/payroll")({
   head: () => ({ meta: [{ title: "Payroll — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -590,7 +591,7 @@ function PostPayrollDialog({ row, onDone }: { row: PayrollRow; onDone: () => voi
         <DeductionBreakdown row={row} />
         <div>
           <Label>Payment date</Label>
-          <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+          <DateInput value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
         </div>
       </div>
       <DialogFooter>

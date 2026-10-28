@@ -19,7 +19,6 @@ import { generateStatementPdf, type StatementSection } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
 import { money, num, fmtDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -29,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateInput } from "@/components/shared/date-input";
 
 export type ExecutiveDoc = "executive" | "pnl";
 
@@ -354,16 +354,11 @@ export function ExecutivePrintDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">From</Label>
-                <Input
-                  type="date"
-                  value={from}
-                  max={to}
-                  onChange={(e) => setFrom(e.target.value)}
-                />
+                <DateInput value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
               </div>
               <div>
                 <Label className="text-xs">To</Label>
-                <Input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+                <DateInput value={to} min={from} onChange={(e) => setTo(e.target.value)} />
               </div>
               {badRange && (
                 <p className="col-span-2 text-xs text-destructive">

@@ -415,7 +415,7 @@ function RawMaterialsPage() {
     },
     onSuccess: (_r, vars) => {
       toast.success(
-        vars.approve ? "Adjustment approved — post it next to apply" : "Adjustment rejected",
+        vars.approve ? "Adjustment approved — stock updated" : "Adjustment rejected",
       );
       invalidateAll();
     },
@@ -428,7 +428,7 @@ function RawMaterialsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Write-off posted");
+      toast.success("Adjustment posted — stock updated");
       invalidateAll();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -944,7 +944,7 @@ function RawMaterialsPage() {
                                 title="Approve"
                                 onClick={() => reviewAdjustment.mutate({ id: a.id, approve: true })}
                               >
-                                <PackagePlus className="h-4 w-4 text-success" />
+                                <Check className="h-4 w-4 text-success" />
                               </Button>
                             )}
                             {a.status === "pending_approval" && approve && !isSelf && (

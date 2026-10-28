@@ -40,6 +40,7 @@ import { num, money } from "@/lib/format";
 import { toast } from "sonner";
 import { generateGoodsReceivedNotePdf } from "@/lib/pdf";
 import { logAudit } from "@/lib/audit";
+import { DateInput } from "@/components/shared/date-input";
 
 // ============================== Types ==============================
 
@@ -754,11 +755,7 @@ export function GoodsReceivedNoteFormDialog({
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
             <Label>Date received</Label>
-            <Input
-              type="date"
-              value={dateReceived}
-              onChange={(e) => setDateReceived(e.target.value)}
-            />
+            <DateInput value={dateReceived} onChange={(e) => setDateReceived(e.target.value)} />
           </div>
           <div>
             <Label>Time received</Label>
@@ -985,11 +982,7 @@ export function GoodsReceivedNoteFormDialog({
             />
             <div>
               <Label>Expiry date</Label>
-              <Input
-                type="date"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-              />
+              <DateInput value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
             </div>
           </div>
         </section>

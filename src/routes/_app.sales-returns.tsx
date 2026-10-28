@@ -7,7 +7,6 @@ import { useFactoryId } from "@/lib/use-factory";
 import { usePermissions } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,6 +50,7 @@ import {
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/sales-returns")({
   head: () => ({
@@ -302,14 +302,12 @@ function SalesReturnsPage() {
             </Select>
             {stockRange === "custom" && (
               <>
-                <Input
-                  type="date"
+                <DateInput
                   className="w-[150px]"
                   value={stockFrom}
                   onChange={(e) => setStockFrom(e.target.value)}
                 />
-                <Input
-                  type="date"
+                <DateInput
                   className="w-[150px]"
                   value={stockTo}
                   onChange={(e) => setStockTo(e.target.value)}

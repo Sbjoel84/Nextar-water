@@ -60,6 +60,7 @@ import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { usePrefillFromProfile } from "@/lib/use-my-profile";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/procurement")({
   head: () => ({
@@ -1198,11 +1199,7 @@ function CreatePoDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Expected delivery date</Label>
-                <Input
-                  type="date"
-                  value={expectedDate}
-                  onChange={(e) => setExpectedDate(e.target.value)}
-                />
+                <DateInput value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
               </div>
               <div>
                 <Label>Issued by</Label>

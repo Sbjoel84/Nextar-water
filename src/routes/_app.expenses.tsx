@@ -72,6 +72,7 @@ import { startOfDay, startOfWeek, startOfMonth, startOfYear, format } from "date
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { RefId } from "@/components/shared/ref-id";
 import { usePrefillFromProfile } from "@/lib/use-my-profile";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/expenses")({
   head: () => ({ meta: [{ title: "Expenses — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -1444,7 +1445,7 @@ function EntryForm({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Expense date</Label>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div>
                 <Label>Category</Label>
@@ -1539,7 +1540,7 @@ function EntryForm({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Date</Label>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
               <div>
                 <Label>Amount</Label>

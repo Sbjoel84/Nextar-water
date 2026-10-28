@@ -580,7 +580,7 @@ function FinishedGoodsPage() {
     },
     onSuccess: (_r, vars) => {
       toast.success(
-        vars.approve ? "Adjustment approved — post it next to apply" : "Adjustment rejected",
+        vars.approve ? "Adjustment approved — stock updated" : "Adjustment rejected",
       );
       invalidateAll();
     },
@@ -593,7 +593,7 @@ function FinishedGoodsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Write-off posted");
+      toast.success("Adjustment posted — stock updated");
       invalidateAll();
     },
     onError: (e: Error) => toast.error(e.message),

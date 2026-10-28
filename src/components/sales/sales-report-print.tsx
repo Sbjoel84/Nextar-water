@@ -11,7 +11,6 @@ import { logAudit } from "@/lib/audit";
 import { num, fmtDate } from "@/lib/format";
 import { customerTypeLabel } from "@/components/sales/confirm-sale";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -21,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateInput } from "@/components/shared/date-input";
 
 type PeriodKey = "today" | "week" | "month" | "year" | "custom";
 const PERIODS: { key: PeriodKey; label: string }[] = [
@@ -226,16 +226,11 @@ export function SalesReportPrintDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">From</Label>
-                <Input
-                  type="date"
-                  value={from}
-                  max={to}
-                  onChange={(e) => setFrom(e.target.value)}
-                />
+                <DateInput value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
               </div>
               <div>
                 <Label className="text-xs">To</Label>
-                <Input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+                <DateInput value={to} min={from} onChange={(e) => setTo(e.target.value)} />
               </div>
               {badRange && (
                 <p className="col-span-2 text-xs text-destructive">

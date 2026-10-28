@@ -9,7 +9,6 @@ import { money, num } from "@/lib/format";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DateInput } from "@/components/shared/date-input";
 
 type Supplied = {
   sale_id: string;
@@ -161,8 +161,7 @@ export function RepActivityCard({ factoryId }: { factoryId: string }) {
             Products supplied to sales-reps and what they bring back at close of business.
           </p>
         </div>
-        <Input
-          type="date"
+        <DateInput
           className="h-9 w-auto"
           value={day}
           onChange={(e) => e.target.value && setDay(e.target.value)}
@@ -576,8 +575,7 @@ function LogRepReturnDialog({
         )}
         <div>
           <Label>Return date</Label>
-          <Input
-            type="date"
+          <DateInput
             className="w-auto"
             value={returnDate}
             max={today}

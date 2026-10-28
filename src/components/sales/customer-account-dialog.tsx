@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -37,6 +36,7 @@ import {
 } from "@/components/sales/account-ledger";
 import { AccountAdjustmentsCard } from "@/components/customers/account-adjustments";
 import { RefId } from "@/components/shared/ref-id";
+import { DateInput } from "@/components/shared/date-input";
 
 type CustomerSaleRow = {
   id: string;
@@ -244,8 +244,7 @@ export function CustomerAccountDialog({
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <Label className="text-xs">From</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={from}
                   max={to || undefined}
                   onChange={(e) => setFrom(e.target.value)}
@@ -253,8 +252,7 @@ export function CustomerAccountDialog({
               </div>
               <div>
                 <Label className="text-xs">To</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={to}
                   min={from || undefined}
                   onChange={(e) => setTo(e.target.value)}

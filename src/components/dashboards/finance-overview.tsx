@@ -29,7 +29,6 @@ import { usePermissions } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -72,6 +71,7 @@ import { MonthlyAccumulatedSalesCard } from "@/components/sales/sales-revenue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { DateInput } from "@/components/shared/date-input";
 
 const PRESETS: { key: string; label: string; from: () => Date }[] = [
   { key: "today", label: "Today", from: () => new Date() },
@@ -434,8 +434,7 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
               </div>
               <div>
                 <Label className="text-xs">From</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={from}
                   max={to}
                   onChange={(e) => {
@@ -446,8 +445,7 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
               </div>
               <div>
                 <Label className="text-xs">To</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={to}
                   min={from}
                   onChange={(e) => {

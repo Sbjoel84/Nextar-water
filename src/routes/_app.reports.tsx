@@ -53,6 +53,7 @@ import {
   format,
 } from "date-fns";
 import { fmtDate, fmtDateTime } from "@/lib/format";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/reports")({
   head: () => ({ meta: [{ title: "Reports — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -826,15 +827,11 @@ function ReportsPage() {
             <>
               <div>
                 <Label className="mb-1 block text-xs">From</Label>
-                <Input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                />
+                <DateInput value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
               </div>
               <div>
                 <Label className="mb-1 block text-xs">To</Label>
-                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+                <DateInput value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
               </div>
             </>
           )}

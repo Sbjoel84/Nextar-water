@@ -43,6 +43,7 @@ import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { fmtDate } from "@/lib/format";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/logistics")({
   head: () => ({ meta: [{ title: "Logistics — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -751,16 +752,14 @@ function LogisticsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Registration expiry</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={vForm.registration_expiry_date}
                   onChange={(e) => setVForm({ ...vForm, registration_expiry_date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Insurance expiry</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={vForm.insurance_expiry_date}
                   onChange={(e) => setVForm({ ...vForm, insurance_expiry_date: e.target.value })}
                 />

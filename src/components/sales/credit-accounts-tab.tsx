@@ -44,6 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DateInput } from "@/components/shared/date-input";
 
 type Kind = "marketer" | "customer";
 type AccountRow = {
@@ -444,8 +445,7 @@ function AddPaymentDialog({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Payment date</Label>
-            <Input
-              type="date"
+            <DateInput
               value={date}
               max={today}
               onChange={(e) => e.target.value && setDate(e.target.value)}

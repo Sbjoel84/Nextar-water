@@ -69,6 +69,7 @@ import { PRODUCT_LINES } from "@/lib/product-lines";
 import { RefId } from "@/components/shared/ref-id";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
+import { DateInput } from "@/components/shared/date-input";
 
 export const Route = createFileRoute("/_app/production")({
   head: () => ({ meta: [{ title: "Production — FMIS" }, { name: "robots", content: "noindex" }] }),
@@ -629,7 +630,7 @@ function CorrectionDialog({
           <>
             <div>
               <Label>Production date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -892,7 +893,7 @@ function ProductionForm({
       <div className="grid gap-3 max-h-[75vh] overflow-y-auto pr-1">
         <div>
           <Label>Production date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         {!editing && eligibleRequests.length > 0 && (
           <div>
