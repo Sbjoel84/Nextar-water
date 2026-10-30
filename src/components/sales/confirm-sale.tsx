@@ -148,6 +148,7 @@ export function PaymentLinesEditor({
 function invalidateAfterConfirm(qc: ReturnType<typeof useQueryClient>) {
   for (const key of [
     "sales-list",
+    "sales-revenue",
     "pending-sales",
     "customer-account",
     "customer-sales-full",

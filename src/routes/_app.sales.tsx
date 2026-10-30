@@ -325,7 +325,15 @@ function SalesPage() {
   // apart, so what went out free is visible without inflating revenue. Same
   // rule as postedSalesRows(): only approved (posted), non-deleted sales count.
   const daySummary = useMemo(() => {
-    const out = { revenue: 0, salesCount: 0, prValue: 0, prCount: 0, prPendingValue: 0 };
+    const out = {
+      revenue: 0,
+      salesCount: 0,
+      pendingValue: 0,
+      pendingCount: 0,
+      prValue: 0,
+      prCount: 0,
+      prPendingValue: 0,
+    };
     for (const s of sales.data ?? []) {
       if (s.deleted_at || !inPeriod(s.sale_date)) continue;
       if (s.is_pr) {
@@ -338,6 +346,9 @@ function SalesPage() {
       } else if (s.status === "posted") {
         out.revenue += Number(s.grand_total ?? 0);
         out.salesCount += 1;
+      } else if (s.status === "pending_approval") {
+        out.pendingValue += Number(s.grand_total ?? 0);
+        out.pendingCount += 1;
       }
     }
     return out;
@@ -585,6 +596,8 @@ function SalesPage() {
                 <div className="mt-1 text-xs text-muted-foreground">
                   {daySummary.salesCount} approved sale{daySummary.salesCount === 1 ? "" : "s"} ·
                   excludes PR
+                  {daySummary.pendingCount > 0 &&
+                    ` · ${money(daySummary.pendingValue)} awaiting confirmation (${daySummary.pendingCount})`}
                 </div>
               </div>
               <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">

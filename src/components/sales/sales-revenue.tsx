@@ -45,12 +45,21 @@ import { money } from "@/lib/format";
 import { exportCsv, exportExcel } from "@/lib/export";
 import { generateReportPdf } from "@/lib/pdf";
 import { useFactorySettings } from "@/lib/use-factory";
-import { dailyAccumulated, monthlyAccumulated, saleAmountRows } from "@/lib/sales-revenue";
+import {
+  dailyAccumulated,
+  monthlyAccumulated,
+  pendingSaleAmountRows,
+  saleAmountRows,
+} from "@/lib/sales-revenue";
 
 const pct = (v: number | null) =>
   v == null ? "—" : `${v >= 0 ? "▲" : "▼"} ${Math.abs(v).toFixed(1)}%`;
 const pctTone = (v: number | null) =>
   v == null ? "text-muted-foreground" : v >= 0 ? "text-success" : "text-destructive";
+
+// " · ₦X awaiting confirmation (n)" — empty when nothing is waiting.
+const awaitingHint = (p: { value: number; count: number }) =>
+  p.count ? ` · ${money(p.value)} awaiting confirmation (${p.count})` : "";
 
 const tooltipStyle = {
   background: "var(--color-card)",
@@ -75,6 +84,12 @@ export function SalesRevenuePanel({ factoryId }: { factoryId: string }) {
     queryKey: ["sales-revenue", "kpi", factoryId, kpiFrom, today],
     queryFn: () => saleAmountRows(factoryId, kpiFrom, today),
   });
+  // Orders posted on this page but not yet confirmed on Finance. They aren't
+  // revenue, so they're shown next to each figure rather than added to it.
+  const pendingRows = useQuery({
+    queryKey: ["sales-revenue", "pending", factoryId, kpiFrom, today],
+    queryFn: () => pendingSaleAmountRows(factoryId, kpiFrom, today),
+  });
   const kpi = useMemo(() => {
     const rows = kpiRows.data ?? [];
     const total = (pred: (d: string) => boolean) =>
@@ -89,7 +104,15 @@ export function SalesRevenuePanel({ factoryId }: { factoryId: string }) {
     const mtd = total((d) => d.startsWith(thisMonth));
     const lastMtd = total((d) => d.startsWith(lastMonth) && d <= lastMonthSamePoint);
     const dayOfMonth = Number(today.slice(8, 10));
+    const pending = pendingRows.data ?? [];
+    const awaiting = (pred: (d: string) => boolean) => {
+      const hit = pending.filter((r) => pred(r.sale_date));
+      return { value: sum(hit, (r) => r.grand_total), count: hit.length };
+    };
     return {
+      pendingToday: awaiting((d) => d === today),
+      pendingMtd: awaiting((d) => d.startsWith(thisMonth)),
+      pendingYtd: awaiting((d) => d.startsWith(String(thisYear))),
       today: total((d) => d === today),
       todayCount: rows.filter((r) => r.sale_date === today).length,
       mtd,
@@ -99,7 +122,7 @@ export function SalesRevenuePanel({ factoryId }: { factoryId: string }) {
       dailyAvg: mtd / dayOfMonth,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kpiRows.data, today]);
+  }, [kpiRows.data, pendingRows.data, today]);
 
   return (
     <div className="space-y-3">
@@ -109,16 +132,17 @@ export function SalesRevenuePanel({ factoryId }: { factoryId: string }) {
           icon={Wallet}
           label="Sales Revenue · Today"
           value={money(kpi.today)}
-          hint={`${kpi.todayCount} approved sale${kpi.todayCount === 1 ? "" : "s"}`}
+          hint={`${kpi.todayCount} approved sale${kpi.todayCount === 1 ? "" : "s"}${awaitingHint(kpi.pendingToday)}`}
         />
         <KPI
           icon={TrendingUp}
           label="Accumulated · This Month"
           value={money(kpi.mtd)}
           hint={
-            kpi.mtdChange == null
+            (kpi.mtdChange == null
               ? `Same point last month: ${money(kpi.lastMtd)}`
-              : `${pct(kpi.mtdChange)} vs same point last month (${money(kpi.lastMtd)})`
+              : `${pct(kpi.mtdChange)} vs same point last month (${money(kpi.lastMtd)})`) +
+            awaitingHint(kpi.pendingMtd)
           }
           tone={kpi.mtdChange == null || kpi.mtdChange >= 0 ? "success" : "destructive"}
         />
@@ -126,7 +150,7 @@ export function SalesRevenuePanel({ factoryId }: { factoryId: string }) {
           icon={CalendarRange}
           label={`Accumulated · ${thisYear} to date`}
           value={money(kpi.ytd)}
-          hint="Jan 1 to today"
+          hint={`Jan 1 to today${awaitingHint(kpi.pendingYtd)}`}
           tone="success"
         />
         <KPI

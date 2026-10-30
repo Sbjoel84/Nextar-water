@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { postedSalesRows } from "@/lib/metric-queries";
+import { pendingSalesRows, postedSalesRows } from "@/lib/metric-queries";
 
 // Sales revenue and month-by-month accumulated (running) totals. Built on
 // postedSalesRows(), so the figures follow the same rule as every other sales
@@ -32,6 +32,12 @@ export type DayTotal = {
 
 export const saleAmountRows = (factoryId: string, fromDay: string, toDay: string) =>
   postedSalesRows(factoryId, "sale_date,grand_total", fromDay, toDay) as Promise<SaleAmountRow[]>;
+
+// Same shape, for orders still awaiting the accountant's confirmation.
+export const pendingSaleAmountRows = (factoryId: string, fromDay: string, toDay: string) =>
+  pendingSalesRows(factoryId, "sale_date,grand_total", fromDay, toDay) as Promise<
+    SaleAmountRow[]
+  >;
 
 const monthKeysBetween = (fromMonth: string, toMonth: string) => {
   const out: string[] = [];

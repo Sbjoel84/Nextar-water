@@ -76,6 +76,32 @@ export function postedSalesRows(
   });
 }
 
+// Orders the sales persons have posted that the accountant hasn't confirmed
+// yet (not soft-deleted, not PR). Not revenue — shown alongside it so the
+// Sales page reflects what's been ordered before Finance confirms it.
+export function pendingSalesRows(
+  factoryId: string,
+  cols: string,
+  fromDay: string,
+  toDay?: string,
+): Promise<any[]> {
+  return fetchAll<any>((a, b) => {
+    let q: any = supabase
+      .from("sales")
+      .select(cols)
+      .eq("factory_id", factoryId)
+      .eq("status", "pending_approval")
+      .is("deleted_at", null)
+      .eq("is_pr", false)
+      .gte("sale_date", fromDay)
+      .order("sale_date")
+      .order("id")
+      .range(a, b);
+    if (toDay) q = q.lte("sale_date", toDay);
+    return q;
+  });
+}
+
 // Money received from customers (register payments, debt repayments, advances).
 export function paymentRows(factoryId: string, fromDay: string, toDay: string) {
   return fetchAll<PaymentRow>(
