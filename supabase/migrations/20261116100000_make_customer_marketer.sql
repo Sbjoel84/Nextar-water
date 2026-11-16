@@ -6,9 +6,9 @@
 --
 --   * a marketer (sales_reps row) with the same name exists ->
 --       link it to this customer. The account the marketer had until now is
---       removed if it has no history; if it does have history, both accounts
---       are kept (this one becomes a marketer account too) and the result says
---       so, since ledgers can't be merged safely.
+--       removed if it has no history; if it does have history it is kept as
+--       an "account only" marketer (ledgers can't be merged safely) and the
+--       result says so.
 --   * no such marketer -> create one, linked to this customer.
 --
 -- Sales, payments, debts and ledger lines stay on the customer they were
@@ -89,20 +89,21 @@ BEGIN
      LIMIT 1;
 
     IF v_other IS NOT NULL AND public._customer_has_activity(v_other) THEN
-      -- Both accounts carry history: keep both, mark this one a marketer.
-      UPDATE customers SET customer_type = 'marketer', registered = true, updated_at = now()
-       WHERE id = v_c.id;
-      RETURN jsonb_build_object('result', 'second_account', 'sales_rep_id', v_rep.id, 'name', v_c.name);
-    END IF;
-
-    IF v_other IS NOT NULL THEN
+      -- Both accounts carry history. The marketer now follows the account the
+      -- user chose (this one); the old one is unlinked but stays a marketer
+      -- account, so its history is still listed and nothing is lost.
+      UPDATE customers SET sales_rep_id = NULL, updated_at = now() WHERE id = v_other;
+    ELSIF v_other IS NOT NULL THEN
       PERFORM public._discard_empty_customer(v_other);
     END IF;
     UPDATE customers
        SET sales_rep_id = v_rep.id, customer_type = 'marketer', registered = true,
            phone = COALESCE(phone, v_rep.phone), updated_at = now()
      WHERE id = v_c.id;
-    RETURN jsonb_build_object('result', 'linked', 'sales_rep_id', v_rep.id, 'name', v_c.name);
+    RETURN jsonb_build_object(
+      'result', CASE WHEN v_other IS NOT NULL AND public._customer_has_activity(v_other)
+                     THEN 'second_account' ELSE 'linked' END,
+      'sales_rep_id', v_rep.id, 'name', v_c.name);
   END IF;
 
   -- No marketer by that name: create one. trg_sync_sales_rep_customer makes

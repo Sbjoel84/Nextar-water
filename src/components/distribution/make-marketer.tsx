@@ -21,7 +21,7 @@ const RESULT_TEXT: Record<MakeResult["result"], (n: string) => string> = {
   linked: (n) => `${n} is now on the marketer list, linked to the existing marketer ${n}`,
   created: (n) => `${n} added to the marketer list`,
   second_account: (n) =>
-    `${n} is now a marketer account. The existing marketer ${n} already has its own history, so both accounts are kept`,
+    `${n} is now the marketer's account. ${n}'s older marketer account also had history, so it is kept and listed as "account only"`,
 };
 
 // Turns a customer record into a marketer's account (make_customer_marketer()):
