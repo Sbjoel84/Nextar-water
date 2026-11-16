@@ -906,12 +906,50 @@ function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: (
   const [search, setSearch] = useState("");
   const [chosen, setChosen] = useState<Set<string> | null>(null);
 
+  // Everyone active in this factory (the page is open to all users).
   const people = useQuery({
     queryKey: ["message-recipients", factoryId],
+    retry: 1,
     queryFn: async () => {
       const { data, error } = await db.rpc("list_message_recipients", { p_factory: factoryId });
-      if (error) throw error;
-      return (data ?? []) as Recipient[];
+      if (!error) return (data ?? []) as Recipient[];
+      // Fallback when the function isn't available: read active users directly.
+      const [{ data: me }, profiles, roles] = await Promise.all([
+        supabase.auth.getUser(),
+        db
+          .from("profiles")
+          .select("id,full_name,email,status,active_factory_id")
+          .eq("status", "active"),
+        db.from("user_roles").select("user_id,role,factory_id"),
+      ]);
+      if (profiles.error) throw error;
+      const roleRows = (roles.data ?? []) as {
+        user_id: string;
+        role: string;
+        factory_id: string | null;
+      }[];
+      return ((profiles.data ?? []) as any[])
+        .filter(
+          (p) =>
+            p.id !== me.user?.id &&
+            (p.active_factory_id === factoryId ||
+              roleRows.some(
+                (r) => r.user_id === p.id && (r.factory_id === factoryId || r.factory_id === null),
+              )),
+        )
+        .map((p) => {
+          const mine = roleRows.filter((r) => r.user_id === p.id).map((r) => r.role);
+          return {
+            id: p.id,
+            full_name: p.full_name || p.email || "Unnamed user",
+            roles: [...new Set(mine)].map((r) => r.replace(/_/g, " ")).join(", "),
+            is_chairman: mine.includes("chairman"),
+          } as Recipient;
+        })
+        .sort(
+          (a, b) =>
+            Number(b.is_chairman) - Number(a.is_chairman) || a.full_name.localeCompare(b.full_name),
+        );
     },
   });
   // The Chairman is picked by default; the sender can add or remove anyone.
@@ -963,9 +1001,55 @@ function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: (
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or role"
           />
+          {selected.size > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {(people.data ?? [])
+                .filter((p) => selected.has(p.id))
+                .map((p) => (
+                  <Badge key={p.id} variant="secondary" className="gap-1">
+                    {p.full_name}
+                    <button
+                      type="button"
+                      className="ml-0.5 opacity-70 hover:opacity-100"
+                      title={`Remove ${p.full_name}`}
+                      onClick={() => toggle(p.id)}
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+            </div>
+          )}
+          {(people.data?.length ?? 0) > 1 && (
+            <div className="flex justify-end gap-2 text-xs">
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setChosen(new Set((people.data ?? []).map((p) => p.id)))}
+              >
+                Select everyone
+              </button>
+              <button
+                type="button"
+                className="text-muted-foreground hover:underline"
+                onClick={() => setChosen(new Set())}
+              >
+                Clear
+              </button>
+            </div>
+          )}
           <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
             {people.isLoading ? (
-              <p className="p-2 text-sm text-muted-foreground">Loading…</p>
+              <p className="p-2 text-sm text-muted-foreground">Loading people…</p>
+            ) : people.isError ? (
+              <div className="space-y-2 p-2 text-sm">
+                <p className="text-destructive">
+                  Couldn't load the list of people: {(people.error as Error).message}
+                </p>
+                <Button size="sm" variant="outline" onClick={() => people.refetch()}>
+                  Try again
+                </Button>
+              </div>
             ) : visible.length === 0 ? (
               <p className="p-2 text-sm text-muted-foreground">No one found.</p>
             ) : (
