@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { startOfMonth, startOfWeek, startOfYear, endOfMonth, subMonths } from "date-fns";
 import { Dialog } from "@/components/ui/dialog";
 import { usePermissions } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
@@ -237,14 +238,6 @@ export function CustomerAccountDialog({
       };
     });
   }, [returns.data, items.data, account.data?.ledger]);
-  const returnTotals = useMemo(
-    () => ({
-      qty: returnRows.reduce((t, r) => t + Number(r.quantity_returned), 0),
-      value: returnRows.reduce((t, r) => t + r.value, 0),
-      awaiting: returnRows.filter((r) => r.status === "received").length,
-    }),
-    [returnRows],
-  );
 
   const summary = account.data?.summary;
   const isMarketer = customer.data?.customer_type === "marketer";
@@ -259,6 +252,53 @@ export function CustomerAccountDialog({
   // Sales awaiting approval belong to "now", so they only appear on an
   // unfiltered statement.
   const shownPending = hasRange ? [] : pendingSales;
+
+  // One period for the whole account: every tab shows what happened in it.
+  const day = (v: string | null | undefined) =>
+    !v ? "" : v.length === 10 ? v : new Date(v).toLocaleDateString("en-CA");
+  const inPeriod = (v: string | null | undefined) => {
+    if (!hasRange || rangeInvalid) return true;
+    const d = day(v);
+    return !!d && (!from || d >= from) && (!to || d <= to);
+  };
+  const ymd = (d: Date) => d.toLocaleDateString("en-CA");
+  const today = ymd(new Date());
+  const PRESETS: { key: string; label: string; range: () => [string, string] }[] = [
+    { key: "today", label: "Today", range: () => [today, today] },
+    { key: "week", label: "This week", range: () => [ymd(startOfWeek(new Date())), today] },
+    { key: "month", label: "This month", range: () => [ymd(startOfMonth(new Date())), today] },
+    {
+      key: "last-month",
+      label: "Last month",
+      range: () => {
+        const m = subMonths(new Date(), 1);
+        return [ymd(startOfMonth(m)), ymd(endOfMonth(m))];
+      },
+    },
+    { key: "year", label: "This year", range: () => [ymd(startOfYear(new Date())), today] },
+  ];
+  const activePreset = PRESETS.find((pr) => {
+    const [f, t] = pr.range();
+    return f === from && t === to;
+  })?.key;
+
+  const invoicesIn = (invoices.data ?? []).filter((inv) => inPeriod(inv.sale_date));
+  const invoiceIdsIn = new Set(invoicesIn.map((i) => i.id));
+  const itemsIn = (items.data ?? []).filter((it) => invoiceIdsIn.has(it.sale_id));
+  const returnsIn = returnRows.filter((r) => inPeriod(r.received_at));
+  const paymentsIn = (payments.data ?? []).filter((p) => inPeriod(p.payment_date || p.created_at));
+  const returnTotals = {
+    qty: returnsIn.reduce((t, r) => t + Number(r.quantity_returned), 0),
+    value: returnsIn.reduce((t, r) => t + r.value, 0),
+    awaiting: returnsIn.filter((r) => r.status === "received").length,
+  };
+  const periodTotals = {
+    supplied: invoicesIn
+      .filter((i) => i.status === "posted" && !i.is_pr)
+      .reduce((t, i) => t + Number(i.grand_total), 0),
+    returned: returnTotals.value,
+    paid: paymentsIn.reduce((t, p) => t + Number(p.amount), 0),
+  };
 
   const exportStatement = async (kind: PdfAction | "csv") => {
     const name = customer.data?.name ?? customerName;
@@ -344,26 +384,35 @@ export function CustomerAccountDialog({
           </p>
         )}
 
-        <Tabs defaultValue="ledger">
-          <TabsList className="h-auto flex-wrap">
-            <TabsTrigger value="ledger">Account Ledger</TabsTrigger>
-            <TabsTrigger value="pending">
-              Awaiting confirmation{pendingSales.length > 0 ? ` (${pendingSales.length})` : ""}
-            </TabsTrigger>
-            <TabsTrigger value="products">
-              {isMarketer ? "Products Supplied" : "Products Purchased"}
-            </TabsTrigger>
-            <TabsTrigger value="invoices">{isMarketer ? "Supplies" : "Invoices"}</TabsTrigger>
-            <TabsTrigger value="returns">
-              Returns{returnRows.length > 0 ? ` (${returnRows.length})` : ""}
-            </TabsTrigger>
-            <TabsTrigger value="payments">Payment History</TabsTrigger>
-            <TabsTrigger value="prices">Special Prices</TabsTrigger>
-            <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="ledger" className="space-y-3">
-            <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-3 rounded-lg border p-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-wrap gap-1">
+              <Button
+                size="sm"
+                variant={!hasRange ? "default" : "outline"}
+                onClick={() => {
+                  setFrom("");
+                  setTo("");
+                }}
+              >
+                All time
+              </Button>
+              {PRESETS.map((pr) => (
+                <Button
+                  key={pr.key}
+                  size="sm"
+                  variant={activePreset === pr.key ? "default" : "outline"}
+                  onClick={() => {
+                    const [f, t] = pr.range();
+                    setFrom(f);
+                    setTo(t);
+                  }}
+                >
+                  {pr.label}
+                </Button>
+              ))}
+            </div>
+            <div className="ml-auto flex flex-wrap items-end gap-2">
               <div>
                 <Label className="text-xs">From</Label>
                 <DateInput
@@ -380,18 +429,60 @@ export function CustomerAccountDialog({
                   onChange={(e) => setTo(e.target.value)}
                 />
               </div>
-              {hasRange && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setFrom("");
-                    setTo("");
-                  }}
-                >
-                  All activity
-                </Button>
-              )}
+            </div>
+          </div>
+          {rangeInvalid ? (
+            <p className="text-xs text-destructive">"From" must be on or before "To".</p>
+          ) : (
+            hasRange && (
+              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div>
+                  <span className="block text-xs text-muted-foreground">
+                    {isMarketer ? "Supplied" : "Purchased"} · {periodLabel(statement.range)}
+                  </span>
+                  <span className="font-semibold">{money(periodTotals.supplied)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-muted-foreground">Returns</span>
+                  <span className="font-semibold">{money(periodTotals.returned)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-muted-foreground">Paid</span>
+                  <span className="font-semibold text-success">{money(periodTotals.paid)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-muted-foreground">Debt at end of period</span>
+                  <span
+                    className={`font-semibold ${statement.closing.debt > 0 ? "text-destructive" : ""}`}
+                  >
+                    {money(statement.closing.debt)}
+                  </span>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+
+        <Tabs defaultValue="ledger">
+          <TabsList className="h-auto flex-wrap">
+            <TabsTrigger value="ledger">Account Ledger</TabsTrigger>
+            <TabsTrigger value="pending">
+              Awaiting confirmation{pendingSales.length > 0 ? ` (${pendingSales.length})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="products">
+              {isMarketer ? "Products Supplied" : "Products Purchased"}
+            </TabsTrigger>
+            <TabsTrigger value="invoices">{isMarketer ? "Supplies" : "Invoices"}</TabsTrigger>
+            <TabsTrigger value="returns">
+              Returns{returnsIn.length > 0 ? ` (${returnsIn.length})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="payments">Payment History</TabsTrigger>
+            <TabsTrigger value="prices">Special Prices</TabsTrigger>
+            <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="ledger" className="space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
               <div className="ml-auto flex gap-2">
                 <Button
                   variant="outline"
@@ -422,10 +513,6 @@ export function CustomerAccountDialog({
                 </Button>
               </div>
             </div>
-            {rangeInvalid && (
-              <p className="text-xs text-destructive">“From” must be on or before “To”.</p>
-            )}
-
             {account.isLoading ? (
               <p className="py-6 text-center text-sm text-muted-foreground">Loading account…</p>
             ) : (
@@ -486,7 +573,7 @@ export function CustomerAccountDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(items.data ?? []).map((it, idx) => {
+                {itemsIn.map((it, idx) => {
                   const inv = invoiceById.get(it.sale_id);
                   return (
                     <TableRow key={`${it.sale_id}-${idx}`}>
@@ -507,10 +594,10 @@ export function CustomerAccountDialog({
                     </TableRow>
                   );
                 })}
-                {(items.data ?? []).length === 0 && (
+                {itemsIn.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
-                      No products purchased yet.
+                      {hasRange ? "Nothing in this period." : "No products purchased yet."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -534,7 +621,7 @@ export function CustomerAccountDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(invoices.data ?? []).map((inv) => {
+                {invoicesIn.map((inv) => {
                   const st = salePaymentStatus(inv);
                   return (
                     <TableRow key={inv.id}>
@@ -568,10 +655,10 @@ export function CustomerAccountDialog({
                     </TableRow>
                   );
                 })}
-                {(invoices.data ?? []).length === 0 && (
+                {invoicesIn.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
-                      No purchases yet.
+                      {hasRange ? "Nothing in this period." : "No purchases yet."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -628,7 +715,7 @@ export function CustomerAccountDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {returnRows.map((r) => (
+                {returnsIn.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
                     <TableCell className="whitespace-nowrap">{fmtDate(r.received_at)}</TableCell>
@@ -666,10 +753,14 @@ export function CustomerAccountDialog({
                     </TableCell>
                   </TableRow>
                 ))}
-                {returnRows.length === 0 && (
+                {returnsIn.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
-                      {returns.isLoading ? "Loading…" : "No returns yet."}
+                      {returns.isLoading
+                        ? "Loading…"
+                        : hasRange
+                          ? "No returns in this period."
+                          : "No returns yet."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -689,7 +780,7 @@ export function CustomerAccountDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(payments.data ?? []).map((p) => (
+                {paymentsIn.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell>
                       <RefId id={p.id} />
@@ -706,10 +797,10 @@ export function CustomerAccountDialog({
                     <TableCell className="text-right">{money(Number(p.amount))}</TableCell>
                   </TableRow>
                 ))}
-                {(payments.data ?? []).length === 0 && (
+                {paymentsIn.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                      No payments yet.
+                      {hasRange ? "No payments in this period." : "No payments yet."}
                     </TableCell>
                   </TableRow>
                 )}
