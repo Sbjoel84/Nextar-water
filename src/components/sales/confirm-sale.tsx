@@ -189,7 +189,7 @@ export function ConfirmSaleDialog({
       const { data, error } = await supabase
         .from("sales")
         .select(
-          "remarks,customer_phone,discount,vat,pending_payments,sale_items(quantity,unit_price,line_total,products(name,unit))",
+          "remarks,customer_phone,discount,vat,pending_payments,sale_items(product_id,quantity,unit_price,line_total,products(name,unit))",
         )
         .eq("id", sale.id)
         .single();
@@ -198,7 +198,61 @@ export function ConfirmSaleDialog({
     },
   });
 
-  const subtotal = Number(sale.subtotal ?? 0);
+  // The customer's own prices (surcharge or special rate), remembered from
+  // earlier confirmations. If the table isn't there yet (migration not run),
+  // prices stay read-only rather than appearing to change and being ignored.
+  const specialPrices = useQuery({
+    queryKey: ["customer-prices", sale.customer_id ?? "none"],
+    retry: false,
+    queryFn: async () => {
+      let q = (supabase as any).from("customer_product_prices").select("product_id,unit_price");
+      q = sale.customer_id
+        ? q.eq("customer_id", sale.customer_id)
+        : q.eq("customer_id", "00000000-0000-0000-0000-000000000000");
+      const { data, error } = await q;
+      if (error) throw error;
+      return new Map<string, number>(
+        ((data ?? []) as { product_id: string; unit_price: number }[]).map((r) => [
+          r.product_id,
+          Number(r.unit_price),
+        ]),
+      );
+    },
+  });
+  const canReprice = !sale.is_pr && specialPrices.isSuccess;
+  // product_id -> the price the accountant is charging this customer.
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [savePrices, setSavePrices] = useState(true);
+  const [pricesReady, setPricesReady] = useState(false);
+  useEffect(() => {
+    if (pricesReady || !detail.data || specialPrices.isLoading) return;
+    const next: Record<string, number> = {};
+    for (const it of (detail.data.sale_items ?? []) as any[]) {
+      next[it.product_id] = specialPrices.data?.get(it.product_id) ?? Number(it.unit_price);
+    }
+    setPrices(next);
+    setPricesReady(true);
+  }, [detail.data, specialPrices.isLoading, specialPrices.data, pricesReady]);
+  const postedPrice = (productId: string) =>
+    Number(
+      ((detail.data?.sale_items ?? []) as any[]).find((it) => it.product_id === productId)
+        ?.unit_price ?? 0,
+    );
+  const priceOf = (it: any) =>
+    canReprice && prices[it.product_id] != null ? prices[it.product_id] : Number(it.unit_price);
+  const changedPrices = canReprice
+    ? Object.entries(prices).filter(([pid, v]) => Math.abs(v - postedPrice(pid)) > 0.001)
+    : [];
+  const invalidPrice = canReprice && Object.values(prices).some((v) => !(v > 0));
+
+  const subtotal = detail.data
+    ? Math.round(
+        ((detail.data.sale_items ?? []) as any[]).reduce(
+          (t, it) => t + Number(it.quantity) * priceOf(it),
+          0,
+        ) * 100,
+      ) / 100
+    : Number(sale.subtotal ?? 0);
   const vatRate = Number(settings.data?.vat_rate ?? 0);
   const [discountInput, setDiscountInput] = useState(0);
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
@@ -256,6 +310,16 @@ export function ConfirmSaleDialog({
           payments: sale.is_pr ? [] : payments.filter((p) => p.amount > 0),
           payment_type: paymentType || null,
           comment: comment || null,
+          // Only lines whose price was changed from what sales posted.
+          ...(changedPrices.length > 0
+            ? {
+                prices: changedPrices.map(([product_id, unit_price]) => ({
+                  product_id,
+                  unit_price,
+                })),
+                save_prices: savePrices && !!sale.customer_id,
+              }
+            : {}),
         } as any,
       });
       if (error) throw error;
@@ -263,6 +327,7 @@ export function ConfirmSaleDialog({
     },
     onSuccess: () => {
       toast.success(`Order ${sale.invoice_number} confirmed — printing receipt`);
+      qc.invalidateQueries({ queryKey: ["customer-prices"] });
       logAudit({ action: "approve", entity: "sales", entityId: sale.id, factoryId });
       invalidateAfterConfirm(qc);
       onDone();
@@ -319,14 +384,52 @@ export function ConfirmSaleDialog({
                     <TableCell className="text-right">
                       {num(Number(it.quantity))} {it.products?.unit ?? ""}
                     </TableCell>
-                    <TableCell className="text-right">{money(Number(it.unit_price))}</TableCell>
-                    <TableCell className="text-right">{money(Number(it.line_total))}</TableCell>
+                    <TableCell className="text-right">
+                      {canReprice ? (
+                        <div className="ml-auto w-32">
+                          <MoneyInput
+                            value={prices[it.product_id] ?? Number(it.unit_price)}
+                            onChange={(v) => setPrices((p) => ({ ...p, [it.product_id]: v }))}
+                          />
+                          <PriceNote
+                            price={prices[it.product_id] ?? Number(it.unit_price)}
+                            regular={Number(it.unit_price)}
+                            special={specialPrices.data?.get(it.product_id)}
+                          />
+                        </div>
+                      ) : (
+                        money(Number(it.unit_price))
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {money(Number(it.quantity) * priceOf(it))}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </div>
+
+        {canReprice && (changedPrices.length > 0 || (specialPrices.data?.size ?? 0) > 0) && (
+          <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            {(specialPrices.data?.size ?? 0) > 0 &&
+              "This customer's special prices are filled in. "}
+            {changedPrices.length > 0 &&
+              `${changedPrices.length} price${changedPrices.length === 1 ? "" : "s"} differ from the regular price.`}
+            {sale.customer_id && changedPrices.length > 0 && (
+              <label className="mt-1.5 flex items-center gap-2 text-foreground">
+                <Checkbox checked={savePrices} onCheckedChange={(v) => setSavePrices(!!v)} />
+                Remember these prices for {sale.customer_name ?? "this customer"}
+              </label>
+            )}
+          </div>
+        )}
+        {!sale.is_pr && specialPrices.isError && (
+          <p className="rounded-md bg-warning/15 px-3 py-2 text-xs text-warning">
+            Customer prices aren't set up on the database yet, so prices can't be changed here.
+          </p>
+        )}
 
         {sale.is_pr ? (
           <p className="rounded-md bg-warning/15 px-3 py-2 text-sm text-warning">
@@ -467,7 +570,8 @@ export function ConfirmSaleDialog({
       <DialogFooter>
         <Button
           className="gap-2"
-          disabled={confirm.isPending || detail.isLoading}
+          disabled={confirm.isPending || detail.isLoading || invalidPrice}
+          title={invalidPrice ? "Every price must be above zero" : undefined}
           onClick={() => confirm.mutate()}
         >
           <Printer className="h-4 w-4" />
@@ -475,6 +579,28 @@ export function ConfirmSaleDialog({
         </Button>
       </DialogFooter>
     </DialogContent>
+  );
+}
+
+// Under a price input: how it compares with the regular price.
+function PriceNote({
+  price,
+  regular,
+  special,
+}: {
+  price: number;
+  regular: number;
+  special: number | undefined;
+}) {
+  const diff = Math.round((price - regular) * 100) / 100;
+  if (diff === 0)
+    return <div className="mt-0.5 text-[10px] text-muted-foreground">Regular price</div>;
+  return (
+    <div className={`mt-0.5 text-[10px] ${diff > 0 ? "text-warning" : "text-success"}`}>
+      {diff > 0 ? "Surcharge +" : "Below regular −"}
+      {money(Math.abs(diff))} · regular {money(regular)}
+      {special != null && Math.abs(special - price) < 0.001 ? " · saved price" : ""}
+    </div>
   );
 }
 

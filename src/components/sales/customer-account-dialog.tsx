@@ -5,6 +5,7 @@ import { usePermissions } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { AddPaymentDialog } from "@/components/sales/credit-accounts-tab";
 import { CustomerPendingOrders } from "@/components/sales/confirm-sale";
+import { CustomerPricesPanel } from "@/components/customers/customer-prices";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -337,6 +338,7 @@ export function CustomerAccountDialog({
               Returns{returnRows.length > 0 ? ` (${returnRows.length})` : ""}
             </TabsTrigger>
             <TabsTrigger value="payments">Payment History</TabsTrigger>
+            <TabsTrigger value="prices">Special Prices</TabsTrigger>
             <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
           </TabsList>
 
@@ -555,6 +557,16 @@ export function CustomerAccountDialog({
                 )}
               </TableBody>
             </Table>
+          </TabsContent>
+
+          <TabsContent value="prices">
+            {factoryId && (
+              <CustomerPricesPanel
+                factoryId={factoryId}
+                customerId={customerId}
+                customerName={customer.data?.name ?? customerName}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="pending">
