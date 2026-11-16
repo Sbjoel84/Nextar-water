@@ -6,6 +6,7 @@ import { usePermissions } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { AddPaymentDialog } from "@/components/sales/credit-accounts-tab";
 import { CustomerPendingOrders } from "@/components/sales/confirm-sale";
+import { openSaleInvoice } from "@/lib/sale-invoice";
 import { CustomerPricesPanel } from "@/components/customers/customer-prices";
 import { useMakeMarketer } from "@/components/distribution/make-marketer";
 import { supabase } from "@/integrations/supabase/client";
@@ -618,6 +619,7 @@ export function CustomerAccountDialog({
                   <TableHead className="text-right">Advance used</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Payment status</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -652,12 +654,24 @@ export function CustomerAccountDialog({
                           {st.label}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-right">
+                        {inv.status === "posted" && settings.data && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Reprint receipt"
+                            onClick={() => openSaleInvoice(inv.id, settings.data!, "print")}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
                 {invoicesIn.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                       {hasRange ? "Nothing in this period." : "No purchases yet."}
                     </TableCell>
                   </TableRow>

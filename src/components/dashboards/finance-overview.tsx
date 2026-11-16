@@ -26,6 +26,7 @@ import { useFactorySettings } from "@/lib/use-factory";
 import { CustomerAccountsCard } from "@/components/dashboards/customer-accounts";
 import { MarketerAccountsCard } from "@/components/finance/marketer-accounts";
 import { ProductsSoldCard } from "@/components/sales/products-sold";
+import { ConfirmedSalesCard } from "@/components/sales/confirmed-sales";
 import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { PendingSalesCard } from "@/components/sales/confirm-sale";
@@ -538,6 +539,7 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
           </Card>
 
           {canConfirmSales && <PendingSalesCard factoryId={factoryId} />}
+          <ConfirmedSalesCard factoryId={factoryId} />
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <KPI
