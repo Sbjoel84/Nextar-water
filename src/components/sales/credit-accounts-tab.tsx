@@ -409,6 +409,10 @@ export function AddPaymentDialog({
           payments: payments.filter((p) => Number(p.amount) > 0),
         },
       });
+      if (error?.message?.includes("Credit account not found"))
+        throw new Error(
+          "Payments for this customer need the latest database update (account payment for any customer).",
+        );
       if (error) throw error;
       return data as { receipt_number?: string; settled_debt?: number; credit_added?: number };
     },
