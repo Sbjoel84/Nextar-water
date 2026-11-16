@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "@/lib/audit";
 import { money } from "@/lib/format";
+import { idMatches, refHex, shortRef } from "@/lib/ref";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -74,6 +76,8 @@ export function AddCustomerAsMarketerDialog({
   onDone: () => void;
 }) {
   const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [running, setRunning] = useState(false);
   const make = useMakeMarketer(factoryId);
 
   const customers = useQuery({
@@ -108,12 +112,40 @@ export function AddCustomerAsMarketerDialog({
     },
   });
 
+  // Several IDs or names can be pasted at once ("#A1E5F64F, #2C535A4B ..."):
+  // a customer matches any one of them.
   const rows = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    return (customers.data ?? []).filter(
-      (c) => !t || c.name.toLowerCase().includes(t) || (c.phone ?? "").includes(t),
+    const terms = q
+      .split(/[s,;]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    if (terms.length === 0) return customers.data ?? [];
+    return (customers.data ?? []).filter((c) =>
+      terms.some((t) => {
+        const hex = refHex(t);
+        if (hex && idMatches(c.id, hex)) return true;
+        return c.name.toLowerCase().includes(t) || (c.phone ?? "").includes(t);
+      }),
     );
   }, [customers.data, q]);
+  const pickedRows = (customers.data ?? []).filter((c) => picked.has(c.id));
+
+  // One at a time, so each customer's result (linked / created) is reported.
+  const makeAll = async () => {
+    setRunning(true);
+    let ok = 0;
+    for (const c of pickedRows) {
+      try {
+        await make.mutateAsync(c.id);
+        ok++;
+      } catch {
+        // useMakeMarketer already showed the error for this customer.
+      }
+    }
+    setRunning(false);
+    setPicked(new Set());
+    if (ok > 0 && ok === pickedRows.length) onDone();
+  };
 
   return (
     <DialogContent className="max-w-lg">
@@ -125,7 +157,11 @@ export function AddCustomerAsMarketerDialog({
           with the same name already exists, the two are linked.
         </DialogDescription>
       </DialogHeader>
-      <Input placeholder="Search customer…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Input
+        placeholder="Search name, phone or ID, e.g. #A1E5F64F (paste several)…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
       <div className="max-h-80 divide-y overflow-y-auto rounded-md border">
         {customers.isLoading ? (
           <p className="p-4 text-center text-sm text-muted-foreground">Loading…</p>
@@ -134,8 +170,24 @@ export function AddCustomerAsMarketerDialog({
         ) : (
           rows.map((c) => (
             <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-              <div>
-                <div className="font-medium">{c.name}</div>
+              <Checkbox
+                checked={picked.has(c.id)}
+                onCheckedChange={(v) =>
+                  setPicked((prev) => {
+                    const next = new Set(prev);
+                    if (v) next.add(c.id);
+                    else next.delete(c.id);
+                    return next;
+                  })
+                }
+              />
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">
+                  {c.name}{" "}
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {shortRef(c.id)}
+                  </span>
+                </div>
                 <div className="text-xs capitalize text-muted-foreground">
                   {c.customer_type.replace(/_/g, " ")}
                   {c.phone ? ` · ${c.phone}` : ""}
@@ -145,8 +197,8 @@ export function AddCustomerAsMarketerDialog({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={make.isPending}
-                onClick={() => make.mutate(c.id, { onSuccess: onDone })}
+                disabled={make.isPending || running}
+                onClick={() => make.mutate(c.id)}
               >
                 Make marketer
               </Button>
@@ -154,9 +206,23 @@ export function AddCustomerAsMarketerDialog({
           ))
         )}
       </div>
-      <DialogFooter>
+      <DialogFooter className="gap-2">
+        {rows.length > 0 && (
+          <Button
+            variant="ghost"
+            onClick={() => setPicked(new Set(rows.map((c) => c.id)))}
+            disabled={running}
+          >
+            Select all shown ({rows.length})
+          </Button>
+        )}
         <Button variant="ghost" onClick={onDone}>
           Close
+        </Button>
+        <Button disabled={pickedRows.length === 0 || running} onClick={makeAll}>
+          {running
+            ? "Updating…"
+            : `Make ${pickedRows.length || ""} marketer${pickedRows.length === 1 ? "" : "s"}`}
         </Button>
       </DialogFooter>
     </DialogContent>
