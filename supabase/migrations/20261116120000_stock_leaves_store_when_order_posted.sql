@@ -377,7 +377,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $
+AS $$
 DECLARE
   v_uid uuid := auth.uid();
   v_row sales%ROWTYPE;
@@ -544,7 +544,7 @@ BEGIN
   RETURN jsonb_build_object('sale_id', p_id, 'invoice_number', v_row.invoice_number,
                             'subtotal', v_subtotal, 'grand_total', v_grand, 'balance', v_balance);
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.edit_sale(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.edit_sale(uuid, jsonb) TO authenticated;
 
