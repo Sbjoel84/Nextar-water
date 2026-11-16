@@ -344,6 +344,43 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
       nameMatched.add(match.id);
     }
   }
+  // Every marketer's name opens their account. Found when clicked, so it
+  // never depends on the list above having loaded: the account linked to the
+  // marketer, else a marketer account with the same name, else any customer
+  // account with that name.
+  const [opening, setOpening] = useState<string | null>(null);
+  const openRepAccount = async (r: Rep) => {
+    const known = accountByRep.get(r.id);
+    if (known) return setAccount({ id: known.id, name: r.full_name });
+    setOpening(r.id);
+    try {
+      const base = () =>
+        supabase
+          .from("customers")
+          .select("id,name,customer_type")
+          .eq("factory_id", factoryId)
+          .is("deleted_at", null);
+      const linked = await base().eq("sales_rep_id", r.id).limit(1);
+      let hit = linked.data?.[0];
+      if (!hit) {
+        const byName = await base().ilike("name", r.full_name.trim()).limit(5);
+        if (byName.error) throw byName.error;
+        hit = byName.data?.find((c) => c.customer_type === "marketer") ?? byName.data?.[0];
+      }
+      if (!hit) {
+        toast.error(
+          `No account found for ${r.full_name} yet. It's created with their first supply.`,
+        );
+        return;
+      }
+      setAccount({ id: hit.id, name: r.full_name });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setOpening(null);
+    }
+  };
+
   const unlinked = (marketerAccounts.data ?? []).filter(
     (c) => (!c.sales_rep_id || !repIds.has(c.sales_rep_id)) && !nameMatched.has(c.id),
   );
@@ -416,20 +453,15 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
                   </TableCell>
                   <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
                   <TableCell className="font-medium">
-                    {accountByRep.get(r.id) ? (
-                      <button
-                        type="button"
-                        className="text-left text-primary hover:underline"
-                        title="Open account"
-                        onClick={() =>
-                          setAccount({ id: accountByRep.get(r.id)!.id, name: r.full_name })
-                        }
-                      >
-                        {r.full_name}
-                      </button>
-                    ) : (
-                      r.full_name
-                    )}
+                    <button
+                      type="button"
+                      className="text-left text-primary hover:underline disabled:opacity-60"
+                      title="Open account"
+                      disabled={opening === r.id}
+                      onClick={() => openRepAccount(r)}
+                    >
+                      {r.full_name}
+                    </button>
                   </TableCell>
                   <TableCell>{r.phone ?? "—"}</TableCell>
                   <TableCell>
