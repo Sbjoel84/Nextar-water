@@ -4,6 +4,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { usePermissions } from "@/lib/permissions";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { AddPaymentDialog } from "@/components/sales/credit-accounts-tab";
+import { CustomerPendingOrders } from "@/components/sales/confirm-sale";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -323,8 +324,11 @@ export function CustomerAccountDialog({
         )}
 
         <Tabs defaultValue="ledger">
-          <TabsList>
+          <TabsList className="h-auto flex-wrap">
             <TabsTrigger value="ledger">Account Ledger</TabsTrigger>
+            <TabsTrigger value="pending">
+              Awaiting confirmation{pendingSales.length > 0 ? ` (${pendingSales.length})` : ""}
+            </TabsTrigger>
             <TabsTrigger value="products">
               {isMarketer ? "Products Supplied" : "Products Purchased"}
             </TabsTrigger>
@@ -551,6 +555,10 @@ export function CustomerAccountDialog({
                 )}
               </TableBody>
             </Table>
+          </TabsContent>
+
+          <TabsContent value="pending">
+            {factoryId && <CustomerPendingOrders factoryId={factoryId} customerId={customerId} />}
           </TabsContent>
 
           <TabsContent value="returns" className="space-y-3">

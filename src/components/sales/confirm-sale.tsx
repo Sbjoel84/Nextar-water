@@ -43,6 +43,8 @@ import {
 import { Plus, Trash2, Printer, X, Search } from "lucide-react";
 import { ApprovalHistory } from "@/components/workflow/approval-history";
 import { RefId } from "@/components/shared/ref-id";
+import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
+import { WalkInCustomerDialog } from "@/components/sales/walk-in-customer-dialog";
 
 export type PaymentMethod = "cash" | "transfer" | "pos" | "card" | "cheque" | "credit";
 export type PaymentLine = { amount: number; method: PaymentMethod };
@@ -153,6 +155,8 @@ function invalidateAfterConfirm(qc: ReturnType<typeof useQueryClient>) {
     "customer-account",
     "customer-sales-full",
     "customer-payments-full",
+    "walk-in-sales",
+    "marketer-accounts",
     "customers",
     "finished-goods",
     "store-stock-awaiting-confirmation",
@@ -523,6 +527,11 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
   const isSuperAdmin = useIsSuperAdmin().data ?? false;
   const [confirmTarget, setConfirmTarget] = useState<PendingSale | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PendingSale | null>(null);
+  // Clicking a customer opens their account (registered customers, marketers,
+  // distributors) or, for a walk-in / POS buyer, every order under that name.
+  const [customerTarget, setCustomerTarget] = useState<{ id: string | null; name: string } | null>(
+    null,
+  );
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -660,7 +669,19 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
                     <TableCell className="font-mono text-xs">{s.invoice_number}</TableCell>
                     <TableCell className="whitespace-nowrap">{fmtDateTime(s.created_at)}</TableCell>
                     <TableCell>
-                      <div className="font-medium">{s.customer_name ?? "Walk-in"}</div>
+                      <button
+                        type="button"
+                        className="text-left font-medium text-primary hover:underline"
+                        title="Open this customer's transactions"
+                        onClick={() =>
+                          setCustomerTarget({
+                            id: s.customer_id,
+                            name: s.customer_name ?? "Walk-in",
+                          })
+                        }
+                      >
+                        {s.customer_name ?? "Walk-in"}
+                      </button>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         {customerTypeLabel(s.customer_type)}
                         {s.is_pr && (
@@ -718,6 +739,17 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
           />
         )}
       </Dialog>
+      <Dialog open={!!customerTarget} onOpenChange={(v) => !v && setCustomerTarget(null)}>
+        {customerTarget &&
+          (customerTarget.id ? (
+            <CustomerAccountDialog
+              customerId={customerTarget.id}
+              customerName={customerTarget.name}
+            />
+          ) : (
+            <WalkInCustomerDialog factoryId={factoryId} customerName={customerTarget.name} />
+          ))}
+      </Dialog>
       <Dialog open={!!rejectTarget} onOpenChange={(v) => !v && setRejectTarget(null)}>
         {rejectTarget && (
           <RejectSaleDialog
@@ -728,5 +760,128 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
         )}
       </Dialog>
     </Card>
+  );
+}
+
+// The orders still waiting on the accountant for ONE customer — by account
+// (customerId) or, for walk-in / POS buyers with no account, by the name the
+// sales person typed. Shown inside the customer's account so payment can be
+// set and the order confirmed & printed from there.
+export function CustomerPendingOrders({
+  factoryId,
+  customerId,
+  customerName,
+}: {
+  factoryId: string;
+  customerId?: string;
+  customerName?: string;
+}) {
+  const { canApprove } = usePermissions();
+  const approve = canApprove("sales");
+  const isSuperAdmin = useIsSuperAdmin().data ?? false;
+  const [confirmTarget, setConfirmTarget] = useState<PendingSale | null>(null);
+
+  const currentUser = useQuery({
+    queryKey: ["current-user-id"],
+    queryFn: async () => (await supabase.auth.getUser()).data.user?.id ?? null,
+    staleTime: Infinity,
+  });
+
+  const pending = useQuery({
+    queryKey: ["pending-sales", factoryId, "customer", customerId ?? null, customerName ?? null],
+    queryFn: async () => {
+      let q = supabase
+        .from("sales")
+        .select(
+          "id,invoice_number,sale_date,created_at,customer_id,customer_name,customer_type,subtotal,grand_total,is_pr,sales_person,created_by,sales_rep_id",
+        )
+        .eq("factory_id", factoryId)
+        .eq("status", "pending_approval")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+      q = customerId
+        ? q.eq("customer_id", customerId)
+        : q.is("customer_id", null).eq("customer_name", customerName ?? "");
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as PendingSale[];
+    },
+  });
+
+  const rows = pending.data ?? [];
+  return (
+    <div className="space-y-2">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Invoice</TableHead>
+            <TableHead>Posted</TableHead>
+            <TableHead>Sales person</TableHead>
+            <TableHead className="text-right">Goods value</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {pending.isLoading ? (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-muted-foreground">
+                Loading…
+              </TableCell>
+            </TableRow>
+          ) : rows.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                No orders waiting for confirmation.
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((s) => {
+              const isSelf = s.created_by === currentUser.data && !isSuperAdmin;
+              return (
+                <TableRow key={s.id}>
+                  <TableCell className="font-mono text-xs">
+                    {s.invoice_number}
+                    {s.is_pr && (
+                      <Badge variant="outline" className="ml-1 text-warning">
+                        PR
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">{fmtDateTime(s.created_at)}</TableCell>
+                  <TableCell>{s.sales_person ?? "—"}</TableCell>
+                  <TableCell className="text-right">{money(Number(s.subtotal))}</TableCell>
+                  <TableCell className="text-right">
+                    {approve && (
+                      <Button
+                        size="sm"
+                        className="gap-1"
+                        disabled={isSelf}
+                        title={
+                          isSelf
+                            ? "Someone other than who posted the order must confirm it"
+                            : "Set payment, confirm & print receipt"
+                        }
+                        onClick={() => setConfirmTarget(s)}
+                      >
+                        <Printer className="h-4 w-4" /> Confirm & Print
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </Table>
+      <Dialog open={!!confirmTarget} onOpenChange={(v) => !v && setConfirmTarget(null)}>
+        {confirmTarget && (
+          <ConfirmSaleDialog
+            sale={confirmTarget}
+            factoryId={factoryId}
+            onDone={() => setConfirmTarget(null)}
+          />
+        )}
+      </Dialog>
+    </div>
   );
 }
