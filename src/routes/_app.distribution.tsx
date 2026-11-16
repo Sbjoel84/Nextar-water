@@ -36,7 +36,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Pencil, Undo2, Ban, Eye, Loader2, Send, FileDown } from "lucide-react";
+import {
+  Plus,
+  UserPlus,
+  Trash2,
+  Pencil,
+  Undo2,
+  Ban,
+  Eye,
+  Loader2,
+  Send,
+  FileDown,
+} from "lucide-react";
 import { money, num, fmtDate } from "@/lib/format";
 import { exportCsv } from "@/lib/export";
 import { toast } from "sonner";
@@ -50,6 +61,7 @@ import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { DateInput } from "@/components/shared/date-input";
 import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
+import { AddCustomerAsMarketerDialog } from "@/components/distribution/make-marketer";
 
 export const Route = createFileRoute("/_app/distribution")({
   head: () => ({
@@ -212,9 +224,9 @@ function DistributionPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Marketers/Distributors</h1>
         <p className="text-sm text-muted-foreground">
-          Every product leaves the store on a dispatch to a marketer. The marketer sells from van stock,
-          returns what's unsold for inspection, and remits cash — their account nets it all against
-          the value of products they took.
+          Every product leaves the store on a dispatch to a marketer. The marketer sells from van
+          stock, returns what's unsold for inspection, and remits cash — their account nets it all
+          against the value of products they took.
         </p>
       </div>
 
@@ -289,6 +301,7 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
     qc.invalidateQueries({ queryKey: ["dist-marketer-accounts"] });
   };
   const [account, setAccount] = useState<{ id: string; name: string } | null>(null);
+  const [addExisting, setAddExisting] = useState(false);
 
   // Every marketer's account (customers of type marketer). Most are linked to
   // a row above via sales_rep_id; ones added from Sales or Customers may not
@@ -340,16 +353,26 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
           </p>
         </div>
         {canCreate && (
-          <Button
-            size="sm"
-            className="gap-2"
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> Add Marketer
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => setAddExisting(true)}
+            >
+              <UserPlus className="h-4 w-4" /> Add existing customer
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> Add Marketer
+            </Button>
+          </div>
         )}
       </CardHeader>
       <CardContent className="overflow-x-auto">
@@ -479,6 +502,17 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
         )}
       </Dialog>
 
+      <Dialog open={addExisting} onOpenChange={setAddExisting}>
+        {addExisting && (
+          <AddCustomerAsMarketerDialog
+            factoryId={factoryId}
+            onDone={() => {
+              setAddExisting(false);
+              refresh();
+            }}
+          />
+        )}
+      </Dialog>
       <Dialog open={!!account} onOpenChange={(v) => !v && setAccount(null)}>
         {account && <CustomerAccountDialog customerId={account.id} customerName={account.name} />}
       </Dialog>
@@ -1064,8 +1098,8 @@ function ReverseDialog({ row, onDone }: { row: DispatchRow; onDone: () => void }
         <DialogTitle>Reverse {row.dispatch_number}</DialogTitle>
       </DialogHeader>
       <p className="text-sm text-muted-foreground">
-        Only possible while every dispatched unit is still on the marketer's van. Stock goes back to the
-        store.
+        Only possible while every dispatched unit is still on the marketer's van. Stock goes back to
+        the store.
       </p>
       <div>
         <Label>Reason</Label>
@@ -1834,7 +1868,9 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
         </CardContent>
       </Card>
 
-      {!repId && <p className="text-sm text-muted-foreground">Pick a marketer to see their account.</p>}
+      {!repId && (
+        <p className="text-sm text-muted-foreground">Pick a marketer to see their account.</p>
+      )}
 
       {s && (
         <>

@@ -6,6 +6,7 @@ import { useRealtimeInvalidate } from "@/lib/realtime";
 import { AddPaymentDialog } from "@/components/sales/credit-accounts-tab";
 import { CustomerPendingOrders } from "@/components/sales/confirm-sale";
 import { CustomerPricesPanel } from "@/components/customers/customer-prices";
+import { useMakeMarketer } from "@/components/distribution/make-marketer";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -108,6 +109,7 @@ export function CustomerAccountDialog({
   const [paying, setPaying] = useState(false);
   const { canCreate } = usePermissions();
   const canRecordPayment = canCreate("sales") || canCreate("payments");
+  const canMakeMarketer = canCreate("distribution");
 
   useRealtimeInvalidate(
     ["sales", "payments_received", "sales_returns", "customer_account_transactions"],
@@ -247,6 +249,7 @@ export function CustomerAccountDialog({
   const summary = account.data?.summary;
   const isMarketer = customer.data?.customer_type === "marketer";
   const payable = isMarketer || !!customer.data?.credit_account;
+  const makeMarketer = useMakeMarketer(factoryId ?? undefined);
   const pendingSales = account.data?.pendingSales ?? [];
   const hasRange = !!from || !!to;
   const rangeInvalid = !!from && !!to && from > to;
@@ -300,6 +303,18 @@ export function CustomerAccountDialog({
           {customerName} — Account
           {summary && <AccountStatusBadge status={summary.account_status} />}
           {isMarketer && <Badge variant="outline">Marketer</Badge>}
+          {customer.data && !isMarketer && canMakeMarketer && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={payable && canRecordPayment ? "" : "ml-auto mr-6"}
+              disabled={makeMarketer.isPending}
+              title="Move this customer onto the marketer list, keeping their sales and debts"
+              onClick={() => makeMarketer.mutate(customerId)}
+            >
+              {makeMarketer.isPending ? "Updating…" : "Make marketer"}
+            </Button>
+          )}
           {payable && canRecordPayment && factoryId && (
             <Button size="sm" className="ml-auto mr-6 gap-1.5" onClick={() => setPaying(true)}>
               <HandCoins className="h-4 w-4" /> Add payment
