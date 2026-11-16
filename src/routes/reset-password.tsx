@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { markIntentionalSignOut } from "@/lib/auth-session";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,10 +39,18 @@ function ResetPage() {
     e.preventDefault();
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      setLoading(false);
+      return toast.error(error.message);
+    }
+    // End the recovery session (on every device) so the user signs in afresh
+    // with the new password.
+    markIntentionalSignOut();
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) await supabase.auth.signOut({ scope: "local" });
     setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Password updated");
-    navigate({ to: "/dashboard" });
+    toast.success("Password updated. Please sign in with your new password.");
+    navigate({ to: "/", replace: true });
   };
 
   return (

@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { markIntentionalSignOut } from "@/lib/auth-session";
 import { useActiveFactoryCode } from "@/lib/factory-store";
 import { getFactoryIdByCode } from "@/lib/factories";
 import { useTheme } from "@/lib/theme";
@@ -337,6 +338,7 @@ function PersonalSettingsCard() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -404,11 +406,20 @@ function PersonalSettingsCard() {
     }
     setSavingPassword(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setSavingPassword(false);
-    if (error) return toast.error(error.message);
+    if (error) {
+      setSavingPassword(false);
+      return toast.error(error.message);
+    }
     setNewPassword("");
     setConfirmPassword("");
-    toast.success("Password updated");
+    toast.success("Password updated. Please sign in with your new password.");
+    // Sign out everywhere so every device has to sign in with the new password.
+    // The app shell sees SIGNED_OUT and returns to the login page.
+    markIntentionalSignOut();
+    const { error: signOutError } = await supabase.auth.signOut();
+    // A failed global sign-out (e.g. network) must not leave the user signed in here.
+    if (signOutError) await supabase.auth.signOut({ scope: "local" });
+    navigate({ to: "/", replace: true });
   };
 
   const initials = (username || "?").slice(0, 2).toUpperCase();
