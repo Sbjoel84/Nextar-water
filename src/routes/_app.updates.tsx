@@ -797,6 +797,10 @@ function ThreadDialog({
   const reply = useMutation({
     mutationFn: async () => {
       const { error } = await db.rpc("reply_proposal", { p_id: row.id, p_body: body });
+      if (error?.code === "PGRST202" || /function .*reply_proposal/i.test(error?.message ?? ""))
+        throw new Error(
+          "Replies need the database update 20261024100000_proposal_threads.sql (not applied yet).",
+        );
       if (error) throw error;
     },
     onSuccess: () => {
@@ -955,7 +959,9 @@ function ForwardDialog({
       });
       if (error) {
         if (error.code === "PGRST202" || /function .*forward_proposal/i.test(error.message))
-          throw new Error("Forwarding needs the latest database update (forward_proposal).");
+          throw new Error(
+            "Forwarding needs the database updates 20261024100000_proposal_threads.sql and 20261116130000_forward_proposal.sql.",
+          );
         throw error;
       }
       return data as { forwarded_to?: string[] };
