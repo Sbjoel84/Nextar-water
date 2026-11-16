@@ -25,6 +25,7 @@ import { generateReportPdf } from "@/lib/pdf";
 import { useFactorySettings } from "@/lib/use-factory";
 import { CustomerAccountsCard } from "@/components/dashboards/customer-accounts";
 import { MarketerAccountsCard } from "@/components/finance/marketer-accounts";
+import { ProductsSoldCard } from "@/components/sales/products-sold";
 import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { PendingSalesCard } from "@/components/sales/confirm-sale";
@@ -418,9 +419,14 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="products-sold">Products Sold</TabsTrigger>
           <TabsTrigger value="marketers">Marketer Accounts</TabsTrigger>
           <TabsTrigger value="accumulated-sales">Monthly Accumulated Sales</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="products-sold" className="mt-4">
+          <ProductsSoldCard factoryId={factoryId} />
+        </TabsContent>
 
         <TabsContent value="marketers" className="mt-4">
           <MarketerAccountsCard factoryId={factoryId} />
