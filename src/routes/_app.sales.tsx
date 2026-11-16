@@ -500,10 +500,10 @@ function SalesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales & POS</h1>
           <p className="text-sm text-muted-foreground">
-            Sales persons capture orders from walk-in customers, marketers, distributors and
-            others, then post them to the accountant. On the Finance page the accountant sets the
-            payment, discount / commission and VAT, confirms the order and prints the receipt — only
-            then does it decrement stock and count toward the customer's balance.
+            Sales persons capture orders from walk-in customers, marketers, distributors and others,
+            then post them to the accountant. On the Finance page the accountant sets the payment,
+            discount / commission and VAT, confirms the order and prints the receipt — only then
+            does it decrement stock and count toward the customer's balance.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1379,8 +1379,8 @@ export function PosDialog({
       return (data ?? []) as { product_id: string; quantity: number }[];
     },
   });
-  // Store stock already taken by orders still awaiting confirmation (stock
-  // only comes off current_stock when they're confirmed) — create_sale()
+  // Store stock held by orders posted before stock started leaving at posting
+  // (20261116120000); newer orders are already off current_stock. create_sale()
   // checks against the same figure.
   const awaiting = useQuery({
     queryKey: ["store-stock-awaiting-confirmation", factoryId],
@@ -1413,10 +1413,10 @@ export function PosDialog({
     setCart(
       editingSale.items.map((it) => {
         const p = products.data?.find((x) => x.id === it.product_id);
-        // A pending sale's own quantity is counted in the store's "awaiting
-        // confirmation" figure, so it's added back on top of availability. A
-        // rejected sale isn't counted there (and van stock never is).
-        const ownQty = !editingSale.sales_rep_id && !editingSale.rejected_reason ? it.quantity : 0;
+        // The order's own goods already left the store / van when it was
+        // posted, and editing puts them back before taking the new
+        // quantities, so they count as available here.
+        const ownQty = it.quantity;
         const avail = (p ? effStock(p) : 0) + ownQty;
         return {
           product_id: it.product_id,

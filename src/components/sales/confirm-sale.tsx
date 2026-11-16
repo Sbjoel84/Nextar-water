@@ -360,6 +360,23 @@ export function ConfirmSaleDialog({
       return new Map((data ?? []).map((r) => [r.product_id, Number(r.quantity)]));
     },
   });
+  // Orders posted since stock leaves at posting (20261116120000) already took
+  // their goods; confirming them doesn't touch stock, so there's nothing to
+  // check. Older orders (or before that migration) still do.
+  const released = useQuery({
+    queryKey: ["sale-stock-released", sale.id],
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("sales")
+        .select("stock_released")
+        .eq("id", sale.id)
+        .single();
+      if (error) throw error;
+      return !!data?.stock_released;
+    },
+  });
+  const stockAlreadyOut = released.data === true;
   const stockFrom = sale.sales_rep_id ? "On van" : "In store";
   const needed = new Map<string, number>();
   items.forEach((it) =>
@@ -374,6 +391,7 @@ export function ConfirmSaleDialog({
         ? null
         : Number(it.products.current_stock);
   const shortLines = items.filter((it) => {
+    if (stockAlreadyOut) return false;
     const have = availableOf(it.product_id, it);
     return have != null && have < (needed.get(it.product_id) ?? 0);
   });
@@ -423,7 +441,7 @@ export function ConfirmSaleDialog({
                     <TableCell>{it.products?.name ?? "-"}</TableCell>
                     <TableCell className="text-right">
                       {num(Number(it.quantity))} {it.products?.unit ?? ""}
-                      {availableOf(it.product_id, it) != null && (
+                      {!stockAlreadyOut && availableOf(it.product_id, it) != null && (
                         <div
                           className={`text-[10px] ${shortLines.includes(it) ? "font-medium text-destructive" : "text-muted-foreground"}`}
                         >
