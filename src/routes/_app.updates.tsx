@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Bell,
+  Forward,
   Check,
   Eye,
   Megaphone,
@@ -675,6 +676,7 @@ function RequestsTab({ factoryId }: { factoryId: string }) {
       <Dialog open={!!threadRow} onOpenChange={(v) => !v && setThread(null)}>
         {threadRow && (
           <ThreadDialog
+            factoryId={factoryId}
             row={threadRow}
             currency={currency}
             focusReply={thread!.reply}
@@ -760,6 +762,7 @@ function DecisionBox({ p }: { p: ProposalRow }) {
 
 // The full request with its reply thread, like an email conversation.
 function ThreadDialog({
+  factoryId,
   row,
   currency,
   focusReply,
@@ -767,6 +770,7 @@ function ThreadDialog({
   onDecide,
   onReplied,
 }: {
+  factoryId: string;
   row: ProposalRow;
   currency: string;
   focusReply: boolean;
@@ -776,6 +780,7 @@ function ThreadDialog({
 }) {
   const { data: uid } = useCurrentUserId();
   const [body, setBody] = useState("");
+  const [forwarding, setForwarding] = useState(false);
   const messages = useQuery({
     queryKey: ["proposal-messages", "thread", row.id],
     queryFn: async () => {
@@ -880,6 +885,11 @@ function ThreadDialog({
           </>
         )}
         {row.status !== "cancelled" && (
+          <Button variant="outline" className="gap-2" onClick={() => setForwarding(true)}>
+            <Forward className="h-4 w-4" /> Forward
+          </Button>
+        )}
+        {row.status !== "cancelled" && (
           <Button
             className="gap-2"
             disabled={reply.isPending || !body.trim()}
@@ -890,11 +900,214 @@ function ThreadDialog({
           </Button>
         )}
       </DialogFooter>
+
+      <Dialog open={forwarding} onOpenChange={setForwarding}>
+        {forwarding && (
+          <ForwardDialog
+            factoryId={factoryId}
+            row={row}
+            onDone={() => {
+              setForwarding(false);
+              onReplied();
+            }}
+          />
+        )}
+      </Dialog>
+    </DialogContent>
+  );
+}
+
+// Pass a request / proposal on to more people: they're added to it, can open
+// and reply, and get a notification. The thread records who forwarded it.
+function ForwardDialog({
+  factoryId,
+  row,
+  onDone,
+}: {
+  factoryId: string;
+  row: ProposalRow;
+  onDone: () => void;
+}) {
+  const people = useRecipients(factoryId);
+  const [search, setSearch] = useState("");
+  const [note, setNote] = useState("");
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const already = new Set([row.requested_by, ...(row.recipients ?? [])]);
+  const q = search.trim().toLowerCase();
+  const available = (people.data ?? []).filter((p) => !already.has(p.id));
+  const visible = available.filter(
+    (p) => !q || p.full_name.toLowerCase().includes(q) || p.roles.toLowerCase().includes(q),
+  );
+  const toggle = (id: string) =>
+    setChosen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const forward = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await db.rpc("forward_proposal", {
+        p_id: row.id,
+        p_recipients: [...chosen],
+        p_note: note || null,
+      });
+      if (error) {
+        if (error.code === "PGRST202" || /function .*forward_proposal/i.test(error.message))
+          throw new Error("Forwarding needs the latest database update (forward_proposal).");
+        throw error;
+      }
+      return data as { forwarded_to?: string[] };
+    },
+    onSuccess: (r) => {
+      toast.success(`${row.reference} forwarded to ${r.forwarded_to?.join(", ") ?? "them"}`);
+      onDone();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Forward {row.reference}</DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <p className="text-xs text-muted-foreground">
+          Already on it: {row.requested_by_name ?? "sender"}
+          {row.recipient_names?.length ? `, ${row.recipient_names.join(", ")}` : ""}
+        </p>
+        {chosen.size > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {available
+              .filter((p) => chosen.has(p.id))
+              .map((p) => (
+                <Badge key={p.id} variant="secondary" className="gap-1">
+                  {p.full_name}
+                  <button
+                    type="button"
+                    className="ml-0.5 opacity-70 hover:opacity-100"
+                    title={`Remove ${p.full_name}`}
+                    onClick={() => toggle(p.id)}
+                  >
+                    ×
+                  </button>
+                </Badge>
+              ))}
+          </div>
+        )}
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or role"
+        />
+        <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border p-2">
+          {people.isLoading ? (
+            <p className="p-2 text-sm text-muted-foreground">Loading people…</p>
+          ) : people.isError ? (
+            <div className="space-y-2 p-2 text-sm">
+              <p className="text-destructive">
+                Couldn't load the list of people: {(people.error as Error).message}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => people.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : visible.length === 0 ? (
+            <p className="p-2 text-sm text-muted-foreground">
+              {available.length === 0 ? "Everyone is already on this request." : "No one found."}
+            </p>
+          ) : (
+            visible.map((p) => (
+              <label
+                key={p.id}
+                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-accent"
+              >
+                <Checkbox checked={chosen.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{p.full_name}</div>
+                  {p.roles && <div className="text-xs text-muted-foreground">{p.roles}</div>}
+                </div>
+              </label>
+            ))
+          )}
+        </div>
+        <div>
+          <Label>Note (optional)</Label>
+          <Textarea
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Please check the figures before the Chairman decides"
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button
+          className="gap-2"
+          disabled={forward.isPending || chosen.size === 0}
+          onClick={() => forward.mutate()}
+        >
+          <Forward className="h-4 w-4" />
+          {forward.isPending ? "Forwarding…" : `Forward to ${chosen.size}`}
+        </Button>
+      </DialogFooter>
     </DialogContent>
   );
 }
 
 type Recipient = { id: string; full_name: string; roles: string; is_chairman: boolean };
+
+// Everyone active in this factory except the caller (the page is open to
+// all users) -- who a request can be sent or forwarded to.
+async function fetchRecipients(factoryId: string): Promise<Recipient[]> {
+  const { data, error } = await db.rpc("list_message_recipients", { p_factory: factoryId });
+  if (!error) return (data ?? []) as Recipient[];
+  // Fallback when the function isn't available: read active users directly.
+  const [{ data: me }, profiles, roles] = await Promise.all([
+    supabase.auth.getUser(),
+    db
+      .from("profiles")
+      .select("id,full_name,email,status,active_factory_id")
+      .eq("status", "active"),
+    db.from("user_roles").select("user_id,role,factory_id"),
+  ]);
+  if (profiles.error) throw error;
+  const roleRows = (roles.data ?? []) as {
+    user_id: string;
+    role: string;
+    factory_id: string | null;
+  }[];
+  return ((profiles.data ?? []) as any[])
+    .filter(
+      (p) =>
+        p.id !== me.user?.id &&
+        (p.active_factory_id === factoryId ||
+          roleRows.some(
+            (r) => r.user_id === p.id && (r.factory_id === factoryId || r.factory_id === null),
+          )),
+    )
+    .map((p) => {
+      const mine = roleRows.filter((r) => r.user_id === p.id).map((r) => r.role);
+      return {
+        id: p.id,
+        full_name: p.full_name || p.email || "Unnamed user",
+        roles: [...new Set(mine)].map((r) => r.replace(/_/g, " ")).join(", "),
+        is_chairman: mine.includes("chairman"),
+      } as Recipient;
+    })
+    .sort(
+      (a, b) =>
+        Number(b.is_chairman) - Number(a.is_chairman) || a.full_name.localeCompare(b.full_name),
+    );
+}
+function useRecipients(factoryId: string) {
+  return useQuery({
+    queryKey: ["message-recipients", factoryId],
+    retry: 1,
+    queryFn: () => fetchRecipients(factoryId),
+  });
+}
 
 function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: () => void }) {
   const [step, setStep] = useState<"compose" | "recipients">("compose");
@@ -907,51 +1120,7 @@ function NewProposalDialog({ factoryId, onDone }: { factoryId: string; onDone: (
   const [chosen, setChosen] = useState<Set<string> | null>(null);
 
   // Everyone active in this factory (the page is open to all users).
-  const people = useQuery({
-    queryKey: ["message-recipients", factoryId],
-    retry: 1,
-    queryFn: async () => {
-      const { data, error } = await db.rpc("list_message_recipients", { p_factory: factoryId });
-      if (!error) return (data ?? []) as Recipient[];
-      // Fallback when the function isn't available: read active users directly.
-      const [{ data: me }, profiles, roles] = await Promise.all([
-        supabase.auth.getUser(),
-        db
-          .from("profiles")
-          .select("id,full_name,email,status,active_factory_id")
-          .eq("status", "active"),
-        db.from("user_roles").select("user_id,role,factory_id"),
-      ]);
-      if (profiles.error) throw error;
-      const roleRows = (roles.data ?? []) as {
-        user_id: string;
-        role: string;
-        factory_id: string | null;
-      }[];
-      return ((profiles.data ?? []) as any[])
-        .filter(
-          (p) =>
-            p.id !== me.user?.id &&
-            (p.active_factory_id === factoryId ||
-              roleRows.some(
-                (r) => r.user_id === p.id && (r.factory_id === factoryId || r.factory_id === null),
-              )),
-        )
-        .map((p) => {
-          const mine = roleRows.filter((r) => r.user_id === p.id).map((r) => r.role);
-          return {
-            id: p.id,
-            full_name: p.full_name || p.email || "Unnamed user",
-            roles: [...new Set(mine)].map((r) => r.replace(/_/g, " ")).join(", "),
-            is_chairman: mine.includes("chairman"),
-          } as Recipient;
-        })
-        .sort(
-          (a, b) =>
-            Number(b.is_chairman) - Number(a.is_chairman) || a.full_name.localeCompare(b.full_name),
-        );
-    },
-  });
+  const people = useRecipients(factoryId);
   // The Chairman is picked by default; the sender can add or remove anyone.
   const selected =
     chosen ?? new Set((people.data ?? []).filter((p) => p.is_chairman).map((p) => p.id));
