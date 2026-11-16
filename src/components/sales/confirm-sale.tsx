@@ -189,7 +189,7 @@ export function ConfirmSaleDialog({
       const { data, error } = await supabase
         .from("sales")
         .select(
-          "remarks,customer_phone,discount,vat,pending_payments,sale_items(product_id,quantity,unit_price,line_total,products(name,unit))",
+          "remarks,customer_phone,discount,vat,pending_payments,sale_items(product_id,quantity,unit_price,line_total,products(name,unit,current_stock))",
         )
         .eq("id", sale.id)
         .single();
@@ -333,10 +333,50 @@ export function ConfirmSaleDialog({
       onDone();
       openSaleInvoice(sale.id, settings.data, "print");
     },
-    onError: (e: Error) => toast.error(e.message),
+    // The database names the product by id; say which product it is.
+    onError: (e: Error) => {
+      let msg = e.message;
+      for (const it of (detail.data?.sale_items ?? []) as any[]) {
+        if (it.products?.name) msg = msg.split(it.product_id).join(it.products.name);
+      }
+      toast.error(msg);
+    },
   });
 
   const items: any[] = detail.data?.sale_items ?? [];
+
+  // Confirming takes the goods out of stock (the store, or the marketer's van
+  // for a van sale), and the database refuses if there isn't enough on record.
+  // Show it per line up front instead of failing on the button.
+  const vanStock = useQuery({
+    queryKey: ["confirm-van-stock", sale.sales_rep_id ?? "none"],
+    enabled: !!sale.sales_rep_id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rep_stock")
+        .select("product_id,quantity")
+        .eq("sales_rep_id", sale.sales_rep_id!);
+      if (error) throw error;
+      return new Map((data ?? []).map((r) => [r.product_id, Number(r.quantity)]));
+    },
+  });
+  const stockFrom = sale.sales_rep_id ? "On van" : "In store";
+  const needed = new Map<string, number>();
+  items.forEach((it) =>
+    needed.set(it.product_id, (needed.get(it.product_id) ?? 0) + Number(it.quantity)),
+  );
+  const availableOf = (pid: string, it: any): number | null =>
+    sale.sales_rep_id
+      ? vanStock.isSuccess
+        ? (vanStock.data.get(pid) ?? 0)
+        : null
+      : it.products?.current_stock == null
+        ? null
+        : Number(it.products.current_stock);
+  const shortLines = items.filter((it) => {
+    const have = availableOf(it.product_id, it);
+    return have != null && have < (needed.get(it.product_id) ?? 0);
+  });
 
   return (
     <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
@@ -383,6 +423,13 @@ export function ConfirmSaleDialog({
                     <TableCell>{it.products?.name ?? "-"}</TableCell>
                     <TableCell className="text-right">
                       {num(Number(it.quantity))} {it.products?.unit ?? ""}
+                      {availableOf(it.product_id, it) != null && (
+                        <div
+                          className={`text-[10px] ${shortLines.includes(it) ? "font-medium text-destructive" : "text-muted-foreground"}`}
+                        >
+                          {stockFrom}: {num(availableOf(it.product_id, it)!)}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {canReprice ? (
@@ -566,12 +613,37 @@ export function ConfirmSaleDialog({
           <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
         <ApprovalHistory module="sales" entityId={sale.id} />
+        {shortLines.length > 0 && (
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="font-medium">Not enough stock on record to confirm this order</div>
+            <ul className="mt-1 list-disc pl-5 text-xs">
+              {shortLines.map((it) => (
+                <li key={it.product_id}>
+                  {it.products?.name ?? "Product"}: needs {num(needed.get(it.product_id) ?? 0)}{" "}
+                  {it.products?.unit ?? ""}, {stockFrom.toLowerCase()}{" "}
+                  {num(availableOf(it.product_id, it) ?? 0)}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs">
+              {sale.sales_rep_id
+                ? "Dispatch the products to this marketer's van first, then confirm."
+                : "Record the stock in the Store first (confirm the production received, or a stock adjustment), then confirm. Or ask sales to edit the order quantity."}
+            </p>
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button
           className="gap-2"
-          disabled={confirm.isPending || detail.isLoading || invalidPrice}
-          title={invalidPrice ? "Every price must be above zero" : undefined}
+          disabled={confirm.isPending || detail.isLoading || invalidPrice || shortLines.length > 0}
+          title={
+            invalidPrice
+              ? "Every price must be above zero"
+              : shortLines.length > 0
+                ? "Not enough stock on record for this order"
+                : undefined
+          }
           onClick={() => confirm.mutate()}
         >
           <Printer className="h-4 w-4" />
