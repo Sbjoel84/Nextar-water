@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Dialog } from "@/components/ui/dialog";
+import { usePermissions } from "@/lib/permissions";
+import { useRealtimeInvalidate } from "@/lib/realtime";
+import { AddPaymentDialog } from "@/components/sales/credit-accounts-tab";
 import { supabase } from "@/integrations/supabase/client";
 import { useFactoryId, useFactorySettings } from "@/lib/use-factory";
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileDown, Printer, Sheet } from "lucide-react";
+import { FileDown, HandCoins, Printer, Sheet } from "lucide-react";
 import { money, num, fmtDateTime, fmtDate } from "@/lib/format";
 import { exportCsv } from "@/lib/export";
 import { generateCustomerStatementPdf, type PdfAction } from "@/lib/pdf";
@@ -53,9 +57,24 @@ type CustomerSaleRow = {
 };
 type CustomerItemRow = {
   sale_id: string;
+  product_id: string;
   quantity: number;
   unit_price: number;
   line_total: number;
+  products: { name: string; unit: string } | null;
+};
+type CustomerReturnRow = {
+  id: string;
+  return_number: string;
+  sale_id: string | null;
+  product_id: string;
+  quantity_returned: number;
+  accepted_quantity: number | null;
+  damaged_quantity: number;
+  rejected_quantity: number;
+  status: string;
+  received_at: string;
+  reason: string | null;
   products: { name: string; unit: string } | null;
 };
 type CustomerPaymentRow = {
@@ -84,13 +103,26 @@ export function CustomerAccountDialog({
   const account = useCustomerAccount(customerId);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [paying, setPaying] = useState(false);
+  const { canCreate } = usePermissions();
+  const canRecordPayment = canCreate("sales") || canCreate("payments");
+
+  useRealtimeInvalidate(
+    ["sales", "payments_received", "sales_returns", "customer_account_transactions"],
+    [
+      ["customer-account", customerId],
+      ["customer-sales-full", customerId],
+      ["customer-payments-full", customerId],
+      ["customer-returns-full", customerId],
+    ],
+  );
 
   const customer = useQuery({
     queryKey: ["customer-contact", customerId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("name,phone,address")
+        .select("name,phone,address,customer_type,credit_account")
         .eq("id", customerId)
         .maybeSingle();
       if (error) throw error;
@@ -121,7 +153,7 @@ export function CustomerAccountDialog({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("sale_items")
-        .select("sale_id,quantity,unit_price,line_total,products(name,unit)")
+        .select("sale_id,product_id,quantity,unit_price,line_total,products(name,unit)")
         .in("sale_id", saleIds);
       if (error) throw error;
       return (data ?? []) as unknown as CustomerItemRow[];
@@ -138,6 +170,24 @@ export function CustomerAccountDialog({
         .order("created_at", { ascending: true });
       if (error) throw error;
       return (data ?? []) as CustomerPaymentRow[];
+    },
+  });
+
+  // Goods brought back (marketers' unsold stock at close of business, or any
+  // customer return). Inspection credits the account for accepted + damaged.
+  const returns = useQuery({
+    queryKey: ["customer-returns-full", customerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sales_returns")
+        .select(
+          "id,return_number,sale_id,product_id,quantity_returned,accepted_quantity,damaged_quantity,rejected_quantity,status,received_at,reason,products(name,unit)",
+        )
+        .eq("customer_id", customerId)
+        .neq("status", "cancelled")
+        .order("received_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as CustomerReturnRow[];
     },
   });
 
@@ -159,7 +209,42 @@ export function CustomerAccountDialog({
     };
   }, [invoiceById, payments.data, items.data]);
 
+  // Value of each return: what the ledger credited for it once inspected, or
+  // (no ledger line found) the quantity at the price it was supplied at.
+  const returnRows = useMemo(() => {
+    const ledger = account.data?.ledger ?? [];
+    const priceOf = (saleId: string | null, productId: string) =>
+      Number(
+        (items.data ?? []).find((it) => it.sale_id === saleId && it.product_id === productId)
+          ?.unit_price ?? 0,
+      );
+    return (returns.data ?? []).map((r) => {
+      const credited = ledger
+        .filter((l) => l.reference_id === r.id)
+        .reduce((t, l) => t + Math.abs(l.amount), 0);
+      const qty =
+        r.status === "completed"
+          ? Number(r.accepted_quantity ?? 0) + Number(r.damaged_quantity ?? 0)
+          : Number(r.quantity_returned);
+      return {
+        ...r,
+        value: credited > 0 ? credited : qty * priceOf(r.sale_id, r.product_id),
+        credited: credited > 0,
+      };
+    });
+  }, [returns.data, items.data, account.data?.ledger]);
+  const returnTotals = useMemo(
+    () => ({
+      qty: returnRows.reduce((t, r) => t + Number(r.quantity_returned), 0),
+      value: returnRows.reduce((t, r) => t + r.value, 0),
+      awaiting: returnRows.filter((r) => r.status === "received").length,
+    }),
+    [returnRows],
+  );
+
   const summary = account.data?.summary;
+  const isMarketer = customer.data?.customer_type === "marketer";
+  const payable = isMarketer || !!customer.data?.credit_account;
   const pendingSales = account.data?.pendingSales ?? [];
   const hasRange = !!from || !!to;
   const rangeInvalid = !!from && !!to && from > to;
@@ -212,6 +297,12 @@ export function CustomerAccountDialog({
         <DialogTitle className="flex flex-wrap items-center gap-3">
           {customerName} — Account
           {summary && <AccountStatusBadge status={summary.account_status} />}
+          {isMarketer && <Badge variant="outline">Marketer</Badge>}
+          {payable && canRecordPayment && factoryId && (
+            <Button size="sm" className="ml-auto mr-6 gap-1.5" onClick={() => setPaying(true)}>
+              <HandCoins className="h-4 w-4" /> Add payment
+            </Button>
+          )}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
@@ -234,8 +325,13 @@ export function CustomerAccountDialog({
         <Tabs defaultValue="ledger">
           <TabsList>
             <TabsTrigger value="ledger">Account Ledger</TabsTrigger>
-            <TabsTrigger value="products">Products Purchased</TabsTrigger>
-            <TabsTrigger value="invoices">Invoices</TabsTrigger>
+            <TabsTrigger value="products">
+              {isMarketer ? "Products Supplied" : "Products Purchased"}
+            </TabsTrigger>
+            <TabsTrigger value="invoices">{isMarketer ? "Supplies" : "Invoices"}</TabsTrigger>
+            <TabsTrigger value="returns">
+              Returns{returnRows.length > 0 ? ` (${returnRows.length})` : ""}
+            </TabsTrigger>
             <TabsTrigger value="payments">Payment History</TabsTrigger>
             <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
           </TabsList>
@@ -457,6 +553,90 @@ export function CustomerAccountDialog({
             </Table>
           </TabsContent>
 
+          <TabsContent value="returns" className="space-y-3">
+            <div className="grid grid-cols-3 gap-3 rounded-md bg-muted/30 p-3 text-sm">
+              <div>
+                <span className="block text-xs text-muted-foreground">Returns logged</span>
+                <span className="font-medium">{returnRows.length}</span>
+              </div>
+              <div>
+                <span className="block text-xs text-muted-foreground">Quantity returned</span>
+                <span className="font-medium">{num(returnTotals.qty)}</span>
+              </div>
+              <div>
+                <span className="block text-xs text-muted-foreground">Value of returns</span>
+                <span className="font-medium text-success">{money(returnTotals.value)}</span>
+              </div>
+            </div>
+            {returnTotals.awaiting > 0 && (
+              <p className="rounded-md bg-warning/15 px-3 py-2 text-xs text-warning">
+                {returnTotals.awaiting} return{returnTotals.awaiting === 1 ? " is" : "s are"}{" "}
+                awaiting inspection. The account is credited once Sales Returns inspects them.
+              </p>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Return</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Supply</TableHead>
+                  <TableHead className="text-right">Returned</TableHead>
+                  <TableHead className="text-right">Accepted / Damaged / Rejected</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {returnRows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs">{r.return_number}</TableCell>
+                    <TableCell className="whitespace-nowrap">{fmtDate(r.received_at)}</TableCell>
+                    <TableCell>
+                      {r.products?.name ?? "—"}
+                      {r.reason && <div className="text-xs text-muted-foreground">{r.reason}</div>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {(r.sale_id && invoiceById.get(r.sale_id)?.invoice_number) || "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {num(Number(r.quantity_returned))} {r.products?.unit ?? ""}
+                    </TableCell>
+                    <TableCell className="text-right text-xs">
+                      {r.status === "completed"
+                        ? `${num(Number(r.accepted_quantity ?? 0))} / ${num(Number(r.damaged_quantity))} / ${num(Number(r.rejected_quantity))}`
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {money(r.value)}
+                      {!r.credited && (
+                        <div className="text-[10px] text-muted-foreground">
+                          {r.status === "completed" ? "at supply price" : "not credited yet"}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={r.status === "completed" ? "secondary" : "outline"}>
+                        {r.status === "received"
+                          ? "Awaiting inspection"
+                          : r.status === "completed"
+                            ? "Inspected"
+                            : r.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {returnRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-6 text-center text-muted-foreground">
+                      {returns.isLoading ? "Loading…" : "No returns yet."}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TabsContent>
+
           <TabsContent value="payments">
             <Table>
               <TableHeader>
@@ -507,6 +687,22 @@ export function CustomerAccountDialog({
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={paying} onOpenChange={setPaying}>
+        {paying && factoryId && (
+          <AddPaymentDialog
+            factoryId={factoryId}
+            account={{
+              id: customerId,
+              name: customer.data?.name ?? customerName,
+              kind: isMarketer ? "marketer" : "customer",
+              debt: summary?.outstanding_debt ?? 0,
+              credit: summary?.available_advance ?? 0,
+            }}
+            onDone={() => setPaying(false)}
+          />
+        )}
+      </Dialog>
     </DialogContent>
   );
 }

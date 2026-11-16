@@ -24,6 +24,9 @@ import { exportCsv } from "@/lib/export";
 import { generateReportPdf } from "@/lib/pdf";
 import { useFactorySettings } from "@/lib/use-factory";
 import { CustomerAccountsCard } from "@/components/dashboards/customer-accounts";
+import { MarketerAccountsCard } from "@/components/finance/marketer-accounts";
+import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
+import { Dialog } from "@/components/ui/dialog";
 import { PendingSalesCard } from "@/components/sales/confirm-sale";
 import { usePermissions } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,6 +93,8 @@ type Txn = {
   source: string;
   reference: string;
   party: string;
+  // Set when the party is a marketer, so their name opens their account.
+  marketerId?: string;
   amount: number;
 };
 
@@ -113,6 +118,7 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
   const [to, setTo] = useState(() => dayKey(new Date()));
   const [channelFilter, setChannelFilter] = useState("all");
   const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const [openAccount, setOpenAccount] = useState<{ id: string; name: string } | null>(null);
   const settings = useFactorySettings(factoryId);
   const currency = settings.data?.currency ?? "NGN";
 
@@ -258,6 +264,8 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
         source: p.sale_id ? "Sale payment" : "Customer payment",
         reference: p.receipt_number,
         party: p.customers?.name ?? "Walk-in",
+        marketerId:
+          p.customers?.customer_type === "marketer" ? (p.customer_id ?? undefined) : undefined,
         amount: Number(p.amount),
       }),
     );
@@ -410,8 +418,13 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="marketers">Marketer Accounts</TabsTrigger>
           <TabsTrigger value="accumulated-sales">Monthly Accumulated Sales</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="marketers" className="mt-4">
+          <MarketerAccountsCard factoryId={factoryId} />
+        </TabsContent>
 
         <TabsContent value="accumulated-sales" className="mt-4">
           <MonthlyAccumulatedSalesCard factoryId={factoryId} />
@@ -693,7 +706,20 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
                         <TableCell className="whitespace-nowrap">{t.date || "—"}</TableCell>
                         <TableCell>{t.source}</TableCell>
                         <TableCell>{t.reference}</TableCell>
-                        <TableCell>{t.party}</TableCell>
+                        <TableCell>
+                          {t.marketerId ? (
+                            <button
+                              type="button"
+                              className="text-left text-primary hover:underline"
+                              title="Open marketer account"
+                              onClick={() => setOpenAccount({ id: t.marketerId!, name: t.party })}
+                            >
+                              {t.party}
+                            </button>
+                          ) : (
+                            t.party
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline">{channelLabel(t.channel)}</Badge>
                         </TableCell>
@@ -774,6 +800,12 @@ export function FinanceOverview({ factoryId }: { factoryId: string }) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!openAccount} onOpenChange={(v) => !v && setOpenAccount(null)}>
+        {openAccount && (
+          <CustomerAccountDialog customerId={openAccount.id} customerName={openAccount.name} />
+        )}
+      </Dialog>
     </div>
   );
 }

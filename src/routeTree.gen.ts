@@ -46,6 +46,7 @@ import { Route as AppUsersRouteImport } from './routes/_app.users'
 import { Route as AppCashLedgerIndexRouteImport } from './routes/_app.cash-ledger.index'
 import { Route as AppCashLedgerDebtsRouteImport } from './routes/_app.cash-ledger.debts'
 import { Route as AppCashLedgerLedgerRouteImport } from './routes/_app.cash-ledger.ledger'
+import { Route as AppCashLedgerMarketersRouteImport } from './routes/_app.cash-ledger.marketers'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -231,6 +232,11 @@ const AppCashLedgerLedgerRoute = AppCashLedgerLedgerRouteImport.update({
   path: '/ledger',
   getParentRoute: () => AppCashLedgerRoute,
 } as any)
+const AppCashLedgerMarketersRoute = AppCashLedgerMarketersRouteImport.update({
+  id: '/marketers',
+  path: '/marketers',
+  getParentRoute: () => AppCashLedgerRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -268,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/users': typeof AppUsersRoute
   '/cash-ledger/debts': typeof AppCashLedgerDebtsRoute
   '/cash-ledger/ledger': typeof AppCashLedgerLedgerRoute
+  '/cash-ledger/marketers': typeof AppCashLedgerMarketersRoute
   '/cash-ledger/': typeof AppCashLedgerIndexRoute
 }
 export interface FileRoutesByTo {
@@ -305,6 +312,7 @@ export interface FileRoutesByTo {
   '/users': typeof AppUsersRoute
   '/cash-ledger/debts': typeof AppCashLedgerDebtsRoute
   '/cash-ledger/ledger': typeof AppCashLedgerLedgerRoute
+  '/cash-ledger/marketers': typeof AppCashLedgerMarketersRoute
   '/cash-ledger': typeof AppCashLedgerIndexRoute
 }
 export interface FileRoutesById {
@@ -345,6 +353,7 @@ export interface FileRoutesById {
   '/_app/users': typeof AppUsersRoute
   '/_app/cash-ledger/debts': typeof AppCashLedgerDebtsRoute
   '/_app/cash-ledger/ledger': typeof AppCashLedgerLedgerRoute
+  '/_app/cash-ledger/marketers': typeof AppCashLedgerMarketersRoute
   '/_app/cash-ledger/': typeof AppCashLedgerIndexRoute
 }
 export interface FileRouteTypes {
@@ -385,6 +394,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/cash-ledger/debts'
     | '/cash-ledger/ledger'
+    | '/cash-ledger/marketers'
     | '/cash-ledger/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -422,6 +432,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/cash-ledger/debts'
     | '/cash-ledger/ledger'
+    | '/cash-ledger/marketers'
     | '/cash-ledger'
   id:
     | '__root__'
@@ -461,6 +472,7 @@ export interface FileRouteTypes {
     | '/_app/users'
     | '/_app/cash-ledger/debts'
     | '/_app/cash-ledger/ledger'
+    | '/_app/cash-ledger/marketers'
     | '/_app/cash-ledger/'
   fileRoutesById: FileRoutesById
 }
@@ -731,18 +743,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCashLedgerLedgerRouteImport
       parentRoute: typeof AppCashLedgerRoute
     }
+    '/_app/cash-ledger/marketers': {
+      id: '/_app/cash-ledger/marketers'
+      path: '/marketers'
+      fullPath: '/cash-ledger/marketers'
+      preLoaderRoute: typeof AppCashLedgerMarketersRouteImport
+      parentRoute: typeof AppCashLedgerRoute
+    }
   }
 }
 
 interface AppCashLedgerRouteChildren {
   AppCashLedgerDebtsRoute: typeof AppCashLedgerDebtsRoute
   AppCashLedgerLedgerRoute: typeof AppCashLedgerLedgerRoute
+  AppCashLedgerMarketersRoute: typeof AppCashLedgerMarketersRoute
   AppCashLedgerIndexRoute: typeof AppCashLedgerIndexRoute
 }
 
 const AppCashLedgerRouteChildren: AppCashLedgerRouteChildren = {
   AppCashLedgerDebtsRoute: AppCashLedgerDebtsRoute,
   AppCashLedgerLedgerRoute: AppCashLedgerLedgerRoute,
+  AppCashLedgerMarketersRoute: AppCashLedgerMarketersRoute,
   AppCashLedgerIndexRoute: AppCashLedgerIndexRoute,
 }
 

@@ -212,7 +212,15 @@ export function CustomerAccountsCard({ factoryId }: { factoryId: string }) {
                   <TableCell>
                     <RefId id={r.customer_id} />
                   </TableCell>
-                  <TableCell className="font-medium">{r.customer_name}</TableCell>
+                  <TableCell className="font-medium">
+                    <button
+                      type="button"
+                      className="text-left hover:text-primary hover:underline"
+                      onClick={() => setOpen({ id: r.customer_id, name: r.customer_name })}
+                    >
+                      {r.customer_name}
+                    </button>
+                  </TableCell>
                   <TableCell
                     className={`text-right ${r.available_advance > 0 ? "font-medium text-success" : ""}`}
                   >

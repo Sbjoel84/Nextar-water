@@ -15,7 +15,8 @@ export type PaymentRow = {
   status: string;
   sale_id: string | null;
   remarks: string | null;
-  customers: { name: string } | null;
+  customer_id: string | null;
+  customers: { name: string; customer_type: string | null } | null;
 };
 
 export type CashTxnRow = {
@@ -109,7 +110,7 @@ export function paymentRows(factoryId: string, fromDay: string, toDay: string) {
       supabase
         .from("payments_received")
         .select(
-          "id,receipt_number,amount,payment_method,payment_date,status,sale_id,remarks,customers(name)",
+          "id,receipt_number,amount,payment_method,payment_date,status,sale_id,remarks,customer_id,customers(name,customer_type)",
         )
         .eq("factory_id", factoryId)
         .not("status", "in", UNCOUNTED_PAYMENT_FILTER)

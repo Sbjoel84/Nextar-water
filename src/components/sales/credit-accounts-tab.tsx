@@ -261,7 +261,14 @@ export function CreditAccountsTab({
                         {a.kind === "customer" && (
                           <Store className="h-4 w-4 text-muted-foreground" />
                         )}
-                        {a.name}
+                        <button
+                          type="button"
+                          className="text-left hover:text-primary hover:underline"
+                          title="Open account"
+                          onClick={() => onAccount({ id: a.id, name: a.name })}
+                        >
+                          {a.name}
+                        </button>
                         <Badge variant="outline" className="text-[10px] font-normal">
                           {a.kind === "marketer" ? "Marketer" : "Credit customer"}
                         </Badge>
@@ -371,13 +378,14 @@ function SummaryTile({
   );
 }
 
-function AddPaymentDialog({
+// Also opened from a marketer's / credit customer's account dialog.
+export function AddPaymentDialog({
   factoryId,
   account,
   onDone,
 }: {
   factoryId: string;
-  account: AccountRow;
+  account: Pick<AccountRow, "id" | "name" | "kind" | "debt" | "credit">;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
@@ -420,6 +428,8 @@ function AddPaymentDialog({
       });
       qc.invalidateQueries({ queryKey: ["credit-accounts", factoryId] });
       qc.invalidateQueries({ queryKey: ["customer-account", account.id] });
+      qc.invalidateQueries({ queryKey: ["customer-payments-full", account.id] });
+      qc.invalidateQueries({ queryKey: ["marketer-accounts", factoryId] });
       onDone();
     },
     onError: (e: Error) => toast.error(e.message),

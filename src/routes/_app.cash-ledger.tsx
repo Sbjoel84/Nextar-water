@@ -19,6 +19,7 @@ const TABS = [
   { to: "/cash-ledger", label: "Overview" },
   { to: "/cash-ledger/ledger", label: "Ledger" },
   { to: "/cash-ledger/debts", label: "Debts" },
+  { to: "/cash-ledger/marketers", label: "Marketer Accounts" },
 ];
 
 function CashLedgerLayout() {
