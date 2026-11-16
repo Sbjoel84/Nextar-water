@@ -16,7 +16,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-type MakeResult = { result: "already" | "linked" | "created" | "second_account"; name: string };
+type MakeResult = {
+  result: "already" | "linked" | "created" | "second_account" | "account_only";
+  name: string;
+};
 
 const RESULT_TEXT: Record<MakeResult["result"], (n: string) => string> = {
   already: (n) => `${n} is already a marketer`,
@@ -24,6 +27,7 @@ const RESULT_TEXT: Record<MakeResult["result"], (n: string) => string> = {
   created: (n) => `${n} added to the marketer list`,
   second_account: (n) =>
     `${n} is now the marketer's account. ${n}'s older marketer account also had history, so it is kept and listed as "account only"`,
+  account_only: (n) => `${n} is now on the marketer list`,
 };
 
 // Turns a customer record into a marketer's account (make_customer_marketer()):
@@ -37,9 +41,22 @@ export function useMakeMarketer(factoryId: string | undefined) {
         p_customer_id: customerId,
       });
       if (error) {
-        if (/function .*make_customer_marketer/i.test(error.message))
-          throw new Error("This needs the latest database update (make_customer_marketer).");
-        throw error;
+        // Database update 20261116100000 not applied yet: fall back to marking
+        // the customer a marketer directly. Their sales, payments and debts
+        // stay on the account and it shows on every marketer list ("account
+        // only": not linked to a dispatch profile until the update is applied
+        // and "Make marketer" is run again).
+        const missing =
+          error.code === "PGRST202" || /function .*make_customer_marketer/i.test(error.message);
+        if (!missing) throw error;
+        const { data: row, error: upErr } = await supabase
+          .from("customers")
+          .update({ customer_type: "marketer", registered: true })
+          .eq("id", customerId)
+          .select("name")
+          .single();
+        if (upErr) throw upErr;
+        return { result: "account_only", name: row?.name ?? "Customer" } as MakeResult;
       }
       return data as MakeResult;
     },

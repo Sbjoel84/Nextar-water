@@ -326,8 +326,26 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
       .map((c) => [c.sales_rep_id as string, c]),
   );
   const repIds = new Set(reps.map((r) => r.id));
+  const norm = (n: string) => n.trim().toLowerCase();
+  // A marketer with no linked account shows a same-named marketer account in
+  // its row (e.g. JAPHET's account made a marketer before the link exists),
+  // rather than listing the same person twice.
+  const nameMatched = new Set<string>();
+  for (const r of reps) {
+    if (accountByRep.has(r.id)) continue;
+    const match = (marketerAccounts.data ?? []).find(
+      (c) =>
+        (!c.sales_rep_id || !repIds.has(c.sales_rep_id)) &&
+        !nameMatched.has(c.id) &&
+        norm(c.name) === norm(r.full_name),
+    );
+    if (match) {
+      accountByRep.set(r.id, match);
+      nameMatched.add(match.id);
+    }
+  }
   const unlinked = (marketerAccounts.data ?? []).filter(
-    (c) => !c.sales_rep_id || !repIds.has(c.sales_rep_id),
+    (c) => (!c.sales_rep_id || !repIds.has(c.sales_rep_id)) && !nameMatched.has(c.id),
   );
 
   const del = useMutation({
