@@ -156,9 +156,9 @@ export function RepActivityCard({ factoryId }: { factoryId: string }) {
     <Card className="rounded-2xl">
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>Sales-Rep Activity</CardTitle>
+          <CardTitle>Marketer Activity</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Products supplied to sales-reps and what they bring back at close of business.
+            Products supplied to marketers and what they bring back at close of business.
           </p>
         </div>
         <DateInput
@@ -171,11 +171,11 @@ export function RepActivityCard({ factoryId }: { factoryId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Sales-Rep</TableHead>
+              <TableHead>Marketer</TableHead>
               <TableHead className="text-right">Supplied</TableHead>
               <TableHead className="text-right">Value</TableHead>
               <TableHead className="text-right">Returned</TableHead>
-              <TableHead className="text-right">Still with rep</TableHead>
+              <TableHead className="text-right">Still with marketer</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -195,7 +195,7 @@ export function RepActivityCard({ factoryId }: { factoryId: string }) {
             ) : reps.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
-                  No sales-rep supplies or returns on this day.
+                  No marketer supplies or returns on this day.
                 </TableCell>
               </TableRow>
             ) : (
@@ -266,7 +266,7 @@ export function RepActivityCard({ factoryId }: { factoryId: string }) {
           <Link to="/sales-returns" className="text-primary hover:underline">
             Sales Returns
           </Link>{" "}
-          — accepted products go back into stock and the rep's account is credited.
+          — accepted products go back into stock and the marketer's account is credited.
         </p>
       </CardContent>
 
@@ -302,7 +302,7 @@ function RepDayDialog({ rep, day }: { rep: RepDay; day: string }) {
               <TableHead>Product</TableHead>
               <TableHead className="text-right">Supplied</TableHead>
               <TableHead className="text-right">Returned</TableHead>
-              <TableHead className="text-right">Still with rep</TableHead>
+              <TableHead className="text-right">Still with marketer</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -434,7 +434,7 @@ function LogRepReturnDialog({
       if (toReturn.length === 0)
         throw new Error("Select a product and enter the quantity returned");
       if (over.length > 0)
-        throw new Error(`${lineOf(over[0].product_id)?.name}: more than the rep still holds`);
+        throw new Error(`${lineOf(over[0].product_id)?.name}: more than the marketer still holds`);
       // One sales_returns row per product, same as the Sales Returns page.
       const results: { id: string; return_number: string }[] = [];
       for (const { row, line: l } of toReturn) {
@@ -478,8 +478,8 @@ function LogRepReturnDialog({
       <div className="grid gap-3">
         {picker}
         <p className="text-xs text-muted-foreground">
-          Enter what the rep brought back, good and damaged separately. Both are credited to the
-          rep's account after inspection; only good units go back into stock.
+          Enter what the marketer brought back, good and damaged separately. Both are credited to the
+          marketer's account after inspection; only good units go back into stock.
         </p>
         {rep.customer_id && lines.length === 0 && (
           <p className="rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -512,7 +512,7 @@ function LogRepReturnDialog({
                           .filter((x) => !taken.has(x.product_id))
                           .map((x) => (
                             <SelectItem key={x.product_id} value={x.product_id}>
-                              {x.name} · with rep {num(x.outstanding)} {x.unit}
+                              {x.name} · with marketer {num(x.outstanding)} {x.unit}
                             </SelectItem>
                           ))}
                       </SelectContent>
@@ -554,8 +554,8 @@ function LogRepReturnDialog({
                       className={`pb-2 text-xs ${tooMany ? "text-destructive" : "text-muted-foreground"}`}
                     >
                       {tooMany
-                        ? `Only ${num(l.outstanding)} ${l.unit} with rep`
-                        : `Still with rep: ${num(l.outstanding)} ${l.unit}`}
+                        ? `Only ${num(l.outstanding)} ${l.unit} with marketer`
+                        : `Still with marketer: ${num(l.outstanding)} ${l.unit}`}
                     </div>
                   )}
                 </div>
@@ -684,11 +684,11 @@ export function ReturnProductDialog({
 
   const picker = (
     <div>
-      <Label>Sales-Rep</Label>
+      <Label>Marketer</Label>
       <Select value={repId || undefined} onValueChange={setRepId}>
         <SelectTrigger>
           <SelectValue
-            placeholder={returnables.isLoading ? "Loading…" : "Select the sales-rep returning…"}
+            placeholder={returnables.isLoading ? "Loading…" : "Select the marketer returning…"}
           />
         </SelectTrigger>
         <SelectContent>
@@ -705,7 +705,7 @@ export function ReturnProductDialog({
           })}
           {returnables.data?.length === 0 && (
             <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-              No sales-reps yet — add them under Distribution → Sales Reps.
+              No marketers yet — add them under Marketers/Distributors → Marketers.
             </div>
           )}
         </SelectContent>

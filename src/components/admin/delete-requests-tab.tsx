@@ -46,7 +46,7 @@ type DeleteRequestRow = {
 export const TABLE_LABELS: Record<string, string> = {
   employees: "Employee",
   employee_documents: "Employee Document",
-  sales_reps: "Sales Rep",
+  sales_reps: "Marketer",
   vehicles: "Vehicle",
   drivers: "Driver",
   expenses: "Expense",

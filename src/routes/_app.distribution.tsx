@@ -49,6 +49,7 @@ import { DistributorsTab } from "@/components/distribution/distributors-tab";
 import { SearchBox } from "@/components/shared/search-box";
 import { matchesSearch, useSearchQuery } from "@/lib/search";
 import { DateInput } from "@/components/shared/date-input";
+import { CustomerAccountDialog } from "@/components/sales/customer-account-dialog";
 
 export const Route = createFileRoute("/_app/distribution")({
   head: () => ({
@@ -211,7 +212,7 @@ function DistributionPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Marketers/Distributors</h1>
         <p className="text-sm text-muted-foreground">
-          Every product leaves the store on a dispatch to a sales rep. The rep sells from van stock,
+          Every product leaves the store on a dispatch to a marketer. The marketer sells from van stock,
           returns what's unsold for inspection, and remits cash — their account nets it all against
           the value of products they took.
         </p>
@@ -219,12 +220,12 @@ function DistributionPage() {
 
       <Tabs defaultValue="reps">
         <TabsList className="flex-wrap">
-          <TabsTrigger value="reps">Sales Reps</TabsTrigger>
+          <TabsTrigger value="reps">Marketers</TabsTrigger>
           <TabsTrigger value="distributors">Distributors</TabsTrigger>
           <TabsTrigger value="dispatches">Dispatches</TabsTrigger>
-          <TabsTrigger value="returns">Rep Returns</TabsTrigger>
+          <TabsTrigger value="returns">Marketer Returns</TabsTrigger>
           <TabsTrigger value="remittances">Remittances</TabsTrigger>
-          <TabsTrigger value="accounts">Rep Accounts</TabsTrigger>
+          <TabsTrigger value="accounts">Marketer Accounts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="reps" className="mt-4">
@@ -282,7 +283,39 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
   const canEdit = perms.canEdit("distribution");
   const canDelete = perms.canDelete("distribution");
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["dist-reps"] });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["dist-reps"] });
+    // Adding a marketer creates their account (sync_sales_rep_customer trigger).
+    qc.invalidateQueries({ queryKey: ["dist-marketer-accounts"] });
+  };
+  const [account, setAccount] = useState<{ id: string; name: string } | null>(null);
+
+  // Every marketer's account (customers of type marketer). Most are linked to
+  // a row above via sales_rep_id; ones added from Sales or Customers may not
+  // be, and are listed too so every marketer is on this page.
+  const marketerAccounts = useQuery({
+    queryKey: ["dist-marketer-accounts", factoryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id,name,phone,sales_rep_id")
+        .eq("factory_id", factoryId)
+        .eq("customer_type", "marketer")
+        .is("deleted_at", null)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const accountByRep = new Map(
+    (marketerAccounts.data ?? [])
+      .filter((c) => c.sales_rep_id)
+      .map((c) => [c.sales_rep_id as string, c]),
+  );
+  const repIds = new Set(reps.map((r) => r.id));
+  const unlinked = (marketerAccounts.data ?? []).filter(
+    (c) => !c.sales_rep_id || !repIds.has(c.sales_rep_id),
+  );
 
   const del = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
@@ -299,7 +332,13 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
   return (
     <Card className="rounded-2xl">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Sales Reps</CardTitle>
+        <div>
+          <CardTitle>Marketers</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {reps.length + unlinked.length} marketer
+            {reps.length + unlinked.length === 1 ? "" : "s"}. Click a name to open their account.
+          </p>
+        </div>
         {canCreate && (
           <Button
             size="sm"
@@ -309,7 +348,7 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
               setOpen(true);
             }}
           >
-            <Plus className="h-4 w-4" /> Add Rep
+            <Plus className="h-4 w-4" /> Add Marketer
           </Button>
         )}
       </CardHeader>
@@ -335,7 +374,22 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
                     <RefId id={r.id} />
                   </TableCell>
                   <TableCell className="font-mono text-xs">{r.code ?? "—"}</TableCell>
-                  <TableCell className="font-medium">{r.full_name}</TableCell>
+                  <TableCell className="font-medium">
+                    {accountByRep.get(r.id) ? (
+                      <button
+                        type="button"
+                        className="text-left text-primary hover:underline"
+                        title="Open account"
+                        onClick={() =>
+                          setAccount({ id: accountByRep.get(r.id)!.id, name: r.full_name })
+                        }
+                      >
+                        {r.full_name}
+                      </button>
+                    ) : (
+                      r.full_name
+                    )}
+                  </TableCell>
                   <TableCell>{r.phone ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant={r.status === "active" ? "secondary" : "outline"}>
@@ -371,10 +425,40 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
                   </TableCell>
                 </TableRow>
               ))}
-            {reps.length === 0 && (
+            {unlinked
+              .filter((x) => matchesSearch(q, x))
+              .map((c) => (
+                <TableRow key={`acct-${c.id}`}>
+                  <TableCell>
+                    <RefId id={c.id} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">—</TableCell>
+                  <TableCell className="font-medium">
+                    <button
+                      type="button"
+                      className="text-left text-primary hover:underline"
+                      title="Open account"
+                      onClick={() => setAccount({ id: c.id, name: c.name })}
+                    >
+                      {c.name}
+                    </button>
+                  </TableCell>
+                  <TableCell>{c.phone ?? "—"}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      title="Added from Sales or Customers. Has an account, but no dispatch profile."
+                    >
+                      account only
+                    </Badge>
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
+              ))}
+            {reps.length === 0 && unlinked.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                  No sales reps yet.
+                  No marketers yet.
                 </TableCell>
               </TableRow>
             )}
@@ -393,6 +477,10 @@ function RepsTab({ factoryId, reps, perms }: { factoryId: string; reps: Rep[]; p
             }}
           />
         )}
+      </Dialog>
+
+      <Dialog open={!!account} onOpenChange={(v) => !v && setAccount(null)}>
+        {account && <CustomerAccountDialog customerId={account.id} customerName={account.name} />}
       </Dialog>
 
       <RequestDeleteDialog
@@ -441,7 +529,7 @@ function RepDialog({
       }
     },
     onSuccess: () => {
-      toast.success(rep ? "Rep updated" : "Rep added");
+      toast.success(rep ? "Marketer updated" : "Marketer added");
       logAudit({ action: rep ? "update" : "create", entity: "sales_reps", factoryId });
       onDone();
     },
@@ -451,7 +539,7 @@ function RepDialog({
   return (
     <DialogContent className="max-w-md">
       <DialogHeader>
-        <DialogTitle>{rep ? "Edit Sales Rep" : "Add Sales Rep"}</DialogTitle>
+        <DialogTitle>{rep ? "Edit Marketer" : "Add Marketer"}</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <div>
@@ -567,7 +655,7 @@ function DispatchesTab({
               <TableHead>ID</TableHead>
               <TableHead>Dispatch #</TableHead>
               <TableHead>Date</TableHead>
-              <TableHead>Rep</TableHead>
+              <TableHead>Marketer</TableHead>
               <TableHead className="text-right">Lines</TableHead>
               <TableHead className="text-right">Value</TableHead>
               <TableHead>Status</TableHead>
@@ -818,7 +906,7 @@ function NewDispatchDialog({
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!repId) throw new Error("Select a sales rep");
+      if (!repId) throw new Error("Select a marketer");
       const clean = lines.filter((l) => l.product_id && l.quantity > 0);
       if (clean.length === 0) throw new Error("Add at least one product line");
       const { data, error } = await supabase.rpc("create_stock_dispatch", {
@@ -847,15 +935,15 @@ function NewDispatchDialog({
   return (
     <DialogContent className="max-w-2xl">
       <DialogHeader>
-        <DialogTitle>New Dispatch — store → rep</DialogTitle>
+        <DialogTitle>New Dispatch — store → marketer</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Sales rep</Label>
+            <Label>Marketer</Label>
             <Select value={repId} onValueChange={setRepId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select rep…" />
+                <SelectValue placeholder="Select marketer…" />
               </SelectTrigger>
               <SelectContent>
                 {reps.map((r) => (
@@ -976,7 +1064,7 @@ function ReverseDialog({ row, onDone }: { row: DispatchRow; onDone: () => void }
         <DialogTitle>Reverse {row.dispatch_number}</DialogTitle>
       </DialogHeader>
       <p className="text-sm text-muted-foreground">
-        Only possible while every dispatched unit is still on the rep's van. Stock goes back to the
+        Only possible while every dispatched unit is still on the marketer's van. Stock goes back to the
         store.
       </p>
       <div>
@@ -1045,7 +1133,7 @@ function ReturnsTab({
   return (
     <Card className="rounded-2xl">
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Rep Returns</CardTitle>
+        <CardTitle>Marketer Returns</CardTitle>
         {canSubmit && (
           <Button size="sm" className="gap-2" onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4" /> Log Return
@@ -1060,7 +1148,7 @@ function ReturnsTab({
               <TableHead>ID</TableHead>
               <TableHead>Return #</TableHead>
               <TableHead>Date</TableHead>
-              <TableHead>Rep</TableHead>
+              <TableHead>Marketer</TableHead>
               <TableHead className="text-right">Lines</TableHead>
               <TableHead>Status</TableHead>
               <TableHead></TableHead>
@@ -1114,7 +1202,7 @@ function ReturnsTab({
             {(list.data ?? []).length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                  No rep returns yet.
+                  No marketer returns yet.
                 </TableCell>
               </TableRow>
             )}
@@ -1194,7 +1282,7 @@ function LogReturnDialog({
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!repId) throw new Error("Select a sales rep");
+      if (!repId) throw new Error("Select a marketer");
       const clean = lines.filter((l) => l.product_id && l.quantity > 0);
       if (clean.length === 0) throw new Error("Add at least one line");
       const { data, error } = await supabase.rpc("create_rep_return", {
@@ -1223,15 +1311,15 @@ function LogReturnDialog({
   return (
     <DialogContent className="max-w-2xl">
       <DialogHeader>
-        <DialogTitle>Log a Rep Return</DialogTitle>
+        <DialogTitle>Log a Marketer Return</DialogTitle>
       </DialogHeader>
       <div className="grid gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Sales rep</Label>
+            <Label>Marketer</Label>
             <Select value={repId} onValueChange={setRepId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select rep…" />
+                <SelectValue placeholder="Select marketer…" />
               </SelectTrigger>
               <SelectContent>
                 {reps.map((r) => (
@@ -1374,7 +1462,7 @@ function InspectReturnDialog({ row, onDone }: { row: ReturnRow; onDone: () => vo
                   checked={l.charge_rep}
                   onCheckedChange={(v) => patch(i, { charge_rep: !!v })}
                 />
-                Charge the rep for the damaged / rejected value (uncheck to write it off to the
+                Charge the marketer for the damaged / rejected value (uncheck to write it off to the
                 company)
               </label>
             )}
@@ -1481,7 +1569,7 @@ function RemittancesTab({
               <TableHead>ID</TableHead>
               <TableHead>Remittance #</TableHead>
               <TableHead>Date</TableHead>
-              <TableHead>Rep</TableHead>
+              <TableHead>Marketer</TableHead>
               <TableHead>Method</TableHead>
               <TableHead className="text-right">Amount</TableHead>
             </TableRow>
@@ -1548,7 +1636,7 @@ function RemittanceDialog({
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!repId) throw new Error("Select a sales rep");
+      if (!repId) throw new Error("Select a marketer");
       if (amount <= 0) throw new Error("Amount must be > 0");
       const { data, error } = await supabase.rpc("record_rep_remittance", {
         payload: {
@@ -1578,10 +1666,10 @@ function RemittanceDialog({
       </DialogHeader>
       <div className="grid gap-3">
         <div>
-          <Label>Sales rep</Label>
+          <Label>Marketer</Label>
           <Select value={repId} onValueChange={setRepId}>
             <SelectTrigger>
-              <SelectValue placeholder="Select rep…" />
+              <SelectValue placeholder="Select marketer…" />
             </SelectTrigger>
             <SelectContent>
               {reps.map((r) => (
@@ -1693,7 +1781,7 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
         { label: "Less: damage/rejects written off", value: -s.written_off_value },
         { label: "Less: cash remitted", value: -s.cash_remitted },
         { label: "Less: customer credit outstanding", value: -s.credit_outstanding },
-        { label: "Balance owed by rep", value: s.net_balance_owed, strong: true },
+        { label: "Balance owed by marketer", value: s.net_balance_owed, strong: true },
       ]
     : [];
 
@@ -1702,10 +1790,10 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
       <Card className="rounded-2xl">
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <div className="min-w-48">
-            <Label>Sales rep</Label>
+            <Label>Marketer</Label>
             <Select value={repId} onValueChange={setRepId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select rep…" />
+                <SelectValue placeholder="Select marketer…" />
               </SelectTrigger>
               <SelectContent>
                 {reps.map((r) => (
@@ -1731,7 +1819,7 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
               className="gap-2"
               onClick={() =>
                 exportCsv(
-                  `rep-account-${reps.find((r) => r.id === repId)?.full_name ?? repId}`,
+                  `marketer-account-${reps.find((r) => r.id === repId)?.full_name ?? repId}`,
                   [
                     { key: "label", label: "Line" },
                     { key: "value", label: "Amount" },
@@ -1746,7 +1834,7 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
         </CardContent>
       </Card>
 
-      {!repId && <p className="text-sm text-muted-foreground">Pick a rep to see their account.</p>}
+      {!repId && <p className="text-sm text-muted-foreground">Pick a marketer to see their account.</p>}
 
       {s && (
         <>
@@ -1755,7 +1843,7 @@ function AccountsTab({ factoryId, reps }: { factoryId: string; reps: Rep[] }) {
             <Stat label="Cash remitted" value={money(s.cash_remitted)} />
             <Stat label="Credit outstanding" value={money(s.credit_outstanding)} />
             <Stat
-              label="Balance owed by rep"
+              label="Balance owed by marketer"
               value={money(s.net_balance_owed)}
               tone={s.net_balance_owed > 0 ? "warn" : "ok"}
             />

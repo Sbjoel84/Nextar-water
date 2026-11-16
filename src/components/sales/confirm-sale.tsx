@@ -586,7 +586,7 @@ export function PendingSalesCard({ factoryId }: { factoryId: string }) {
             </span>
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Posted by sales for walk-in customers, sales-reps and distributors. Set the payment,
+            Posted by sales for walk-in customers, marketers and distributors. Set the payment,
             discount / commission and VAT, then confirm to print the receipt.
           </p>
         </div>

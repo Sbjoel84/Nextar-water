@@ -574,7 +574,7 @@ function CustomerDialog({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {/* Sales-Reps are registered under Distribution → Sales Reps, which
+              {/* Marketers are registered under Marketers/Distributors → Marketers, which
                   creates their customer account automatically. */}
               {CUSTOMER_TYPES.filter(
                 (t) => t.value !== "marketer" || editing?.customer_type === "marketer",

@@ -45,7 +45,7 @@ type BinRow = {
 const TYPE_LABELS: Record<string, string> = {
   employees: "Employee",
   employee_documents: "Employee document",
-  sales_reps: "Sales rep",
+  sales_reps: "Marketer",
   vehicles: "Vehicle",
   drivers: "Driver",
   expenses: "Expense",

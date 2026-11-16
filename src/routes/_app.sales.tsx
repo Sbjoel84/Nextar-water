@@ -500,7 +500,7 @@ function SalesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales & POS</h1>
           <p className="text-sm text-muted-foreground">
-            Sales persons capture orders from walk-in customers, sales-reps, distributors and
+            Sales persons capture orders from walk-in customers, marketers, distributors and
             others, then post them to the accountant. On the Finance page the accountant sets the
             payment, discount / commission and VAT, confirms the order and prints the receipt — only
             then does it decrement stock and count toward the customer's balance.
@@ -1874,7 +1874,7 @@ export function PosDialog({
                     <div className="px-2 py-4 text-center text-sm text-muted-foreground">
                       {customerType === "distributor"
                         ? "No distributors yet — add them under Distribution → Distributors."
-                        : "No sales-reps yet — add them under Distribution → Sales Reps."}
+                        : "No marketers yet — add them under Marketers/Distributors → Marketers."}
                     </div>
                   )}
                 </SelectContent>
@@ -1914,7 +1914,7 @@ export function PosDialog({
           </label>
           {customerType !== "marketer" && (
             <div>
-              <Label className="text-xs">Sales rep (van stock)</Label>
+              <Label className="text-xs">Marketer (van stock)</Label>
               <Select
                 value={salesRepId}
                 onValueChange={(v) => {
